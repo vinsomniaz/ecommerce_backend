@@ -1,8 +1,13 @@
 <?php
 
+use App\Http\Controllers\Api\ProductController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
-    return $request->user();
+
+/*  PRODUCTOS   */
+Route::prefix('products')->middleware(['auth:sanctum'])->group(function () {
+    // CRUD básico
+    Route::post('/', [ProductController::class, 'store']);
+
 });
