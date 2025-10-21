@@ -15,52 +15,28 @@ class EntityResource extends JsonResource
         return [
             'id' => $this->id,
             'type' => $this->type,
-            
-            // Document information
             'tipo_documento' => $this->tipo_documento,
             'numero_documento' => $this->numero_documento,
             'tipo_persona' => $this->tipo_persona,
-            
-            // Personal/Business information
-            'business_name' => $this->business_name,
-            'trade_name' => $this->trade_name,
-            'first_name' => $this->first_name,
-            'last_name' => $this->last_name,
             'full_name' => $this->full_name,
-            'display_name' => $this->display_name,
-            
-            // Contact information
+            'trade_name' => $this->when($this->tipo_persona === 'juridica', $this->trade_name),
             'email' => $this->email,
             'phone' => $this->phone,
-            'address' => $this->address,
-            'ubigeo' => $this->ubigeo,
-            
-            // SUNAT status
-            'estado_sunat' => $this->estado_sunat,
-            'condicion_sunat' => $this->condicion_sunat,
-            
-            // Metadata
             'is_active' => $this->is_active,
             'registered_at' => $this->registered_at?->format('Y-m-d H:i:s'),
-            'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
-            'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
-            
-            // Relations (only if loaded)
-            'user' => $this->whenLoaded('user', function () {
+
+            // Relationships
+            'default_address' => $this->whenLoaded('defaultAddress', function () {
+                if (!$this->defaultAddress) return null;
                 return [
-                    'id' => $this->user->id,
-                    'name' => $this->user->name,
-                    'email' => $this->user->email,
+                    'id' => $this->defaultAddress->id,
+                    'address' => $this->defaultAddress->address,
+                    'distrito' => $this->defaultAddress->ubigeoData->distrito ?? null,
+                    'provincia' => $this->defaultAddress->ubigeoData->provincia ?? null,
+                    'departamento' => $this->defaultAddress->ubigeoData->departamento ?? null,
                 ];
             }),
-            'ubigeo_data' => $this->whenLoaded('ubigeoData', function () {
-                return [
-                    'ubigeo' => $this->ubigeoData->ubigeo,
-                    'departamento' => $this->ubigeoData->departamento ?? null,
-                    'provincia' => $this->ubigeoData->provincia ?? null,
-                    'distrito' => $this->ubigeoData->distrito ?? null,
-                ];
-            }),
+            'user_id' => $this->whenLoaded('user', $this->user_id),
         ];
     }
 }

@@ -20,9 +20,19 @@ class StoreEntityRequest extends FormRequest
      */
     public function rules(): array
     {
+        $isSupplierOrBoth = in_array($this->type, ['supplier', 'both']);
         return [
             'type' => 'required|in:customer,supplier,both',
-            'tipo_documento' => 'required|in:01,06',
+            'tipo_documento' => [
+                'required',
+                'in:01,06',
+                // Regla para asegurar que proveedores solo usen RUC
+                function ($attribute, $value, $fail) use ($isSupplierOrBoth) {
+                    if ($isSupplierOrBoth && $value !== '06') {
+                        $fail('Los proveedores deben tener RUC (tipo_documento = 06).');
+                    }
+                }
+            ],
             'numero_documento' => [
                 'required',
                 'numeric',
@@ -44,7 +54,8 @@ class StoreEntityRequest extends FormRequest
                     }
                 }
             ],
-            'tipo_persona' => 'required|in:natural,juridica',
+            // Para proveedores, tipo_persona siempre será 'juridica'
+            'tipo_persona' => ['required', Rule::in($isSupplierOrBoth ? ['juridica'] : ['natural', 'juridica'])],
             'first_name' => 'required_if:tipo_persona,natural|string|max:100',
             'last_name' => 'required_if:tipo_persona,natural|string|max:100',
             'business_name' => 'required_if:tipo_persona,juridica|string|max:200',

@@ -24,17 +24,14 @@ class EntityController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $filters = [
-            'type' => $request->get('type'),
-            'tipo_persona' => $request->get('tipo_persona'),
+            'type' => 'customer', // Forzar siempre la busqueda de clientes
+            'search' => $request->get('search'),
             'tipo_documento' => $request->get('tipo_documento'),
             'is_active' => $request->get('is_active'),
-            'estado_sunat' => $request->get('estado_sunat'),
-            'condicion_sunat' => $request->get('condicion_sunat'),
-            'ubigeo' => $request->get('ubigeo'),
-            'order_by' => $request->get('order_by'),
-            'order_direction' => $request->get('order_direction', 'asc'),
-            'per_page' => $request->get('per_page', 15),
-            'with' => $request->get('with') ? explode(',', $request->get('with')) : [],
+            'registered_from' => $request->get('registered_from'),
+            'registered_to' => $request->get('registered_to'),
+            'per_page' => $request->get('per_page', 50),
+            'with' => ['defaultAddress.ubigeoData', 'user'], // Incluir relaciones anidadas
         ];
 
         // Remove null values
@@ -63,7 +60,7 @@ class EntityController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        $entity = $this->entityService->findById($id, ['user', 'ubigeoData']);
+        $entity = $this->entityService->findById($id, ['user', 'ubigeoData', 'defaultAddress.ubigeoData']);
 
         if (!$entity) {
             return response()->json([
@@ -97,7 +94,7 @@ class EntityController extends Controller
         $this->entityService->delete($entity);
 
         return response()->json([
-            'message' => 'Cliente eliminado exitosamente'
+            'message' => 'Cliente eliminado (desactivado) exitosamente'
         ], 200);
     }
 
@@ -123,56 +120,6 @@ class EntityController extends Controller
 
         return response()->json([
             'message' => 'Cliente activado exitosamente',
-            'data' => new EntityResource($entity)
-        ]);
-    }
-
-    /**
-     * Search entities.
-     */
-    public function search(Request $request): AnonymousResourceCollection
-    {
-        $request->validate([
-            'q' => 'required|string|min:2',
-            'type' => 'nullable|in:customer,supplier,both',
-            'per_page' => 'nullable|integer|min:1|max:100',
-        ]);
-
-        $filters = [
-            'type' => $request->get('type'),
-            'per_page' => $request->get('per_page', 15),
-        ];
-
-        // Remove null values
-        $filters = array_filter($filters, fn($value) => $value !== null);
-
-        $entities = $this->entityService->search($request->get('q'), $filters);
-
-        return EntityResource::collection($entities);
-    }
-
-    /**
-     * Find entity by document.
-     */
-    public function findByDocument(Request $request): JsonResponse
-    {
-        $request->validate([
-            'tipo_documento' => 'required|in:01,06',
-            'numero_documento' => 'required|string',
-        ]);
-
-        $entity = $this->entityService->findByDocument(
-            $request->tipo_documento,
-            $request->numero_documento
-        );
-
-        if (!$entity) {
-            return response()->json([
-                'message' => 'Cliente no encontrado'
-            ], 404);
-        }
-
-        return response()->json([
             'data' => new EntityResource($entity)
         ]);
     }

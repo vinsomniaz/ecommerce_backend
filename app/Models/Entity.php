@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Entity extends Model
 {
@@ -73,6 +74,14 @@ class Entity extends Model
     }
 
     /**
+     * Get the default address for the entity.
+     */
+    public function defaultAddress(): HasOne
+    {
+        return $this->hasOne(Address::class)->where('is_default', true);
+    }
+
+    /**
      * Scope to filter customers only
      */
     public function scopeCustomers($query)
@@ -97,14 +106,14 @@ class Entity extends Model
     }
 
     /**
-     * Get full name for natural persons
+     * Get full name attribute
      */
     public function getFullNameAttribute(): ?string
     {
-        if ($this->tipo_persona === 'natural' && $this->first_name && $this->last_name) {
-            return trim("{$this->first_name} {$this->last_name}");
+        if ($this->tipo_persona == 'natural') {
+            return trim($this->first_name . ' ' . $this->last_name);
         }
-        return null;
+        return $this->business_name;
     }
 
     /**
@@ -112,8 +121,6 @@ class Entity extends Model
      */
     public function getDisplayNameAttribute(): string
     {
-        return $this->tipo_persona === 'natural' 
-            ? $this->full_name 
-            : ($this->trade_name ?? $this->business_name);
+        return $this->full_name;
     }
 }
