@@ -60,9 +60,12 @@ class StoreEntityRequest extends FormRequest
             'last_name' => 'required_if:tipo_persona,natural|string|max:100',
             'business_name' => 'required_if:tipo_persona,juridica|string|max:200',
             'trade_name' => 'nullable|string|max:100',
-            'email' => 'nullable|email|unique:entities,email|max:100',
-            'phone' => 'nullable|digits:9',
-            'address' => 'nullable|string|max:250',
+
+            // Campos que son obligatorios para proveedores
+            'email' => [$isSupplierOrBoth ? 'required' : 'nullable', 'email', 'unique:entities,email', 'max:100'],
+            'phone' => [$isSupplierOrBoth ? 'required' : 'nullable', 'digits:9'],
+            'address' => [$isSupplierOrBoth ? 'required' : 'nullable', 'string', 'max:250'],
+
             'ubigeo' => 'nullable|exists:ubigeos,ubigeo|size:6',
             'estado_sunat' => 'nullable|in:activo,baja,suspendido',
             'condicion_sunat' => 'nullable|in:habido,no_habido',
@@ -75,7 +78,8 @@ class StoreEntityRequest extends FormRequest
      */
     public function messages(): array
     {
-        return [
+        $isSupplierOrBoth = in_array($this->type, ['supplier', 'both']);
+        $messages = [
             'type.required' => 'El tipo de entidad es obligatorio',
             'type.in' => 'El tipo debe ser customer, supplier o both',
             'tipo_documento.required' => 'El tipo de documento es obligatorio',
@@ -94,6 +98,20 @@ class StoreEntityRequest extends FormRequest
             'ubigeo.exists' => 'El ubigeo no es válido',
             'ubigeo.size' => 'El ubigeo debe tener 6 caracteres',
         ];
+
+        // Se determina dinámicamente el mensaje correcto para 'tipo_persona.in'
+        if ($isSupplierOrBoth) {
+            $messages['tipo_persona.in'] = 'Para proveedores, el tipo de persona debe ser juridica.';
+            $messages['business_name.required_if'] = 'La razón social es obligatoria para proveedores.';
+            $messages['email.required'] = 'El email es obligatorio para proveedores.';
+            $messages['phone.required'] = 'El teléfono es obligatorio para proveedores.';
+            $messages['address.required'] = 'La dirección es obligatoria para proveedores.';
+        } else {
+            $messages['tipo_persona.in'] = 'El tipo de persona debe ser natural o juridica.';
+            $messages['business_name.required_if'] = 'La razón social es obligatoria para personas jurídicas.';
+        }
+
+        return $messages;
     }
 
     /**
@@ -104,6 +122,10 @@ class StoreEntityRequest extends FormRequest
         // Set default type if not provided
         if (!$this->has('type')) {
             $this->merge(['type' => 'customer']);
+        }
+
+        if (in_array($this->type, ['supplier', 'both'])) {
+            $this->merge(['tipo_persona' => 'juridica']);
         }
 
         // Trim strings

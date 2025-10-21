@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Services;
+namespace App\Services;
 
 use App\Models\Entity;
 use Illuminate\Database\Eloquent\Collection;
@@ -10,44 +10,69 @@ use Illuminate\Support\Facades\Auth;
 
 class EntityService
 {
-    // ... los métodos getAll, findById, create, update no cambian ...
-
+    /**
+     * Get all entities with optional filters
+     */
     public function getAll(array $filters = []): Collection|LengthAwarePaginator
     {
         $query = Entity::query();
+
+        // Apply filters
         $this->applyFilters($query, $filters);
+
+        // Load relationships if requested
         if (isset($filters['with'])) {
             $query->with($filters['with']);
         }
+
+        // Pagination
         if (isset($filters['per_page'])) {
             return $query->paginate($filters['per_page']);
         }
+
         return $query->get();
     }
 
+    /**
+     * Find entity by ID
+     */
     public function findById(int $id, array $relations = []): ?Entity
     {
         $query = Entity::query();
+
         if (!empty($relations)) {
             $query->with($relations);
         }
+
         return $query->find($id);
     }
-    
+
+    /**
+     * Create a new entity
+     */
     public function create(array $data): Entity
     {
         return DB::transaction(function () use ($data) {
+            // Set user_id from authenticated user if not provided
             if (!isset($data['user_id']) && Auth::check()) {
                 $data['user_id'] = Auth::id();
             }
+
+            // Set registered_at if not provided
             if (!isset($data['registered_at'])) {
                 $data['registered_at'] = now();
             }
+
+            // Create entity
             $entity = Entity::create($data);
+
             return $entity->load(['user', 'ubigeoData']);
         });
     }
 
+    /**
+     * Update an entity
+     */
     public function update(Entity $entity, array $data): Entity
     {
         return DB::transaction(function () use ($entity, $data) {
@@ -55,10 +80,9 @@ class EntityService
             return $entity->fresh(['user', 'ubigeoData']);
         });
     }
-    
+
     /**
      * Delete an entity (logical delete).
-     * Now this method simply deactivates the entity.
      */
     public function delete(Entity $entity): bool
     {
@@ -84,11 +108,40 @@ class EntityService
     }
 
     /**
+     * Search entities by term
+     */
+    public function search(string $term, array $filters = []): Collection|LengthAwarePaginator
+    {
+        $query = Entity::query();
+
+        // Apply search
+        $query->where(function ($q) use ($term) {
+            $q->where('numero_documento', 'like', "%{$term}%")
+                ->orWhere('business_name', 'like', "%{$term}%")
+                ->orWhere('trade_name', 'like', "%{$term}%")
+                ->orWhere('first_name', 'like', "%{$term}%")
+                ->orWhere('last_name', 'like', "%{$term}%")
+                ->orWhere('email', 'like', "%{$term}%")
+                ->orWhereRaw("CONCAT(first_name, ' ', last_name) LIKE ?", ["%{$term}%"]);
+        });
+
+        // Apply additional filters
+        $this->applyFilters($query, $filters);
+
+        // Pagination
+        if (isset($filters['per_page'])) {
+            return $query->paginate($filters['per_page']);
+        }
+
+        return $query->get();
+    }
+
+    /**
      * Apply filters to query
      */
     private function applyFilters($query, array $filters): void
     {
-        // Search filter (no cambia)
+        // Search filter
         if (isset($filters['search'])) {
             $term = $filters['search'];
             $query->where(function ($q) use ($term) {
@@ -100,18 +153,19 @@ class EntityService
                     ->orWhereRaw("CONCAT(first_name, ' ', last_name) LIKE ?", ["%{$term}%"]);
             });
         }
-        
-        // ... otros filtros como tipo_documento, fechas, etc. no cambian ...
+
+        // === CORRECCIÓN DE LÓGICA DE FILTRADO POR TIPO ===
         if (isset($filters['type'])) {
-            if ($filters['type'] === 'customer') {
-                $query->customers();
-            } elseif ($filters['type'] === 'supplier') {
-                $query->suppliers();
+            $type = $filters['type'];
+
+            if ($type === 'customer') {
+                $query->customers(); // Usa el scope para 'customer' y 'both'
+            } elseif ($type === 'supplier') {
+                $query->suppliers(); // Usa el scope para 'supplier' y 'both'
             }
         }
-        if (isset($filters['tipo_documento'])) {
-            $query->where('tipo_documento', $filters['tipo_documento']);
-        }
+
+        // Filter by registration date
         if (isset($filters['registered_from'])) {
             $query->whereDate('registered_at', '>=', $filters['registered_from']);
         }
@@ -119,16 +173,17 @@ class EntityService
             $query->whereDate('registered_at', '<=', $filters['registered_to']);
         }
 
-        // === CAMBIO IMPORTANTE: Lógica de filtro de estado ===
-        // Si el filtro 'is_active' está presente, lo usamos.
+        // Filter by is_active status
         if (isset($filters['is_active'])) {
-             // Esto permite filtrar por ?is_active=1 (activos) o ?is_active=0 (inactivos/archivados)
             $query->where('is_active', filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN));
         }
-        // Si no se pasa el filtro, NO se aplica ninguna restricción de estado,
-        // por lo que el GET general traerá tanto activos como inactivos.
 
-        // Order by (no cambia)
+        // Other filters
+        if (isset($filters['tipo_documento'])) {
+            $query->where('tipo_documento', $filters['tipo_documento']);
+        }
+
+        // Order by
         $query->orderBy('registered_at', 'desc');
     }
 }

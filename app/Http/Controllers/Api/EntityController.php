@@ -7,7 +7,7 @@ use App\Http\Requests\Entity\StoreEntityRequest;
 use App\Http\Requests\Entity\UpdateEntityRequest;
 use App\Http\Resources\EntityResource;
 use App\Models\Entity;
-use App\Http\Services\EntityService;
+use App\Services\EntityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -24,7 +24,7 @@ class EntityController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $filters = [
-            'type' => 'customer', // Forzar siempre la busqueda de clientes
+            'type' => $request->get('type'),
             'search' => $request->get('search'),
             'tipo_documento' => $request->get('tipo_documento'),
             'is_active' => $request->get('is_active'),
