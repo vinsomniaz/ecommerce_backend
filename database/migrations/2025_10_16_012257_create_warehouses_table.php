@@ -22,8 +22,13 @@ return new class extends Migration
             $table->integer('picking_priority')->default(0);
             $table->boolean('is_active')->default(true);
             $table->timestamps();
+            $table->softDeletes();
 
-            $table->foreign('ubigeo')->references('ubigeo')->on('ubigeos')->onDelete('restrict');
+            $table->foreign('ubigeo')
+            ->references('ubigeo')
+            ->on('ubigeos')
+            ->onUpdate('restrict')
+            ->onDelete('restrict');
             $table->index('is_active');
             $table->index('visible_online');
         });
