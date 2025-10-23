@@ -6,7 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\EntityController;
 use App\Http\Controllers\Api\SunatController;
-
+use App\Http\Controllers\Api\AddressController;
 
 
 /*  PRODUCTOS   */
@@ -14,11 +14,10 @@ use App\Http\Controllers\Api\SunatController;
 Route::prefix('products')->middleware(['auth:sanctum'])->group(function () {
     // CRUD básico
     Route::post('/', [ProductController::class, 'store']);
-
 });
 
 /* CATEGORIAS */
-Route::prefix('categories')->middleware(['auth:sanctum'])->group(function() {
+Route::prefix('categories')->middleware(['auth:sanctum'])->group(function () {
     Route::get('/', [CategoryController::class, 'index']);
     Route::get('/tree', [CategoryController::class, 'tree']);
     Route::get('/{id}', [CategoryController::class, 'show']);
@@ -42,6 +41,14 @@ Route::apiResource('entities', EntityController::class);
 Route::get('/sunat/validate/{tipo}/{numero}', [SunatController::class, 'validateDocument'])
     ->middleware('throttle:10,1'); // Límite: 10 peticiones por minuto
 
+Route::prefix('/entities/{entity}/addresses')->group(function () {
+    Route::get('/', [AddressController::class, 'index']);
+    Route::post('/', [AddressController::class, 'store']);
+});
 
-
-
+Route::prefix('/addresses/{address}')->group(function () {
+    Route::get('/', [AddressController::class, 'show']);
+    Route::put('/', [AddressController::class, 'update']);
+    Route::delete('/', [AddressController::class, 'destroy']);
+    Route::patch('/set-default', [AddressController::class, 'setDefault']);
+});

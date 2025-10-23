@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Entity extends Model
 {
@@ -122,5 +123,13 @@ class Entity extends Model
     public function getDisplayNameAttribute(): string
     {
         return $this->full_name;
+    }
+
+    /**
+     * Get all addresses for the entity.
+     */
+    public function addresses(): HasMany
+    {
+        return $this->hasMany(Address::class);
     }
 }
