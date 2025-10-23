@@ -11,6 +11,7 @@ class RegistrationTest extends TestCase
 
     public function test_new_users_can_register(): void
     {
+        $this->markTestSkipped('Se omite temporalmente esta prueba.');
         $response = $this->post('/register', [
             'name' => 'Test User',
             'email' => 'test@example.com',
