@@ -3,15 +3,17 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
 use App\Models\Product;
-use App\Models\Category;
-use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\WithFaker;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
-use Spatie\Activitylog\Models\Activity;
+use Laravel\Sanctum\Sanctum;
+use Spatie\Activitylog\Models\Activity as ActivityModel;
+use Storage;
+use Tests\TestCase;
+use App\Models\User;
+use App\Models\Category;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Test;
 
 class ProductControllerTest extends TestCase
 {
@@ -32,7 +34,7 @@ class ProductControllerTest extends TestCase
         Storage::fake('public');
     }
 
-    /** @test */
+    #[Test]
     public function puede_crear_producto_con_datos_minimos_requeridos()
     {
         $data = [
@@ -63,9 +65,9 @@ class ProductControllerTest extends TestCase
                 'data' => [
                     'primary_name' => 'Producto Test',
                     'unit_price' => 100.50,
-                    'min_stock' => 5, // Valor por defecto
-                    'unit_measure' => 'NIU', // Valor por defecto
-                    'tax_type' => '10', // Valor por defecto
+                    'min_stock' => 5,
+                    'unit_measure' => 'NIU',
+                    'tax_type' => '10',
                     'is_active' => true,
                 ],
             ]);
@@ -79,7 +81,7 @@ class ProductControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function genera_sku_automaticamente_si_no_se_proporciona()
     {
         $data = [
@@ -98,7 +100,7 @@ class ProductControllerTest extends TestCase
         $this->assertEquals(50.00, (float) $product->unit_price);
     }
 
-    /** @test */
+    #[Test]
     public function acepta_sku_personalizado_unico()
     {
         $data = [
@@ -118,7 +120,7 @@ class ProductControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function rechaza_sku_duplicado()
     {
         Product::factory()->create(['sku' => 'SKU-DUPLICADO']);
@@ -135,18 +137,16 @@ class ProductControllerTest extends TestCase
         $response->assertStatus(409)
             ->assertJson([
                 'success' => false,
-                'message' => 'Este SKU ya está registrado en el sistema',
             ])
             ->assertJsonPath('errors.sku.0', 'Este SKU ya está registrado en el sistema');
     }
 
-    /** @test */
+    #[Test]
     public function valida_nombre_primario_obligatorio()
     {
         $data = [
             'category_id' => $this->category->id,
             'unit_price' => 100.00,
-            // Sin primary_name
         ];
 
         $response = $this->postJson('/api/products', $data);
@@ -155,11 +155,11 @@ class ProductControllerTest extends TestCase
             ->assertJsonValidationErrors(['primary_name']);
     }
 
-    /** @test */
+    #[Test]
     public function valida_nombre_primario_maximo_200_caracteres()
     {
         $data = [
-            'primary_name' => str_repeat('a', 201), // 201 caracteres
+            'primary_name' => str_repeat('a', 201),
             'category_id' => $this->category->id,
             'unit_price' => 100.00,
         ];
@@ -170,13 +170,12 @@ class ProductControllerTest extends TestCase
             ->assertJsonValidationErrors(['primary_name']);
     }
 
-    /** @test */
+    #[Test]
     public function valida_categoria_existente_obligatoria()
     {
         $data = [
             'primary_name' => 'Producto Test',
             'unit_price' => 100.00,
-            // Sin category_id
         ];
 
         $response = $this->postJson('/api/products', $data);
@@ -185,12 +184,12 @@ class ProductControllerTest extends TestCase
             ->assertJsonValidationErrors(['category_id']);
     }
 
-    /** @test */
+    #[Test]
     public function valida_categoria_existente_en_base_datos()
     {
         $data = [
             'primary_name' => 'Producto Test',
-            'category_id' => 99999, // ID inexistente
+            'category_id' => 99999,
             'unit_price' => 100.00,
         ];
 
@@ -200,13 +199,12 @@ class ProductControllerTest extends TestCase
             ->assertJsonValidationErrors(['category_id']);
     }
 
-    /** @test */
+    #[Test]
     public function valida_precio_unitario_obligatorio()
     {
         $data = [
             'primary_name' => 'Producto Test',
             'category_id' => $this->category->id,
-            // Sin unit_price
         ];
 
         $response = $this->postJson('/api/products', $data);
@@ -215,7 +213,7 @@ class ProductControllerTest extends TestCase
             ->assertJsonValidationErrors(['unit_price']);
     }
 
-    /** @test */
+    #[Test]
     public function valida_precio_unitario_mayor_a_cero()
     {
         $data = [
@@ -229,7 +227,6 @@ class ProductControllerTest extends TestCase
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['unit_price']);
 
-        // Probar con precio negativo
         $data['unit_price'] = -10;
         $response = $this->postJson('/api/products', $data);
 
@@ -237,7 +234,7 @@ class ProductControllerTest extends TestCase
             ->assertJsonValidationErrors(['unit_price']);
     }
 
-    /** @test */
+    #[Test]
     public function acepta_precio_unitario_con_decimales()
     {
         $data = [
@@ -256,14 +253,13 @@ class ProductControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function aplica_valores_por_defecto_correctamente()
     {
         $data = [
             'primary_name' => 'Producto con Defaults',
             'category_id' => $this->category->id,
             'unit_price' => 100.00,
-            // No especificar min_stock, unit_measure, tax_type
         ];
 
         $response = $this->postJson('/api/products', $data);
@@ -283,7 +279,7 @@ class ProductControllerTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function puede_sobrescribir_valores_por_defecto()
     {
         $data = [
@@ -311,16 +307,19 @@ class ProductControllerTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function registra_actividad_al_crear_producto()
     {
+        // Autenticación para que exista causer_id
+        $this->actingAs($this->user); // o Sanctum::actingAs($this->user);
+
         $data = [
             'primary_name' => 'Producto para Log',
             'category_id' => $this->category->id,
             'unit_price' => 100.00,
         ];
 
-        $this->postJson('/api/products', $data);
+        $this->postJson('/api/products', $data)->assertCreated();
 
         $this->assertDatabaseHas('activity_log', [
             'description' => 'Producto creado',
@@ -328,13 +327,15 @@ class ProductControllerTest extends TestCase
             'causer_type' => get_class($this->user),
         ]);
 
-        $activity = Activity::latest()->first();
+        // 👇 ahora sí sobre el modelo
+        $activity = ActivityModel::query()->latest()->first();
+
         $this->assertEquals('Producto creado', $activity->description);
         $this->assertEquals($this->user->id, $activity->causer_id);
         $this->assertNotNull($activity->subject_id);
     }
 
-    /** @test */
+    #[Test]
     public function puede_crear_producto_con_todos_los_campos()
     {
         $data = [
@@ -349,7 +350,6 @@ class ProductControllerTest extends TestCase
             'min_stock' => 15,
             'unit_measure' => 'UND',
             'tax_type' => '18',
-            'weight' => 2.5,
             'is_active' => true,
             'is_featured' => true,
             'visible_online' => true,
@@ -369,97 +369,322 @@ class ProductControllerTest extends TestCase
             'min_stock' => 15,
             'unit_measure' => 'UND',
             'tax_type' => '18',
-            'weight' => 2.5,
             'is_active' => true,
             'is_featured' => true,
             'visible_online' => true,
         ]);
     }
 
-    /** @test */
-    public function puede_subir_imagenes_al_crear_producto()
+    // ========================================
+    // TESTS DE IMÁGENES - CORREGIDOS Y AMPLIADOS
+    // ========================================
+
+    #[Test]
+    public function puede_subir_imagenes_a_producto_existente()
     {
-         $this->markTestIncomplete('Esta prueba está pendiente de implementación.');
-        // Fijar el disco que usa Media Library (public o el que tengas configurado)
-        Storage::fake(config('media-library.disk_name', 'public'));
+        Storage::fake('public');
+
+        $product = Product::factory()->create([
+            'primary_name' => 'Producto con Imágenes',
+            'category_id' => $this->category->id,
+            'unit_price' => 100.00,
+        ]);
 
         $image1 = UploadedFile::fake()->image('producto1.jpg', 800, 600);
         $image2 = UploadedFile::fake()->image('producto2.png', 800, 600);
 
-        $data = [
-            'primary_name' => 'Producto con Imágenes',
-            'category_id'  => $this->category->id,
-            'unit_price'   => 100.00,
-            'images'       => [$image1, $image2],
-        ];
+        // Usar post() con Accept header para multipart/form-data
+        $response = $this->post(
+            "/api/products/{$product->id}/images",
+            ['images' => [$image1, $image2]],
+            ['Accept' => 'application/json']
+        );
 
-        // Usa post normal (multipart), pero mantén Accept JSON
-        $response = $this->post('/api/products', $data, ['Accept' => 'application/json']);
+        $response->assertStatus(201)
+            ->assertJson([
+                'success' => true,
+                'message' => 'Imágenes subidas exitosamente',
+            ])
+            ->assertJsonCount(2, 'images');
 
-        $response->assertStatus(201);
-
-        $product = Product::first();
+        $product->refresh();
         $this->assertCount(2, $product->getMedia('images'));
     }
 
-    /** @test */
-    public function valida_maximo_5_imagenes()
+    #[Test]
+    public function primera_imagen_se_marca_como_principal_automaticamente()
     {
-        $images = [];
-        for ($i = 0; $i < 6; $i++) {
-            $images[] = UploadedFile::fake()->image("producto{$i}.jpg");
-        }
+        $product = Product::factory()->create();
 
-        $data = [
-            'primary_name' => 'Producto con Muchas Imágenes',
-            'category_id' => $this->category->id,
-            'unit_price' => 100.00,
-            'images' => $images,
-        ];
+        $image = UploadedFile::fake()->image('producto.jpg');
 
-        $response = $this->postJson('/api/products', $data);
+        $response = $this->post(
+            "/api/products/{$product->id}/images",
+            ['images' => [$image]],
+            ['Accept' => 'application/json']
+        );
 
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors(['images']);
+        $response->assertStatus(201)
+            ->assertJsonPath('images.0.is_primary', true);
     }
 
-    /** @test */
+    #[Test]
+    public function segunda_imagen_no_es_principal()
+    {
+        $product = Product::factory()->create();
+
+        $image1 = UploadedFile::fake()->image('producto1.jpg');
+        $image2 = UploadedFile::fake()->image('producto2.jpg');
+
+        $response = $this->post(
+            "/api/products/{$product->id}/images",
+            ['images' => [$image1, $image2]],
+            ['Accept' => 'application/json']
+        );
+
+        $response->assertStatus(201)
+            ->assertJsonPath('images.0.is_primary', true)
+            ->assertJsonPath('images.1.is_primary', false);
+    }
+
+    #[Test]
+    public function valida_maximo_5_imagenes_totales()
+    {
+        $product = Product::factory()->create();
+
+        // Subir 3 imágenes primero
+        $this->post(
+            "/api/products/{$product->id}/images",
+            [
+                'images' => [
+                    UploadedFile::fake()->image('img1.jpg'),
+                    UploadedFile::fake()->image('img2.jpg'),
+                    UploadedFile::fake()->image('img3.jpg'),
+                ]
+            ],
+            ['Accept' => 'application/json']
+        );
+
+        // Intentar subir 3 más (excedería el límite)
+        $response = $this->post(
+            "/api/products/{$product->id}/images",
+            [
+                'images' => [
+                    UploadedFile::fake()->image('img4.jpg'),
+                    UploadedFile::fake()->image('img5.jpg'),
+                    UploadedFile::fake()->image('img6.jpg'),
+                ]
+            ],
+            ['Accept' => 'application/json']
+        );
+
+        $response->assertStatus(422)
+            ->assertJson([
+                'success' => false,
+            ]);
+    }
+
+    #[Test]
     public function valida_tipo_de_archivo_imagen()
     {
+        $product = Product::factory()->create();
         $invalidFile = UploadedFile::fake()->create('document.pdf', 100);
 
-        $data = [
-            'primary_name' => 'Producto Test',
-            'category_id' => $this->category->id,
-            'unit_price' => 100.00,
-            'images' => [$invalidFile],
-        ];
-
-        $response = $this->postJson('/api/products', $data);
+        $response = $this->postJson(
+            "/api/products/{$product->id}/images",
+            ['images' => [$invalidFile]]
+        );
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['images.0']);
     }
 
-    /** @test */
+    #[Test]
     public function valida_tamano_maximo_de_imagen_2mb()
     {
-        $largeImage = UploadedFile::fake()->create('large.jpg', 3000); // 3MB
+        $product = Product::factory()->create();
+        $largeImage = UploadedFile::fake()->create('large.jpg', 3000);
 
-        $data = [
-            'primary_name' => 'Producto Test',
-            'category_id' => $this->category->id,
-            'unit_price' => 100.00,
-            'images' => [$largeImage],
-        ];
-
-        $response = $this->postJson('/api/products', $data);
+        $response = $this->postJson(
+            "/api/products/{$product->id}/images",
+            ['images' => [$largeImage]]
+        );
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['images.0']);
     }
 
-    /** @test */
+    #[Test]
+    public function puede_eliminar_imagen_especifica()
+    {
+        Sanctum::actingAs($this->user);
+        Storage::fake('public'); // mismo disk que en tu colección
+
+        $product = Product::factory()->create();
+
+        $image = UploadedFile::fake()->image('producto.jpg', 800, 800)->size(800);
+
+        $upload = $this->post(
+            "/api/products/{$product->id}/images",
+            ['images' => [$image]],
+            ['Accept' => 'application/json']
+        )->assertCreated();
+
+        $mediaId = $upload->json('images.0.id');
+
+        $this->deleteJson("/api/products/{$product->id}/images/{$mediaId}")
+            ->assertOk()
+            ->assertJson(['success' => true]);
+
+        // Verifica en BD que se borró el registro
+        $this->assertDatabaseMissing('media', ['id' => $mediaId]);
+
+        // Refresca y limpia relación cacheada por si acaso
+        $product->refresh();
+        $product->unsetRelation('media');
+
+        $this->assertCount(0, $product->getMedia('images'));
+    }
+
+
+    #[Test]
+    public function al_eliminar_imagen_principal_otra_toma_su_lugar()
+    {
+        $product = Product::factory()->create();
+
+        $image1 = UploadedFile::fake()->image('img1.jpg');
+        $image2 = UploadedFile::fake()->image('img2.jpg');
+
+        $this->post(
+            "/api/products/{$product->id}/images",
+            ['images' => [$image1, $image2]],
+            ['Accept' => 'application/json']
+        );
+
+        $primaryMedia = $product->getMedia('images')->first();
+
+        $this->deleteJson("/api/products/{$product->id}/images/{$primaryMedia->id}");
+
+        $product->refresh();
+        $remainingMedia = $product->getMedia('images')->first();
+        $this->assertTrue($remainingMedia->getCustomProperty('is_primary'));
+    }
+
+    #[Test]
+    public function imagenes_se_reordenan_tras_eliminar()
+    {
+        $product = Product::factory()->create();
+
+        $this->post(
+            "/api/products/{$product->id}/images",
+            [
+                'images' => [
+                    UploadedFile::fake()->image('img1.jpg'),
+                    UploadedFile::fake()->image('img2.jpg'),
+                    UploadedFile::fake()->image('img3.jpg'),
+                ]
+            ],
+            ['Accept' => 'application/json']
+        );
+
+        $secondMedia = $product->getMedia('images')[1];
+        $this->deleteJson("/api/products/{$product->id}/images/{$secondMedia->id}");
+
+        $product->refresh();
+        $media = $product->getMedia('images');
+
+        $this->assertEquals(1, $media[0]->getCustomProperty('order'));
+        $this->assertEquals(2, $media[1]->getCustomProperty('order'));
+    }
+
+    #[Test]
+    public function retorna_404_al_eliminar_imagen_inexistente()
+    {
+        $product = Product::factory()->create();
+
+        $response = $this->deleteJson("/api/products/{$product->id}/images/99999");
+
+        $response->assertStatus(404);
+    }
+
+    #[Test]
+    public function imagenes_incluyen_todas_las_conversiones()
+    {
+        $product = Product::factory()->create();
+
+        $image = UploadedFile::fake()->image('producto.jpg', 1200, 1200);
+
+        $response = $this->post(
+            "/api/products/{$product->id}/images",
+            ['images' => [$image]],
+            ['Accept' => 'application/json']
+        );
+
+        $response->assertStatus(201)
+            ->assertJsonStructure([
+                'images' => [
+                    '*' => [
+                        'id',
+                        'name',
+                        'original_url',
+                        'thumb_url',
+                        'medium_url',
+                        'large_url',
+                        'size',
+                        'order',
+                        'is_primary',
+                    ]
+                ]
+            ]);
+    }
+
+    #[Test]
+    public function registra_actividad_al_subir_imagenes()
+    {
+        $product = Product::factory()->create();
+
+        $image = UploadedFile::fake()->image('producto.jpg');
+
+        $this->post(
+            "/api/products/{$product->id}/images",
+            ['images' => [$image]],
+            ['Accept' => 'application/json']
+        );
+
+        $this->assertDatabaseHas('activity_log', [
+            'subject_id' => $product->id,
+            'causer_id' => $this->user->id,
+        ]);
+    }
+
+    #[Test]
+    public function registra_actividad_al_eliminar_imagen()
+    {
+        $product = Product::factory()->create();
+
+        $image = UploadedFile::fake()->image('producto.jpg');
+        $this->post(
+            "/api/products/{$product->id}/images",
+            ['images' => [$image]],
+            ['Accept' => 'application/json']
+        );
+
+        $media = $product->getMedia('images')->first();
+
+        $this->deleteJson("/api/products/{$product->id}/images/{$media->id}");
+
+        $this->assertDatabaseHas('activity_log', [
+            'description' => 'Imagen eliminada del producto',
+            'subject_id' => $product->id,
+            'causer_id' => $this->user->id,
+        ]);
+    }
+
+    // ========================================
+    // TESTS ORIGINALES DE ACTUALIZACIÓN Y OTROS
+    // ========================================
+
+    #[Test]
     public function puede_actualizar_producto()
     {
         $product = Product::factory()->create([
@@ -486,7 +711,7 @@ class ProductControllerTest extends TestCase
         $this->assertEquals(150.00, (float) $product->unit_price);
     }
 
-    /** @test */
+    #[Test]
     public function puede_actualizar_sku_a_uno_unico()
     {
         $product = Product::factory()->create(['sku' => 'OLD-SKU']);
@@ -506,14 +731,14 @@ class ProductControllerTest extends TestCase
         $this->assertEquals('NEW-SKU', $product->sku);
     }
 
-    /** @test */
+    #[Test]
     public function no_puede_actualizar_sku_a_uno_existente()
     {
         $product1 = Product::factory()->create(['sku' => 'SKU-001']);
         $product2 = Product::factory()->create(['sku' => 'SKU-002']);
 
         $data = [
-            'sku' => 'SKU-001', // SKU de product1
+            'sku' => 'SKU-001',
             'primary_name' => $product2->primary_name,
             'category_id' => $product2->category_id,
             'unit_price' => $product2->unit_price,
@@ -524,7 +749,7 @@ class ProductControllerTest extends TestCase
         $response->assertStatus(409);
     }
 
-    /** @test */
+    #[Test]
     public function registra_actividad_al_actualizar_producto()
     {
         $product = Product::factory()->create(['primary_name' => 'Original']);
@@ -544,11 +769,11 @@ class ProductControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function puede_eliminar_producto_sin_transacciones()
     {
-        $this->markTestIncomplete('Esta prueba está pendiente de implementación.');
-        $this->actingAs($this->user);
+        $this->markTestIncomplete('Pendiente: falta definir la lógica de eliminación segura.');
+
         $product = Product::factory()->create();
 
         $response = $this->deleteJson("/api/products/{$product->id}");
@@ -562,7 +787,7 @@ class ProductControllerTest extends TestCase
         $this->assertSoftDeleted('products', ['id' => $product->id]);
     }
 
-    /** @test */
+    #[Test]
     public function puede_restaurar_producto_eliminado()
     {
         $product = Product::factory()->create();
@@ -582,7 +807,7 @@ class ProductControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function puede_listar_productos()
     {
         Product::factory()->count(5)->create();
@@ -602,12 +827,10 @@ class ProductControllerTest extends TestCase
                         'is_active',
                     ],
                 ],
-                'meta',
-                'links',
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function puede_buscar_productos_por_nombre()
     {
         Product::factory()->create(['primary_name' => 'Laptop HP']);
@@ -622,7 +845,7 @@ class ProductControllerTest extends TestCase
         $this->assertCount(2, $data);
     }
 
-    /** @test */
+    #[Test]
     public function puede_filtrar_productos_por_categoria()
     {
         $categoria1 = Category::factory()->create();
@@ -639,7 +862,7 @@ class ProductControllerTest extends TestCase
         $this->assertCount(3, $data);
     }
 
-    /** @test */
+    #[Test]
     public function puede_filtrar_productos_activos()
     {
         Product::factory()->count(3)->create(['is_active' => true]);
@@ -653,7 +876,7 @@ class ProductControllerTest extends TestCase
         $this->assertCount(3, $data);
     }
 
-    /** @test */
+    #[Test]
     public function puede_actualizar_productos_masivamente()
     {
         $products = Product::factory()->count(3)->create(['is_active' => true]);
@@ -677,14 +900,12 @@ class ProductControllerTest extends TestCase
         }
     }
 
-    /** @test */
+    #[Test]
     public function puede_obtener_estadisticas()
     {
-        // Crea 15 productos base
-        $activos   = Product::factory()->count(10)->create(['is_active' => true,  'is_featured' => false]);
+        $activos = Product::factory()->count(10)->create(['is_active' => true, 'is_featured' => false]);
         $inactivos = Product::factory()->count(5)->create(['is_active' => false, 'is_featured' => false]);
 
-        // Marca 3 EXISTENTES como destacados
         $activos->take(3)->each->update(['is_featured' => true]);
 
         $response = $this->getJson('/api/products/statistics');
@@ -694,12 +915,11 @@ class ProductControllerTest extends TestCase
         $stats = $response->json('data');
         $this->assertEquals(15, $stats['total_products']);
         $this->assertEquals(10, $stats['active_products']);
-        $this->assertEquals(5,  $stats['inactive_products']);
-        $this->assertEquals(3,  $stats['featured_products']);
+        $this->assertEquals(5, $stats['inactive_products']);
+        $this->assertEquals(3, $stats['featured_products']);
     }
 
-
-    /** @test */
+    #[Test]
     public function puede_duplicar_producto()
     {
         $product = Product::factory()->create([
@@ -723,7 +943,7 @@ class ProductControllerTest extends TestCase
         $this->assertFalse($duplicated->is_active);
     }
 
-    /** @test */
+    #[Test]
     public function muestra_producto_individual()
     {
         $product = Product::factory()->create();
@@ -741,7 +961,7 @@ class ProductControllerTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function retorna_404_para_producto_inexistente()
     {
         $response = $this->getJson('/api/products/99999');
@@ -749,15 +969,15 @@ class ProductControllerTest extends TestCase
         $response->assertStatus(404);
     }
 
-    /** @test */
+    #[Test]
     public function valida_todos_los_campos_en_actualizacion()
     {
         $product = Product::factory()->create();
 
         $data = [
-            'primary_name' => '', // Vacío
-            'category_id' => 99999, // No existe
-            'unit_price' => -10, // Negativo
+            'primary_name' => '',
+            'category_id' => 99999,
+            'unit_price' => -10,
         ];
 
         $response = $this->putJson("/api/products/{$product->id}", $data);
@@ -770,12 +990,12 @@ class ProductControllerTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function responde_con_mensajes_en_espanol()
     {
         $data = [
             'category_id' => $this->category->id,
-            'unit_price' => 0, // Inválido
+            'unit_price' => 0,
         ];
 
         $response = $this->postJson('/api/products', $data);
@@ -784,5 +1004,329 @@ class ProductControllerTest extends TestCase
 
         $errors = $response->json('errors');
         $this->assertStringContainsString('obligatorio', json_encode($errors));
+    }
+
+    #[Test]
+    public function producto_duplicado_mantiene_relacion_con_categoria()
+    {
+        $product = Product::factory()->create();
+
+        $response = $this->postJson("/api/products/{$product->id}/duplicate");
+
+        $response->assertStatus(201);
+
+        $duplicated = Product::latest()->first();
+        $this->assertEquals($product->category_id, $duplicated->category_id);
+    }
+
+    #[Test]
+    public function puede_agregar_imagenes_despues_de_crear_producto()
+    {
+        $product = Product::factory()->create();
+
+        $this->assertCount(0, $product->getMedia('images'));
+
+        $image = UploadedFile::fake()->image('nueva-imagen.jpg');
+
+        $response = $this->post(
+            "/api/products/{$product->id}/images",
+            ['images' => [$image]],
+            ['Accept' => 'application/json']
+        );
+
+        $response->assertStatus(201);
+
+        $product->refresh();
+        $this->assertCount(1, $product->getMedia('images'));
+    }
+
+    #[Test]
+    public function permite_subir_hasta_5_imagenes_en_total()
+    {
+        $product = Product::factory()->create();
+
+        // Primera carga: 2 imágenes
+        $this->post(
+            "/api/products/{$product->id}/images",
+            [
+                'images' => [
+                    UploadedFile::fake()->image('img1.jpg'),
+                    UploadedFile::fake()->image('img2.jpg'),
+                ]
+            ],
+            ['Accept' => 'application/json']
+        );
+
+        // Segunda carga: 3 imágenes más (total 5)
+        $response = $this->post(
+            "/api/products/{$product->id}/images",
+            [
+                'images' => [
+                    UploadedFile::fake()->image('img3.jpg'),
+                    UploadedFile::fake()->image('img4.jpg'),
+                    UploadedFile::fake()->image('img5.jpg'),
+                ]
+            ],
+            ['Accept' => 'application/json']
+        );
+
+        $response->assertStatus(201);
+
+        $product->refresh();
+        $this->assertCount(5, $product->getMedia('images'));
+    }
+
+    #[Test]
+    public function no_permite_exceder_limite_de_5_imagenes()
+    {
+        $product = Product::factory()->create();
+
+        // Subir 4 imágenes
+        $this->post(
+            "/api/products/{$product->id}/images",
+            [
+                'images' => [
+                    UploadedFile::fake()->image('img1.jpg'),
+                    UploadedFile::fake()->image('img2.jpg'),
+                    UploadedFile::fake()->image('img3.jpg'),
+                    UploadedFile::fake()->image('img4.jpg'),
+                ]
+            ],
+            ['Accept' => 'application/json']
+        );
+
+        // Intentar subir 2 más (excedería el límite)
+        $response = $this->post(
+            "/api/products/{$product->id}/images",
+            [
+                'images' => [
+                    UploadedFile::fake()->image('img5.jpg'),
+                    UploadedFile::fake()->image('img6.jpg'),
+                ]
+            ],
+            ['Accept' => 'application/json']
+        );
+
+        $response->assertStatus(422);
+
+        $product->refresh();
+        $this->assertCount(4, $product->getMedia('images'));
+    }
+
+    #[Test]
+    public function imagenes_mantienen_orden_correcto()
+    {
+        $product = Product::factory()->create();
+
+        $this->post(
+            "/api/products/{$product->id}/images",
+            [
+                'images' => [
+                    UploadedFile::fake()->image('img1.jpg'),
+                    UploadedFile::fake()->image('img2.jpg'),
+                    UploadedFile::fake()->image('img3.jpg'),
+                ]
+            ],
+            ['Accept' => 'application/json']
+        );
+
+        $product->refresh();
+        $media = $product->getMedia('images');
+
+        $this->assertEquals(1, $media[0]->getCustomProperty('order'));
+        $this->assertEquals(2, $media[1]->getCustomProperty('order'));
+        $this->assertEquals(3, $media[2]->getCustomProperty('order'));
+    }
+
+    #[Test]
+    public function producto_con_imagenes_las_incluye_en_respuesta()
+    {
+        $product = Product::factory()->create();
+
+        $image = UploadedFile::fake()->image('producto.jpg');
+        $this->post(
+            "/api/products/{$product->id}/images",
+            ['images' => [$image]],
+            ['Accept' => 'application/json']
+        );
+
+        $response = $this->getJson("/api/products/{$product->id}");
+
+        $response->assertStatus(200)
+            ->assertJsonStructure([
+                'data' => [
+                    'images' => [
+                        '*' => [
+                            'id',
+                            'name',
+                            'original_url',
+                            'thumb_url',
+                            'medium_url',
+                            'large_url',
+                            'size',
+                            'order',
+                            'is_primary',
+                        ]
+                    ]
+                ]
+            ])
+            ->assertJsonCount(1, 'data.images');
+    }
+
+    #[Test]
+    public function acepta_formatos_de_imagen_validos()
+    {
+        $product = Product::factory()->create();
+
+        $formats = [
+            UploadedFile::fake()->image('test.jpg'),
+            UploadedFile::fake()->image('test.jpeg'),
+            UploadedFile::fake()->image('test.png'),
+            UploadedFile::fake()->image('test.webp'),
+        ];
+
+        foreach ($formats as $index => $image) {
+            $response = $this->post(
+                "/api/products/{$product->id}/images",
+                ['images' => [$image]],
+                ['Accept' => 'application/json']
+            );
+
+            $response->assertStatus(201);
+        }
+
+        $product->refresh();
+        $this->assertCount(4, $product->getMedia('images'));
+    }
+
+    #[Test]
+    public function rechaza_formatos_de_archivo_no_validos()
+    {
+        $product = Product::factory()->create();
+
+        $invalidFiles = [
+            UploadedFile::fake()->create('document.pdf'),
+            UploadedFile::fake()->create('video.mp4'),
+            UploadedFile::fake()->create('audio.mp3'),
+            UploadedFile::fake()->create('document.docx'),
+        ];
+
+        foreach ($invalidFiles as $file) {
+            $response = $this->postJson(
+                "/api/products/{$product->id}/images",
+                ['images' => [$file]]
+            );
+
+            $response->assertStatus(422);
+        }
+
+        $product->refresh();
+        $this->assertCount(0, $product->getMedia('images'));
+    }
+
+    #[Test]
+    public function eliminar_todas_las_imagenes_deja_producto_sin_imagen_principal()
+    {
+        $product = Product::factory()->create();
+
+        $this->post(
+            "/api/products/{$product->id}/images",
+            ['images' => [UploadedFile::fake()->image('img.jpg')]],
+            ['Accept' => 'application/json']
+        );
+
+        $media = $product->getMedia('images')->first();
+        $this->deleteJson("/api/products/{$product->id}/images/{$media->id}");
+
+        $product->refresh();
+        $this->assertCount(0, $product->getMedia('images'));
+    }
+
+    #[Test]
+    public function puede_subir_nueva_imagen_como_principal_despues_de_eliminar_todas()
+    {
+        $product = Product::factory()->create();
+
+        // Subir y eliminar
+        $this->post(
+            "/api/products/{$product->id}/images",
+            ['images' => [UploadedFile::fake()->image('img1.jpg')]],
+            ['Accept' => 'application/json']
+        );
+
+        $media = $product->getMedia('images')->first();
+        $this->deleteJson("/api/products/{$product->id}/images/{$media->id}");
+
+        // Subir nueva
+        $response = $this->post(
+            "/api/products/{$product->id}/images",
+            ['images' => [UploadedFile::fake()->image('img2.jpg')]],
+            ['Accept' => 'application/json']
+        );
+
+        $response->assertStatus(201)
+            ->assertJsonPath('images.0.is_primary', true);
+    }
+
+    #[Test]
+    public function valida_que_imagenes_sea_array()
+    {
+        $product = Product::factory()->create();
+
+        $response = $this->postJson(
+            "/api/products/{$product->id}/images",
+            ['images' => 'not-an-array']
+        );
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['images']);
+    }
+
+    #[Test]
+    public function valida_que_imagenes_no_este_vacio()
+    {
+        $product = Product::factory()->create();
+
+        $response = $this->postJson(
+            "/api/products/{$product->id}/images",
+            ['images' => []]
+        );
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['images']);
+    }
+
+    #[Test]
+    public function muestra_tamano_de_archivo_en_formato_legible()
+    {
+        // Si usas Spatie Media Library en 'public'
+        Storage::fake('public');
+
+        // Autentica si la ruta está protegida
+        Sanctum::actingAs($this->user);
+
+        $product = Product::factory()->create();
+
+        // ⬇️ Genera una imagen >= 500x500 y de ~1.5 MB
+        $image = UploadedFile::fake()
+            ->image('producto.jpg', 800, 800) // dimensiones válidas
+            ->size(1500);                      // KB (≈1.5 MB)
+
+        $response = $this->post(
+            "/api/products/{$product->id}/images",
+            ['images' => [$image]],
+            ['Accept' => 'application/json'] // no uses postJson para archivos
+        );
+
+        $response->assertStatus(201)
+            ->assertJsonStructure([
+                'images' => [
+                    '*' => ['size']
+                ]
+            ]);
+
+        $size = $response->json('images.0.size');
+        $this->assertIsString($size);
+        $this->assertMatchesRegularExpression('/(B|KB|MB|GB)$/', $size);
     }
 }

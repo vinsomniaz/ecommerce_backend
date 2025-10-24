@@ -64,33 +64,38 @@ class Product extends Model implements HasMedia
                 };
             });
     }
-
-    // Spatie Media Configuration
-    public function registerMediaCollections(): void
-    {
-        $this->addMediaCollection('images')
-            ->acceptsMimeTypes(['image/jpeg', 'image/png', 'image/webp'])
-            ->maxFilesize(2 * 1024 * 1024)
-            ->maxNumberOfFiles(5);
-    }
-
+    /**
+     * Registrar las conversiones de medios
+     */
     public function registerMediaConversions(Media $media = null): void
     {
         $this->addMediaConversion('thumb')
             ->width(150)
             ->height(150)
             ->sharpen(10)
-            ->quality(85);
+            ->quality(85)
+            ->performOnCollections('images');
 
         $this->addMediaConversion('medium')
             ->width(600)
             ->height(600)
-            ->quality(85);
+            ->quality(85)
+            ->performOnCollections('images');
 
         $this->addMediaConversion('large')
             ->width(1200)
             ->height(1200)
-            ->quality(85);
+            ->quality(85)
+            ->performOnCollections('images');
+    }
+
+    /**
+     * Configuración de colecciones de medios
+     */
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('images')
+            ->useDisk('public');
     }
 
     // Relationships

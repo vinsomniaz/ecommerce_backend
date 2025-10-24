@@ -30,5 +30,7 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+
+        <ini name="memory_limit" value="1024M"/>   <!-- sube memoria para evitar el fatal -->
     </php>
 </phpunit>

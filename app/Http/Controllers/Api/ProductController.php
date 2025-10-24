@@ -7,13 +7,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Products\StoreProductRequest;
 use App\Http\Requests\Products\UpdateProductRequest;
 use App\Http\Requests\Products\BulkUpdateProductsRequest;
+use App\Http\Requests\Products\UploadProductImagesRequest;
 use App\Http\Resources\Products\ProductResource;
-use App\Http\Resources\Products\ProductCollection;
 use App\Services\ProductService;
 use App\Models\Product;
-use App\Exceptions\ProductNotFoundException;
-use App\Exceptions\ProductAlreadyExistsException;
-use App\Exceptions\ProductInUseException;
+use App\Exceptions\Products\ProductNotFoundException;
+use App\Exceptions\Products\ProductAlreadyExistsException;
+use App\Exceptions\Products\ProductInUseException;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -21,7 +21,8 @@ class ProductController extends Controller
 {
     public function __construct(
         private ProductService $productService
-    ) {}
+    ) {
+    }
 
     /**
      * Listar productos
@@ -29,9 +30,17 @@ class ProductController extends Controller
     public function index(Request $request)
     {
         $filters = $request->only([
-            'search', 'category_id', 'brand', 'is_active',
-            'is_featured', 'visible_online', 'min_price',
-            'max_price', 'sort_by', 'sort_order', 'with_trashed'
+            'search',
+            'category_id',
+            'brand',
+            'is_active',
+            'is_featured',
+            'visible_online',
+            'min_price',
+            'max_price',
+            'sort_by',
+            'sort_order',
+            'with_trashed'
         ]);
 
         $perPage = $request->input('per_page', 15);
@@ -41,25 +50,16 @@ class ProductController extends Controller
     }
 
     /**
-     * Crear un nuevo producto
+     * Crear un nuevo producto (SIN imágenes aquí)
      */
     public function store(StoreProductRequest $request): JsonResponse
     {
         try {
-            $data = $request->except('images');
-            $product = $this->productService->create($data);
-
-            // Subir imágenes si existen
-            if ($request->hasFile('images')) {
-                $this->productService->uploadImages(
-                    $product,
-                    $request->file('images')
-                );
-            }
+            $product = $this->productService->create($request->validated());
 
             return response()->json([
                 'success' => true,
-                'message' => 'Producto creado exitosamente',
+                'message' => 'Producto creado exitosamente. Use el endpoint /products/{id}/images para agregar imágenes.',
                 'data' => new ProductResource($product->fresh()),
             ], 201);
 
@@ -98,24 +98,7 @@ class ProductController extends Controller
     public function update(UpdateProductRequest $request, Product $product): JsonResponse
     {
         try {
-            $data = $request->except(['images', 'delete_images']);
-            $product = $this->productService->update($product, $data);
-
-            // Eliminar imágenes si se solicita
-            if ($request->has('delete_images')) {
-                $this->productService->deleteImages(
-                    $product,
-                    $request->delete_images
-                );
-            }
-
-            // Subir nuevas imágenes
-            if ($request->hasFile('images')) {
-                $this->productService->uploadImages(
-                    $product,
-                    $request->file('images')
-                );
-            }
+            $product = $this->productService->update($product, $request->validated());
 
             return response()->json([
                 'success' => true,
@@ -248,6 +231,68 @@ class ProductController extends Controller
                 'message' => 'Error al duplicar el producto',
                 'error' => $e->getMessage(),
             ], 500);
+        }
+    }
+
+
+
+    /**
+     * Subir imágenes a un producto
+     */
+    public function uploadImages(UploadProductImagesRequest $request, Product $product): JsonResponse
+    {
+        try {
+            // Obtener archivos del request validado
+            $files = $request->file('images');
+
+            if (!$files || !is_array($files)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se recibieron archivos válidos',
+                ], 422);
+            }
+
+            $images = $this->productService->uploadImages($product, $files);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Imágenes subidas exitosamente',
+                'images' => $images,
+            ], 201);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error de validación',
+                'errors' => $e->errors(),
+            ], 422);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * NUEVO: Eliminar una imagen específica
+     */
+    public function deleteImage(Product $product, int $mediaId): JsonResponse
+    {
+        try {
+            $this->productService->deleteImage($product, $mediaId);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Imagen eliminada exitosamente',
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 404);
         }
     }
 }
