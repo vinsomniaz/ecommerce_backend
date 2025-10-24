@@ -1,4 +1,5 @@
 <?php
+// app/Models/Product.php
 
 namespace App\Models;
 
@@ -7,10 +8,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
-class Product extends Model
+class Product extends Model implements HasMedia
 {
     use HasFactory, SoftDeletes, InteractsWithMedia, LogsActivity;
 
@@ -27,6 +29,7 @@ class Product extends Model
         'unit_measure',
         'tax_type',
         'weight',
+        'barcode',
         'is_active',
         'is_featured',
         'visible_online',
@@ -42,13 +45,24 @@ class Product extends Model
         'visible_online' => 'boolean',
     ];
 
-    // Activity Log Configuration
+    // CORREGIR: Activity Log Configuration
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
+            ->useLogName('products')
             ->logOnly(['sku', 'primary_name', 'unit_price', 'cost_price', 'min_stock', 'is_active'])
             ->logOnlyDirty()
-            ->dontSubmitEmptyLogs();
+            ->dontSubmitEmptyLogs()
+            ->dontLogIfAttributesChangedOnly(['updated_at'])
+            ->setDescriptionForEvent(function (string $eventName) {
+                return match ($eventName) {
+                    'created'  => 'Producto creado',
+                    'updated'  => 'Producto actualizado',
+                    'deleted'  => 'Producto eliminado',
+                    'restored' => 'Producto restaurado',
+                    default    => "Producto {$eventName}",
+                };
+            });
     }
 
     // Spatie Media Configuration
@@ -56,7 +70,7 @@ class Product extends Model
     {
         $this->addMediaCollection('images')
             ->acceptsMimeTypes(['image/jpeg', 'image/png', 'image/webp'])
-            ->maxFilesize(2 * 1024 * 1024) // 2MB
+            ->maxFilesize(2 * 1024 * 1024)
             ->maxNumberOfFiles(5);
     }
 
@@ -79,68 +93,30 @@ class Product extends Model
             ->quality(85);
     }
 
-    // // Relationships
-    // public function category()
-    // {
-    //     return $this->belongsTo(Category::class);
-    // }
+    // Relationships
+    public function category()
+    {
+        return $this->belongsTo(Category::class);
+    }
 
-    // public function attributes()
-    // {
-    //     return $this->hasMany(ProductAttribute::class);
-    // }
+    public function stockMovements()
+    {
+        return $this->hasMany(StockMovement::class);
+    }
 
-    // public function inventory()
-    // {
-    //     return $this->hasMany(Inventory::class);
-    // }
+    // Scopes
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
 
-    // public function stockMovements()
-    // {
-    //     return $this->hasMany(StockMovement::class);
-    // }
+    public function scopeVisibleOnline($query)
+    {
+        return $query->where('visible_online', true)->where('is_active', true);
+    }
 
-    // public function sales()
-    // {
-    //     return $this->hasManyThrough(Sale::class, SaleDetail::class);
-    // }
-
-    // // Accessors
-    // public function getStockAvailableAttribute()
-    // {
-    //     return $this->inventory()->sum('available_stock');
-    // }
-
-    // public function getTotalStockAttribute()
-    // {
-    //     return $this->inventory()->sum('available_stock') + $this->inventory()->sum('reserved_stock');
-    // }
-
-    // public function getImagesCountAttribute()
-    // {
-    //     return $this->getMedia('images')->count();
-    // }
-
-    // // Scopes
-    // public function scopeActive($query)
-    // {
-    //     return $query->where('is_active', true);
-    // }
-
-    // public function scopeVisibleOnline($query)
-    // {
-    //     return $query->where('visible_online', true)->where('is_active', true);
-    // }
-
-    // public function scopeFeatured($query)
-    // {
-    //     return $query->where('is_featured', true);
-    // }
-
-    // public function scopeLowStock($query)
-    // {
-    //     return $query->whereHas('inventory', function ($q) {
-    //         $q->whereRaw('available_stock <= min_stock');
-    //     });
-    // }
+    public function scopeFeatured($query)
+    {
+        return $query->where('is_featured', true);
+    }
 }

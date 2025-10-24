@@ -2,59 +2,29 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory; // AGREGAR ESTO
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Ubigeo extends Model
 {
-    use HasFactory;
+    use HasFactory; // AGREGAR ESTO
 
-    /**
-     * The primary key associated with the table.
-     *
-     * @var string
-     */
+    protected $table = 'ubigeos';
     protected $primaryKey = 'ubigeo';
-
-    /**
-     * The "type" of the primary key.
-     *
-     * @var string
-     */
-    protected $keyType = 'string';
-
-    /**
-     * Indicates if the IDs are auto-incrementing.
-     *
-     * @var bool
-     */
     public $incrementing = false;
+    protected $keyType = 'string';
+    public $timestamps = false;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array<int, string>
-     */
     protected $fillable = [
         'ubigeo',
         'departamento',
         'provincia',
         'distrito',
+        'codigo_sunat',
     ];
 
-    /**
-     * Indicates if the model should be timestamped.
-     *
-     * @var bool
-     */
-    public $timestamps = false;
-
-    /**
-     * Get the entities for the ubigeo.
-     */
-    public function entities(): HasMany
+    public function warehouses()
     {
-        return $this->hasMany(Entity::class, 'ubigeo', 'ubigeo');
+        return $this->hasMany(Warehouse::class, 'ubigeo', 'ubigeo');
     }
 }
