@@ -44,17 +44,23 @@ class ProductService
     /**
      * Actualizar un producto existente
      */
-    public function update(Product $product, array $data): Product
+    public function updateProduct(int $id, array $data): Product
     {
-        return DB::transaction(function () use ($product, $data) {
+        return DB::transaction(function () use ($id, $data) {
+            $product = Product::findOrFail($id);
+
             $oldData = $product->toArray();
 
+            // Validar SKU único si cambió
             if (isset($data['sku']) && $data['sku'] !== $product->sku) {
-                if (Product::where('sku', $data['sku'])->where('id', '!=', $product->id)->exists()) {
+                if (Product::where('sku', $data['sku'])
+                    ->where('id', '!=', $id)
+                    ->exists()) {
                     throw new ProductAlreadyExistsException($data['sku']);
                 }
             }
 
+            // Actualizar solo los campos enviados
             $product->update($data);
 
             activity()
@@ -63,12 +69,19 @@ class ProductService
                 ->withProperties([
                     'old' => $oldData,
                     'new' => $product->toArray(),
+                    'changed_fields' => array_keys($data),
                 ])
                 ->log('Producto actualizado');
 
-            return $product->fresh();
+            \Illuminate\Support\Facades\Log::info('Producto actualizado', [
+                'id' => $product->id,
+                'changed_fields' => array_keys($data)
+            ]);
+
+            return $product->fresh(['category', 'media']);
         });
     }
+
 
     /**
      * Eliminar un producto (soft delete)

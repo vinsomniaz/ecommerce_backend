@@ -1329,4 +1329,367 @@ class ProductControllerTest extends TestCase
         $this->assertIsString($size);
         $this->assertMatchesRegularExpression('/(B|KB|MB|GB)$/', $size);
     }
+
+    #[Test]
+    public function listado_retorna_paginacion_por_defecto()
+    {
+        Product::factory()->count(20)->create();
+
+        $response = $this->getJson('/api/products');
+
+        $response->assertStatus(200)
+            ->assertJsonStructure([
+                'data',
+                'links' => [
+                    'first',
+                    'last',
+                    'prev',
+                    'next',
+                ],
+                'meta' => [
+                    'current_page',
+                    'from',
+                    'last_page',
+                    'per_page',
+                    'to',
+                    'total',
+                ],
+            ]);
+
+        // Verifica que trae 15 por defecto
+        $this->assertEquals(15, count($response->json('data')));
+        $this->assertEquals(15, $response->json('meta.per_page'));
+        $this->assertEquals(20, $response->json('meta.total'));
+    }
+
+    #[Test]
+    public function puede_cambiar_items_por_pagina()
+    {
+        Product::factory()->count(30)->create([
+            'category_id' => $this->category->id
+        ]);
+
+        $response = $this->getJson('/api/products?per_page=10');
+
+        $response->assertStatus(200);
+
+        $this->assertEquals(10, count($response->json('data')));
+        $this->assertEquals(10, $response->json('meta.per_page'));
+        $this->assertEquals(3, $response->json('meta.last_page'));
+    }
+    #[Test]
+    public function puede_navegar_entre_paginas()
+    {
+        Product::factory()->count(20)->create();
+
+        // Primera página
+        $page1 = $this->getJson('/api/products?per_page=5&page=1');
+        $page1->assertStatus(200);
+        $this->assertEquals(1, $page1->json('meta.current_page'));
+
+        // Segunda página
+        $page2 = $this->getJson('/api/products?per_page=5&page=2');
+        $page2->assertStatus(200);
+        $this->assertEquals(2, $page2->json('meta.current_page'));
+
+        // IDs diferentes entre páginas
+        $idsPage1 = collect($page1->json('data'))->pluck('id')->toArray();
+        $idsPage2 = collect($page2->json('data'))->pluck('id')->toArray();
+        $this->assertEmpty(array_intersect($idsPage1, $idsPage2));
+    }
+
+    #[Test]
+    public function paginacion_respeta_filtros()
+    {
+        $category = Category::factory()->create();
+        Product::factory()->count(25)->create(['category_id' => $category->id]);
+        Product::factory()->count(10)->create(); // Otra categoría
+
+        $response = $this->getJson("/api/products?category_id={$category->id}&per_page=10");
+
+        $response->assertStatus(200);
+        $this->assertEquals(25, $response->json('meta.total'));
+        $this->assertEquals(10, count($response->json('data')));
+    }
+
+    #[Test]
+    public function paginacion_vacia_retorna_estructura_correcta()
+    {
+        $response = $this->getJson('/api/products');
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'data' => [],
+                'meta' => [
+                    'total' => 0,
+                    'current_page' => 1,
+                ],
+            ]);
+    }
+
+    // ========================================
+    // TESTS DE ACTUALIZACIÓN PATCH
+    // ========================================
+
+    #[Test]
+    public function puede_actualizar_con_put_todos_los_campos()
+    {
+        $product = Product::factory()->create([
+            'primary_name' => 'Original',
+            'unit_price' => 100.00,
+            'brand' => 'Original Brand',
+        ]);
+
+        $data = [
+            'primary_name' => 'Actualizado',
+            'category_id' => $this->category->id,
+            'unit_price' => 200.00,
+            'brand' => 'Nueva Marca',
+            'description' => 'Nueva descripción',
+        ];
+
+        $response = $this->putJson("/api/products/{$product->id}", $data);
+
+        $response->assertStatus(200);
+
+        $product->refresh();
+        $this->assertEquals('Actualizado', $product->primary_name);
+        $this->assertEquals(200.00, (float) $product->unit_price);
+        $this->assertEquals('Nueva Marca', $product->brand);
+        $this->assertEquals('Nueva descripción', $product->description);
+    }
+
+    #[Test]
+    public function puede_actualizar_con_patch_un_solo_campo()
+    {
+        $product = Product::factory()->create([
+            'primary_name' => 'Original',
+            'unit_price' => 100.00,
+            'brand' => 'Original Brand',
+        ]);
+
+        $response = $this->patchJson("/api/products/{$product->id}", [
+            'primary_name' => 'Solo Nombre Actualizado',
+        ]);
+
+        $response->assertStatus(200);
+
+        $product->refresh();
+        $this->assertEquals('Solo Nombre Actualizado', $product->primary_name);
+        $this->assertEquals(100.00, (float) $product->unit_price); // No cambió
+        $this->assertEquals('Original Brand', $product->brand); // No cambió
+    }
+
+    #[Test]
+    public function puede_actualizar_con_patch_varios_campos()
+    {
+        $product = Product::factory()->create([
+            'primary_name' => 'Original',
+            'unit_price' => 100.00,
+            'brand' => 'Original',
+            'is_active' => true,
+        ]);
+
+        $response = $this->patchJson("/api/products/{$product->id}", [
+            'unit_price' => 250.00,
+            'is_active' => false,
+        ]);
+
+        $response->assertStatus(200);
+
+        $product->refresh();
+        $this->assertEquals('Original', $product->primary_name); // No cambió
+        $this->assertEquals(250.00, (float) $product->unit_price);
+        $this->assertFalse($product->is_active);
+    }
+
+    #[Test]
+    public function patch_no_requiere_campos_obligatorios_si_no_se_envian()
+    {
+        $product = Product::factory()->create([
+            'primary_name' => 'Original',
+            'category_id' => $this->category->id,
+            'unit_price' => 100.00,
+        ]);
+
+        // Solo actualizar descripción (campo opcional)
+        $response = $this->patchJson("/api/products/{$product->id}", [
+            'description' => 'Nueva descripción',
+        ]);
+
+        $response->assertStatus(200);
+
+        $product->refresh();
+        $this->assertEquals('Nueva descripción', $product->description);
+    }
+
+    #[Test]
+    public function patch_valida_datos_cuando_se_envian()
+    {
+        $product = Product::factory()->create();
+
+        // Enviar precio inválido
+        $response = $this->patchJson("/api/products/{$product->id}", [
+            'unit_price' => -50,
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['unit_price']);
+    }
+
+    #[Test]
+    public function put_requiere_todos_los_campos_obligatorios()
+    {
+        $product = Product::factory()->create();
+
+        // Enviar solo algunos campos
+        $response = $this->putJson("/api/products/{$product->id}", [
+            'primary_name' => 'Actualizado',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['category_id', 'unit_price']);
+    }
+
+    // ========================================
+    // TESTS DE ORDENAMIENTO
+    // ========================================
+
+    #[Test]
+    public function puede_ordenar_por_nombre_ascendente()
+    {
+        Product::factory()->create(['primary_name' => 'Zebra']);
+        Product::factory()->create(['primary_name' => 'Alpha']);
+        Product::factory()->create(['primary_name' => 'Mega']);
+
+        $response = $this->getJson('/api/products?sort_by=primary_name&sort_order=asc');
+
+        $response->assertStatus(200);
+
+        $names = collect($response->json('data'))->pluck('primary_name')->toArray();
+        $this->assertEquals('Alpha', $names[0]);
+        $this->assertEquals('Mega', $names[1]);
+        $this->assertEquals('Zebra', $names[2]);
+    }
+
+    #[Test]
+    public function puede_ordenar_por_precio()
+    {
+        Product::factory()->create(['unit_price' => 50.00]);
+        Product::factory()->create(['unit_price' => 200.00]);
+        Product::factory()->create(['unit_price' => 100.00]);
+
+        $response = $this->getJson('/api/products?sort_by=unit_price&sort_order=asc');
+
+        $response->assertStatus(200);
+
+        $prices = collect($response->json('data'))->pluck('unit_price')->toArray();
+        $this->assertEquals(50.00, $prices[0]);
+        $this->assertEquals(100.00, $prices[1]);
+        $this->assertEquals(200.00, $prices[2]);
+    }
+
+    // ========================================
+    // TESTS DE BÚSQUEDA AVANZADA
+    // ========================================
+
+    #[Test]
+    public function busqueda_encuentra_por_sku()
+    {
+        Product::factory()->create(['sku' => 'ABC-123', 'primary_name' => 'Producto 1']);
+        Product::factory()->create(['sku' => 'XYZ-456', 'primary_name' => 'Producto 2']);
+
+        $response = $this->getJson('/api/products?search=ABC-123');
+
+        $response->assertStatus(200);
+        $this->assertEquals(1, count($response->json('data')));
+    }
+
+    #[Test]
+    public function busqueda_es_case_insensitive()
+    {
+        Product::factory()->create(['primary_name' => 'LAPTOP HP']);
+        Product::factory()->create(['primary_name' => 'Mouse Logitech']);
+
+        $response = $this->getJson('/api/products?search=laptop');
+
+        $response->assertStatus(200);
+        $this->assertEquals(1, count($response->json('data')));
+    }
+
+    #[Test]
+    public function puede_combinar_busqueda_y_filtros()
+    {
+        $category = Category::factory()->create();
+
+        Product::factory()->create([
+            'primary_name' => 'HP Laptop',
+            'category_id' => $category->id,
+            'is_active' => true,
+        ]);
+
+        Product::factory()->create([
+            'primary_name' => 'HP Mouse',
+            'category_id' => $category->id,
+            'is_active' => false,
+        ]);
+
+        $response = $this->getJson("/api/products?search=HP&category_id={$category->id}&is_active=1");
+
+        $response->assertStatus(200);
+        $this->assertEquals(1, count($response->json('data')));
+    }
+
+    // ========================================
+    // TESTS DE VALIDACIÓN MEJORADOS
+    // ========================================
+
+    #[Test]
+    public function valida_longitud_minima_de_nombre()
+    {
+        $data = [
+            'primary_name' => 'AB', // Muy corto
+            'category_id' => $this->category->id,
+            'unit_price' => 100.00,
+        ];
+
+        $response = $this->postJson('/api/products', $data);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['primary_name']);
+    }
+
+    #[Test]
+    public function valida_precio_con_maximo_decimales()
+    {
+        $data = [
+            'primary_name' => 'Producto Test',
+            'category_id' => $this->category->id,
+            'unit_price' => 99.999, // 3 decimales
+        ];
+
+        $response = $this->postJson('/api/products', $data);
+
+        // Debería aceptarse pero redondearse a 2 decimales
+        $response->assertStatus(201);
+
+        $product = Product::first();
+        $this->assertEquals(100.00, (float) $product->unit_price);
+    }
+
+    #[Test]
+    public function valida_stock_minimo_no_negativo()
+    {
+        $data = [
+            'primary_name' => 'Producto Test',
+            'category_id' => $this->category->id,
+            'unit_price' => 100.00,
+            'min_stock' => -5,
+        ];
+
+        $response = $this->postJson('/api/products', $data);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['min_stock']);
+    }
 }

@@ -98,12 +98,12 @@ class ProductController extends Controller
     public function update(UpdateProductRequest $request, Product $product): JsonResponse
     {
         try {
-            $product = $this->productService->update($product, $request->validated());
+            $updatedProduct = $this->productService->updateProduct($product->id, $request->validated());
 
             return response()->json([
                 'success' => true,
                 'message' => 'Producto actualizado exitosamente',
-                'data' => new ProductResource($product->fresh()),
+                'data' => new ProductResource($updatedProduct),
             ]);
 
         } catch (ProductAlreadyExistsException $e) {
@@ -120,7 +120,6 @@ class ProductController extends Controller
             ], 500);
         }
     }
-
     /**
      * Eliminar un producto (soft delete)
      */
