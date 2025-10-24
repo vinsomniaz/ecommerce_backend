@@ -1,236 +1,253 @@
 <?php
+// app/Http/Controllers/Api/ProductController.php
 
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Product;
-use App\Services\ProductService;
 use App\Http\Requests\Products\StoreProductRequest;
 use App\Http\Requests\Products\UpdateProductRequest;
+use App\Http\Requests\Products\BulkUpdateProductsRequest;
 use App\Http\Resources\Products\ProductResource;
-use App\Http\Resources\Products\ProductListResource;
+use App\Http\Resources\Products\ProductCollection;
+use App\Services\ProductService;
+use App\Models\Product;
+use App\Exceptions\ProductNotFoundException;
+use App\Exceptions\ProductAlreadyExistsException;
+use App\Exceptions\ProductInUseException;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 
 class ProductController extends Controller
 {
-    protected $productService;
-
-    public function __construct(ProductService $productService)
-    {
-        $this->productService = $productService;
-    }
+    public function __construct(
+        private ProductService $productService
+    ) {}
 
     /**
-     * Display a listing of products with filters and pagination
+     * Listar productos
      */
     public function index(Request $request)
     {
-        $query = Product::with(['category', 'inventory']);
+        $filters = $request->only([
+            'search', 'category_id', 'brand', 'is_active',
+            'is_featured', 'visible_online', 'min_price',
+            'max_price', 'sort_by', 'sort_order', 'with_trashed'
+        ]);
 
-        // Search
-        if ($request->filled('search')) {
-            $query->search($request->search);
-        }
+        $perPage = $request->input('per_page', 15);
+        $products = $this->productService->getFiltered($filters, $perPage);
 
-        // Filters
-        if ($request->filled('category_id')) {
-            $query->where('category_id', $request->category_id);
-        }
-
-        if ($request->filled('brand')) {
-            $query->where('brand', $request->brand);
-        }
-
-        if ($request->filled('is_active')) {
-            $query->where('is_active', $request->boolean('is_active'));
-        }
-
-        if ($request->filled('is_featured')) {
-            $query->where('is_featured', $request->boolean('is_featured'));
-        }
-
-        if ($request->filled('visible_online')) {
-            $query->where('visible_online', $request->boolean('visible_online'));
-        }
-
-        if ($request->filled('min_stock')) {
-            $query->lowStock();
-        }
-
-        // Sorting
-        $sortBy = $request->get('sort_by', 'created_at');
-        $sortOrder = $request->get('sort_order', 'desc');
-        $query->orderBy($sortBy, $sortOrder);
-
-        // Pagination
-        $perPage = $request->get('per_page', 50);
-        $products = $query->paginate($perPage);
-
-        return ProductListResource::collection($products);
+        return ProductResource::collection($products);
     }
 
     /**
-     * Store a newly created product
+     * Crear un nuevo producto
      */
-    public function store(StoreProductRequest $request)
+    public function store(StoreProductRequest $request): JsonResponse
     {
         try {
-            $product = $this->productService->createProduct($request->validated());
-            
-            return response()->json([
-                'message' => 'Producto creado exitosamente',
-                'data' => new ProductResource($product),
-            ], 201);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Error al crear producto',
-                'error' => $e->getMessage(),
-            ], 422);
-        }
-    }
+            $data = $request->except('images');
+            $product = $this->productService->create($data);
 
-    /**
-     * Display the specified product
-     */
-    public function show(Product $product)
-    {
-        $product->load(['category', 'attributes', 'inventory.warehouse', 'media']);
-        
-        return new ProductResource($product);
-    }
-
-    /**
-     * Update the specified product
-     */
-    public function update(UpdateProductRequest $request, Product $product)
-    {
-        try {
-            $product = $this->productService->updateProduct($product, $request->validated());
-            
-            return response()->json([
-                'message' => 'Producto actualizado exitosamente',
-                'data' => new ProductResource($product),
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Error al actualizar producto',
-                'error' => $e->getMessage(),
-            ], 422);
-        }
-    }
-
-    /**
-     * Remove the specified product
-     */
-    public function destroy(Product $product)
-    {
-        try {
-            $result = $this->productService->deleteProduct($product);
-            
-            if ($result['type'] === 'soft') {
-                return response()->json([
-                    'message' => $result['message'],
-                ]);
+            // Subir imágenes si existen
+            if ($request->hasFile('images')) {
+                $this->productService->uploadImages(
+                    $product,
+                    $request->file('images')
+                );
             }
-            
-            return response()->noContent();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Producto creado exitosamente',
+                'data' => new ProductResource($product->fresh()),
+            ], 201);
+
+        } catch (ProductAlreadyExistsException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'errors' => ['sku' => [$e->getMessage()]],
+            ], 409);
+
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Error al eliminar producto',
+                'success' => false,
+                'message' => 'Error al crear el producto',
                 'error' => $e->getMessage(),
-            ], 422);
+            ], 500);
         }
     }
 
     /**
-     * Upload images for product
+     * Ver detalles de un producto
      */
-    public function uploadImages(Request $request, Product $product)
+    public function show(Product $product): JsonResponse
     {
-        $request->validate([
-            'images' => 'required|array|max:5',
-            'images.*' => 'required|image|mimes:jpg,jpeg,png,webp|max:2048',
+        $product->load(['media']);
+
+        return response()->json([
+            'success' => true,
+            'data' => new ProductResource($product),
         ]);
+    }
 
+    /**
+     * Actualizar un producto
+     */
+    public function update(UpdateProductRequest $request, Product $product): JsonResponse
+    {
         try {
-            $images = $this->productService->uploadImages($product, $request->file('images'));
-            
+            $data = $request->except(['images', 'delete_images']);
+            $product = $this->productService->update($product, $data);
+
+            // Eliminar imágenes si se solicita
+            if ($request->has('delete_images')) {
+                $this->productService->deleteImages(
+                    $product,
+                    $request->delete_images
+                );
+            }
+
+            // Subir nuevas imágenes
+            if ($request->hasFile('images')) {
+                $this->productService->uploadImages(
+                    $product,
+                    $request->file('images')
+                );
+            }
+
             return response()->json([
-                'message' => 'Imágenes subidas exitosamente',
-                'images' => $images,
+                'success' => true,
+                'message' => 'Producto actualizado exitosamente',
+                'data' => new ProductResource($product->fresh()),
             ]);
+
+        } catch (ProductAlreadyExistsException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 409);
+
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Error al subir imágenes',
+                'success' => false,
+                'message' => 'Error al actualizar el producto',
                 'error' => $e->getMessage(),
-            ], 422);
+            ], 500);
         }
     }
 
     /**
-     * Reorder product images
+     * Eliminar un producto (soft delete)
      */
-    public function reorderImages(Request $request, Product $product)
+    public function destroy(Product $product): JsonResponse
     {
-        $request->validate([
-            'order' => 'required|array',
-            'order.*' => 'required|integer|exists:media,id',
-        ]);
-
         try {
-            $this->productService->reorderImages($product, $request->order);
-            
+            $this->productService->delete($product);
+
             return response()->json([
-                'message' => 'Orden actualizado exitosamente',
+                'success' => true,
+                'message' => 'Producto eliminado exitosamente',
             ]);
+
+        } catch (ProductInUseException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Error al reordenar imágenes',
+                'success' => false,
+                'message' => 'Error al eliminar el producto',
                 'error' => $e->getMessage(),
-            ], 422);
+            ], 500);
         }
     }
 
     /**
-     * Delete product image
+     * Restaurar un producto eliminado
      */
-    public function deleteImage(Product $product, $mediaId)
+    public function restore(int $id): JsonResponse
     {
         try {
-            $this->productService->deleteImage($product, $mediaId);
-            
-            return response()->json([
-                'message' => 'Imagen eliminada exitosamente',
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Error al eliminar imagen',
-                'error' => $e->getMessage(),
-            ], 422);
-        }
-    }
+            $product = $this->productService->restore($id);
 
-    /**
-     * Toggle product visibility
-     */
-    public function toggleVisibility(Request $request, Product $product)
-    {
-        $request->validate([
-            'visible_online' => 'required|boolean',
-        ]);
-
-        try {
-            $product = $this->productService->toggleVisibility($product, $request->visible_online);
-            
             return response()->json([
-                'message' => 'Visibilidad actualizada exitosamente',
+                'success' => true,
+                'message' => 'Producto restaurado exitosamente',
                 'data' => new ProductResource($product),
             ]);
+
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Error al actualizar visibilidad',
+                'success' => false,
+                'message' => 'Error al restaurar el producto',
                 'error' => $e->getMessage(),
-            ], 422);
+            ], 500);
+        }
+    }
+
+    /**
+     * Actualización masiva
+     */
+    public function bulkUpdate(BulkUpdateProductsRequest $request): JsonResponse
+    {
+        try {
+            $count = $this->productService->bulkUpdate(
+                $request->product_ids,
+                $request->action
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => "{$count} productos actualizados exitosamente",
+                'count' => $count,
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error en la actualización masiva',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Estadísticas
+     */
+    public function statistics(): JsonResponse
+    {
+        $stats = $this->productService->getStatistics();
+
+        return response()->json([
+            'success' => true,
+            'data' => $stats,
+        ]);
+    }
+
+    /**
+     * Duplicar producto
+     */
+    public function duplicate(Product $product): JsonResponse
+    {
+        try {
+            $newProduct = $this->productService->duplicate($product);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Producto duplicado exitosamente',
+                'data' => new ProductResource($newProduct),
+            ], 201);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al duplicar el producto',
+                'error' => $e->getMessage(),
+            ], 500);
         }
     }
 }

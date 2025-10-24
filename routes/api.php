@@ -6,15 +6,6 @@ use App\Http\Controllers\Api\WarehouseController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-
-/*  PRODUCTOS   */
-
-Route::prefix('products')->middleware(['auth:sanctum'])->group(function () {
-    // CRUD básico
-    Route::post('/', [ProductController::class, 'store']);
-
-});
-
 /* CATEGORIAS */
 Route::prefix('categories')->middleware(['auth:sanctum'])->group(function() {
     Route::get('/', [CategoryController::class, 'index']);
@@ -33,4 +24,20 @@ Route::prefix('warehouses')->middleware(['auth:sanctum'])->group(function() {
     Route::put('/{id}', [WarehouseController::class, 'update']);
     Route::patch('/{id}', [WarehouseController::class, 'update']);
     Route::delete('/{id}', [WarehouseController::class, 'destroy']);
+});
+
+/* PRODUCTOS */
+Route::middleware('auth:sanctum')->prefix('products')->group(function () {
+    // Rutas especiales PRIMERO (antes del show con parámetro)
+    Route::post('bulk-update', [ProductController::class, 'bulkUpdate']);
+    Route::get('statistics', [ProductController::class, 'statistics']); // ← AGREGAR
+    Route::post('{product}/duplicate', [ProductController::class, 'duplicate']);
+    Route::post('{id}/restore', [ProductController::class, 'restore']);
+
+    // CRUD básico DESPUÉS
+    Route::get('/', [ProductController::class, 'index']);
+    Route::post('/', [ProductController::class, 'store']);
+    Route::get('{product}', [ProductController::class, 'show']);
+    Route::put('{product}', [ProductController::class, 'update']);
+    Route::delete('{product}', [ProductController::class, 'destroy']);
 });
