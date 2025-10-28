@@ -34,6 +34,281 @@ class ProductControllerTest extends TestCase
         Storage::fake('public');
     }
 
+    // ========================================
+    // TESTS DE ACTIVACIÓN/DESACTIVACIÓN
+    // ========================================
+
+    #[Test]
+    public function puede_activar_producto_individual()
+    {
+        $product = Product::factory()->create(['is_active' => false]);
+
+        $response = $this->patchJson("/api/products/{$product->id}", [
+            'is_active' => true,
+        ]);
+
+        $response->assertStatus(200);
+
+        $product->refresh();
+        $this->assertTrue($product->is_active);
+    }
+
+    #[Test]
+    public function puede_desactivar_producto_individual()
+    {
+        $product = Product::factory()->create(['is_active' => true]);
+
+        $response = $this->patchJson("/api/products/{$product->id}", [
+            'is_active' => false,
+        ]);
+
+        $response->assertStatus(200);
+
+        $product->refresh();
+        $this->assertFalse($product->is_active);
+    }
+
+    #[Test]
+    public function puede_activar_multiples_productos_con_bulk_update()
+    {
+        $products = Product::factory()->count(3)->create(['is_active' => false]);
+
+        $data = [
+            'product_ids' => $products->pluck('id')->toArray(),
+            'action' => 'activate',
+        ];
+
+        $response = $this->postJson('/api/products/bulk-update', $data);
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'count' => 3,
+            ]);
+
+        foreach ($products as $product) {
+            $product->refresh();
+            $this->assertTrue($product->is_active);
+        }
+    }
+
+    #[Test]
+    public function puede_desactivar_multiples_productos_con_bulk_update()
+    {
+        $products = Product::factory()->count(3)->create(['is_active' => true]);
+
+        $data = [
+            'product_ids' => $products->pluck('id')->toArray(),
+            'action' => 'deactivate',
+        ];
+
+        $response = $this->postJson('/api/products/bulk-update', $data);
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'count' => 3,
+            ]);
+
+        foreach ($products as $product) {
+            $product->refresh();
+            $this->assertFalse($product->is_active);
+        }
+    }
+
+    #[Test]
+    public function registra_actividad_al_cambiar_estado_individual()
+    {
+        $product = Product::factory()->create(['is_active' => false]);
+
+        $this->patchJson("/api/products/{$product->id}", [
+            'is_active' => true,
+        ]);
+
+        $this->assertDatabaseHas('activity_log', [
+            'description' => 'Producto actualizado',
+            'subject_id' => $product->id,
+            'causer_id' => $this->user->id,
+        ]);
+    }
+
+    #[Test]
+    public function registra_actividad_al_cambiar_estado_masivo()
+    {
+        $products = Product::factory()->count(3)->create(['is_active' => false]);
+
+        $this->postJson('/api/products/bulk-update', [
+            'product_ids' => $products->pluck('id')->toArray(),
+            'action' => 'activate',
+        ]);
+
+        $this->assertDatabaseHas('activity_log', [
+            'description' => 'Actualización masiva de productos: activate',
+            'causer_id' => $this->user->id,
+        ]);
+    }
+
+    #[Test]
+    public function puede_alternar_estado_activo_multiple_veces()
+    {
+        $product = Product::factory()->create(['is_active' => true]);
+
+        // Desactivar
+        $this->patchJson("/api/products/{$product->id}", ['is_active' => false]);
+        $product->refresh();
+        $this->assertFalse($product->is_active);
+
+        // Activar
+        $this->patchJson("/api/products/{$product->id}", ['is_active' => true]);
+        $product->refresh();
+        $this->assertTrue($product->is_active);
+
+        // Desactivar de nuevo
+        $this->patchJson("/api/products/{$product->id}", ['is_active' => false]);
+        $product->refresh();
+        $this->assertFalse($product->is_active);
+    }
+
+    #[Test]
+    public function filtro_is_active_excluye_productos_desactivados()
+    {
+        Product::factory()->count(3)->create(['is_active' => true]);
+        Product::factory()->count(2)->create(['is_active' => false]);
+
+        $response = $this->getJson('/api/products?is_active=1');
+
+        $response->assertStatus(200);
+
+        $data = $response->json('data');
+        $this->assertCount(3, $data);
+
+        foreach ($data as $product) {
+            $this->assertTrue($product['is_active']);
+        }
+    }
+
+    #[Test]
+    public function filtro_is_active_muestra_solo_inactivos()
+    {
+        Product::factory()->count(3)->create(['is_active' => true]);
+        Product::factory()->count(2)->create(['is_active' => false]);
+
+        $response = $this->getJson('/api/products?is_active=0');
+
+        $response->assertStatus(200);
+
+        $data = $response->json('data');
+        $this->assertCount(2, $data);
+
+        foreach ($data as $product) {
+            $this->assertFalse($product['is_active']);
+        }
+    }
+
+    #[Test]
+    public function bulk_update_solo_afecta_productos_especificados()
+    {
+        $productos_afectados = Product::factory()->count(3)->create(['is_active' => false]);
+        $productos_no_afectados = Product::factory()->count(2)->create(['is_active' => false]);
+
+        $this->postJson('/api/products/bulk-update', [
+            'product_ids' => $productos_afectados->pluck('id')->toArray(),
+            'action' => 'activate',
+        ]);
+
+        // Verificar productos afectados
+        foreach ($productos_afectados as $product) {
+            $product->refresh();
+            $this->assertTrue($product->is_active);
+        }
+
+        // Verificar productos NO afectados
+        foreach ($productos_no_afectados as $product) {
+            $product->refresh();
+            $this->assertFalse($product->is_active);
+        }
+    }
+
+    #[Test]
+    public function puede_activar_producto_desactivado_con_put()
+    {
+        $product = Product::factory()->create(['is_active' => false]);
+
+        $data = [
+            'primary_name' => $product->primary_name,
+            'category_id' => $product->category_id,
+            'unit_price' => $product->unit_price,
+            'is_active' => true,
+        ];
+
+        $response = $this->putJson("/api/products/{$product->id}", $data);
+
+        $response->assertStatus(200);
+
+        $product->refresh();
+        $this->assertTrue($product->is_active);
+    }
+
+    #[Test]
+    public function producto_recien_creado_esta_activo_por_defecto()
+    {
+        $data = [
+            'primary_name' => 'Producto Nuevo',
+            'category_id' => $this->category->id,
+            'unit_price' => 100.00,
+        ];
+
+        $response = $this->postJson('/api/products', $data);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('data.is_active', true);
+    }
+
+    #[Test]
+    public function puede_crear_producto_desactivado_explicitamente()
+    {
+        $data = [
+            'primary_name' => 'Producto Inactivo',
+            'category_id' => $this->category->id,
+            'unit_price' => 100.00,
+            'is_active' => false,
+        ];
+
+        $response = $this->postJson('/api/products', $data);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('data.is_active', false);
+    }
+
+    #[Test]
+    public function producto_duplicado_se_crea_desactivado()
+    {
+        $product = Product::factory()->create(['is_active' => true]);
+
+        $response = $this->postJson("/api/products/{$product->id}/duplicate");
+
+        $response->assertStatus(201)
+            ->assertJsonPath('data.is_active', false);
+    }
+
+    #[Test]
+    public function estadisticas_cuentan_productos_activos_e_inactivos_correctamente()
+    {
+        Product::factory()->count(7)->create(['is_active' => true]);
+        Product::factory()->count(3)->create(['is_active' => false]);
+
+        $response = $this->getJson('/api/products/statistics');
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'data' => [
+                    'total_products' => 10,
+                    'active_products' => 7,
+                    'inactive_products' => 3,
+                ],
+            ]);
+    }
+
     #[Test]
     public function puede_crear_producto_con_datos_minimos_requeridos()
     {
