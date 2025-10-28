@@ -47,7 +47,7 @@ class EntityService
             }
             $query->with($relations);
         } else {
-            $query->with('country'); 
+            $query->with('country');
         }
 
         return $query->find($id);
@@ -128,7 +128,7 @@ class EntityService
                 ->orWhere('first_name', 'like', "%{$term}%")
                 ->orWhere('last_name', 'like', "%{$term}%")
                 ->orWhere('email', 'like', "%{$term}%")
-                ->orWhereRaw("CONCAT(first_name, ' ', last_name) LIKE ?", ["%{$term}%"]);
+                ->orWhereRaw("first_name || ' ' || last_name LIKE ?", ["%{$term}%"]);
         });
 
         // Apply additional filters
@@ -156,7 +156,7 @@ class EntityService
                     ->orWhere('first_name', 'like', "%{$term}%")
                     ->orWhere('last_name', 'like', "%{$term}%")
                     ->orWhere('email', 'like', "%{$term}%")
-                    ->orWhereRaw("CONCAT(first_name, ' ', last_name) LIKE ?", ["%{$term}%"]);
+                    ->orWhereRaw("first_name || ' ' || last_name LIKE ?", ["%{$term}%"]);
             });
         }
 
