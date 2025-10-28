@@ -35,4 +35,7 @@ return [
         ],
     ],
 
+    'apisperu' => [
+        'token' => env('APISPERU_TOKEN'),
+    ],
 ];

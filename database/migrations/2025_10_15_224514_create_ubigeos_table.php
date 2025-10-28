@@ -13,11 +13,20 @@ return new class extends Migration
     {
         Schema::create('ubigeos', function (Blueprint $table) {
             $table->char('ubigeo', 6)->primary();
+            $table->char('country_code', 2)->default('PE'); // NUEVO
             $table->string('departamento', 50);
             $table->string('provincia', 50);
             $table->string('distrito', 50);
             $table->string('codigo_sunat', 6)->nullable();
+            
             $table->index(['departamento', 'provincia', 'distrito']);
+
+            // NUEVA LLAVE FORÁNEA
+            $table->foreign('country_code')
+                  ->references('code')
+                  ->on('countries')
+                  ->onDelete('restrict')
+                  ->onUpdate('cascade');
         });
     }
 

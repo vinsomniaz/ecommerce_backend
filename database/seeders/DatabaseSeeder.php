@@ -17,6 +17,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             UserSeeder::class,
+            CountrySeeder::class, // NUEVO: Debe ir antes de UbigeoSeeder
             UbigeoSeeder::class
         ]);
     }
