@@ -10,6 +10,7 @@ use App\Exceptions\Products\ProductInUseException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class ProductService
 {
@@ -19,23 +20,17 @@ class ProductService
     public function create(array $data): Product
     {
         return DB::transaction(function () use ($data) {
-            // Verificar si el SKU ya existe (si se proporciona)
             if (!empty($data['sku']) && Product::where('sku', $data['sku'])->exists()) {
                 throw new ProductAlreadyExistsException($data['sku']);
             }
 
-            // Generar SKU automático si no se proporciona
             if (empty($data['sku'])) {
                 $data['sku'] = $this->generateUniqueSku();
             }
 
-            // Establecer valores por defecto
             $data = $this->setDefaultValues($data);
-
-            // Crear el producto
             $product = Product::create($data);
 
-            // Registrar actividad
             activity()
                 ->performedOn($product)
                 ->causedBy(auth()->user())
@@ -49,40 +44,50 @@ class ProductService
     /**
      * Actualizar un producto existente
      */
-    public function update(Product $product, array $data): Product
+    public function updateProduct(int $id, array $data): Product
     {
-        return DB::transaction(function () use ($product, $data) {
+        return DB::transaction(function () use ($id, $data) {
+            $product = Product::findOrFail($id);
+
             $oldData = $product->toArray();
 
-            // Verificar SKU único si se está actualizando
+            // Validar SKU único si cambió
             if (isset($data['sku']) && $data['sku'] !== $product->sku) {
-                if (Product::where('sku', $data['sku'])->where('id', '!=', $product->id)->exists()) {
+                if (Product::where('sku', $data['sku'])
+                    ->where('id', '!=', $id)
+                    ->exists()) {
                     throw new ProductAlreadyExistsException($data['sku']);
                 }
             }
 
+            // Actualizar solo los campos enviados
             $product->update($data);
 
-            // Registrar actividad con cambios
             activity()
                 ->performedOn($product)
                 ->causedBy(auth()->user())
                 ->withProperties([
                     'old' => $oldData,
                     'new' => $product->toArray(),
+                    'changed_fields' => array_keys($data),
                 ])
                 ->log('Producto actualizado');
 
-            return $product->fresh();
+            \Illuminate\Support\Facades\Log::info('Producto actualizado', [
+                'id' => $product->id,
+                'changed_fields' => array_keys($data)
+            ]);
+
+            return $product->fresh(['category', 'media']);
         });
     }
+
 
     /**
      * Eliminar un producto (soft delete)
      */
     public function delete(Product $product): bool
     {
-        // Verificar si el producto tiene movimientos
         if ($this->hasTransactions($product)) {
             throw new ProductInUseException(
                 'El producto tiene movimientos de inventario, ventas o compras asociadas'
@@ -120,9 +125,7 @@ class ProductService
      */
     public function forceDelete(Product $product): bool
     {
-        // Eliminar todas las imágenes asociadas
         $product->clearMediaCollection('images');
-
         $product->forceDelete();
 
         activity()
@@ -133,53 +136,137 @@ class ProductService
         return true;
     }
 
+
     /**
-     * Subir imágenes a un producto
+     * Subir imágenes a un producto con conversiones automáticas
      */
-    public function uploadImages(Product $product, array $images): Product
+    public function uploadImages(Product $product, array $images): array
     {
-        DB::transaction(function () use ($product, $images) {
+        return DB::transaction(function () use ($product, $images) {
             $currentCount = $product->getMedia('images')->count();
             $newCount = count($images);
 
             if (($currentCount + $newCount) > 5) {
-                throw new \Exception('No puede tener más de 5 imágenes. Actualmente tiene ' . $currentCount);
+                throw new \Exception(
+                    "No puede tener más de 5 imágenes. Actualmente tiene {$currentCount}. " .
+                    "Solo puede agregar " . (5 - $currentCount) . " más."
+                );
             }
 
-            foreach ($images as $image) {
-                $product->addMedia($image)
-                    ->toMediaCollection('images');
+            $uploadedImages = [];
+            $isFirstImage = $currentCount === 0;
+
+            foreach ($images as $index => $image) {
+                // Generar nombre único basado en el producto y timestamp
+                $fileName = sprintf(
+                    '%s-%s-%d',
+                    \Illuminate\Support\Str::slug($product->primary_name),
+                    time(),
+                    $index + 1
+                );
+
+                $media = $product->addMedia($image)
+                    ->usingName($product->primary_name)
+                    ->usingFileName($fileName . '.' . $image->getClientOriginalExtension())
+                    ->withCustomProperties([
+                        'order' => $currentCount + $index + 1,
+                        'is_primary' => $isFirstImage && $index === 0,
+                    ])
+                    ->toMediaCollection('images', 'public');
+
+                $uploadedImages[] = [
+                    'id' => $media->id,
+                    'name' => $media->file_name,
+                    'original_url' => $media->getUrl(),
+                    'thumb_url' => $media->getUrl('thumb'),
+                    'medium_url' => $media->getUrl('medium'),
+                    'large_url' => $media->getUrl('large'),
+                    'size' => $this->formatBytes($media->size),
+                    'order' => $media->getCustomProperty('order'),
+                    'is_primary' => $media->getCustomProperty('is_primary', false),
+                ];
             }
 
             activity()
                 ->performedOn($product)
                 ->causedBy(auth()->user())
+                ->withProperties(['images_count' => $newCount])
                 ->log("Se agregaron {$newCount} imágenes al producto");
-        });
 
-        return $product->fresh();
+            return $uploadedImages;
+        });
     }
 
     /**
-     * Eliminar imágenes de un producto
+     * Eliminar una imagen específica
+     */
+
+    public function deleteImage(Product $product, int $mediaId): bool
+    {
+        return DB::transaction(function () use ($product, $mediaId) {
+
+            // Lee por query directa (evita cache de getMedia)
+            $media = Media::query()
+                ->where('model_type', Product::class)
+                ->where('model_id', $product->id)
+                ->whereKey($mediaId)
+                ->first();
+
+            if (!$media) {
+                throw new \Exception('Imagen no encontrada');
+            }
+
+            $wasPrimary = $media->getCustomProperty('is_primary', false);
+
+            // Elimina registro + archivos
+            $media->delete();
+
+            // ⚠️ Limpia la relación cacheada en el modelo actual
+            $product->unsetRelation('media');
+
+            // Relee desde BD las restantes
+            $remaining = Media::query()
+                ->where('model_type', Product::class)
+                ->where('model_id', $product->id)
+                ->orderBy('id')
+                ->get();
+
+            // Si era principal, marca la primera restante como principal
+            if ($wasPrimary && $remaining->isNotEmpty()) {
+                $first = $remaining->first();
+                $first->setCustomProperty('is_primary', true);
+                $first->save();
+            }
+
+            // Reordena
+            foreach ($remaining->values() as $index => $item) {
+                $item->setCustomProperty('order', $index + 1);
+                $item->save();
+            }
+
+            activity()
+                ->performedOn($product)
+                ->causedBy(auth()->user())
+                ->withProperties(['media_id' => $mediaId])
+                ->log('Imagen eliminada del producto');
+
+            return true;
+        });
+    }
+
+    /**
+     * Eliminar múltiples imágenes (mantener para compatibilidad)
      */
     public function deleteImages(Product $product, array $mediaIds): Product
     {
         DB::transaction(function () use ($product, $mediaIds) {
-            $deletedCount = 0;
-
             foreach ($mediaIds as $mediaId) {
-                $media = $product->getMedia('images')->where('id', $mediaId)->first();
-                if ($media) {
-                    $media->delete();
-                    $deletedCount++;
+                try {
+                    $this->deleteImage($product, $mediaId);
+                } catch (\Exception $e) {
+                    // Continuar con las siguientes imágenes
                 }
             }
-
-            activity()
-                ->performedOn($product)
-                ->causedBy(auth()->user())
-                ->log("Se eliminaron {$deletedCount} imágenes del producto");
         });
 
         return $product->fresh();
@@ -246,7 +333,6 @@ class ProductService
     {
         $query = Product::query();
 
-        // Búsqueda general
         if (!empty($filters['search'])) {
             $search = $filters['search'];
             $query->where(function ($q) use ($search) {
@@ -257,7 +343,6 @@ class ProductService
             });
         }
 
-        // Filtros específicos
         if (!empty($filters['category_id'])) {
             $query->where('category_id', $filters['category_id']);
         }
@@ -278,7 +363,6 @@ class ProductService
             $query->where('visible_online', $filters['visible_online']);
         }
 
-        // Rango de precios
         if (!empty($filters['min_price'])) {
             $query->where('unit_price', '>=', $filters['min_price']);
         }
@@ -287,12 +371,10 @@ class ProductService
             $query->where('unit_price', '<=', $filters['max_price']);
         }
 
-        // Ordenamiento
         $sortBy = $filters['sort_by'] ?? 'created_at';
         $sortOrder = $filters['sort_order'] ?? 'desc';
         $query->orderBy($sortBy, $sortOrder);
 
-        // Incluir eliminados
         if (!empty($filters['with_trashed'])) {
             $query->withTrashed();
         }
@@ -320,25 +402,47 @@ class ProductService
     }
 
     /**
-     * Verificar si el producto tiene transacciones
+     * Duplicar un producto
      */
+    public function duplicate(Product $product): Product
+    {
+        return DB::transaction(function () use ($product) {
+            $newProduct = $product->replicate();
+            $newProduct->sku = $this->generateUniqueSku();
+            $newProduct->primary_name = $product->primary_name . ' (Copia)';
+            $newProduct->is_active = false;
+            $newProduct->save();
+
+            foreach ($product->getMedia('images') as $media) {
+                $newProduct->addMediaFromUrl($media->getUrl())
+                    ->toMediaCollection('images');
+            }
+
+            activity()
+                ->performedOn($newProduct)
+                ->causedBy(auth()->user())
+                ->withProperties(['original_id' => $product->id])
+                ->log('Producto duplicado');
+
+            return $newProduct;
+        });
+    }
+
+    // MÉTODOS PRIVADOS
+
     private function hasTransactions(Product $product): bool
     {
-        // Verificar si tiene movimientos de inventario (solo si la tabla existe)
         try {
             if (method_exists($product, 'stockMovements') && $product->stockMovements()->exists()) {
                 return true;
             }
         } catch (\Exception $e) {
-            // Tabla aún no existe, continuar
+            // Tabla aún no existe
         }
 
         return false;
     }
 
-    /**
-     * Generar SKU único
-     */
     private function generateUniqueSku(): string
     {
         do {
@@ -348,9 +452,6 @@ class ProductService
         return $sku;
     }
 
-    /**
-     * Establecer valores por defecto
-     */
     private function setDefaultValues(array $data): array
     {
         $defaults = [
@@ -372,31 +473,16 @@ class ProductService
         return $data;
     }
 
-    /**
-     * Duplicar un producto
-     */
-    public function duplicate(Product $product): Product
+    private function formatBytes(int $bytes): string
     {
-        return DB::transaction(function () use ($product) {
-            $newProduct = $product->replicate();
-            $newProduct->sku = $this->generateUniqueSku();
-            $newProduct->primary_name = $product->primary_name . ' (Copia)';
-            $newProduct->is_active = false; // Por seguridad, crear inactivo
-            $newProduct->save();
+        $units = ['B', 'KB', 'MB', 'GB'];
+        $i = 0;
 
-            // Copiar imágenes
-            foreach ($product->getMedia('images') as $media) {
-                $newProduct->addMediaFromUrl($media->getUrl())
-                    ->toMediaCollection('images');
-            }
+        while ($bytes >= 1024 && $i < count($units) - 1) {
+            $bytes /= 1024;
+            $i++;
+        }
 
-            activity()
-                ->performedOn($newProduct)
-                ->causedBy(auth()->user())
-                ->withProperties(['original_id' => $product->id])
-                ->log('Producto duplicado');
-
-            return $newProduct;
-        });
+        return round($bytes, 2) . ' ' . $units[$i];
     }
 }

@@ -18,31 +18,32 @@ class UpdateProductRequest extends FormRequest
     public function rules(): array
     {
         $productId = $this->route('product')->id;
+        $isPatch = $this->isMethod('patch');
+        $requiredRule = $isPatch ? 'sometimes' : 'required';
 
         return [
-            'primary_name' => 'required|string|max:200',
-            'category_id' => 'required|exists:categories,id',
-            'unit_price' => 'required|numeric|min:0.01',
-
+            // Campos obligatorios en PUT, opcionales en PATCH
+            'primary_name' => [$requiredRule, 'string', 'min:3', 'max:200'],
+            'category_id' => [$requiredRule, 'exists:categories,id'],
+            'unit_price' => [$requiredRule, 'numeric', 'min:0.01'],
+            // Campos opcionales
             'sku' => [
+                'sometimes',
                 'nullable',
                 'string',
-                'max:50',
-                Rule::unique('products', 'sku')->ignore($productId)
+                'max:100',
+                Rule::unique('products')->ignore($productId),
             ],
-            'secondary_name' => 'nullable|string|max:100',
-            'description' => 'nullable|string|max:5000',
-            'brand' => 'nullable|string|max:100',
-            'cost_price' => 'nullable|numeric|min:0',
-            'min_stock' => 'nullable|integer|min:0',
-            'unit_measure' => 'nullable|string|max:10',
-            'tax_type' => 'nullable|string|max:2',
-            'weight' => 'nullable|numeric|min:0',
-
-            'is_active' => 'boolean',
-            'is_featured' => 'boolean',
-            'visible_online' => 'boolean',
-
+            'secondary_name' => ['sometimes', 'nullable', 'string', 'max:200'],
+            'description' => ['sometimes', 'nullable', 'string'],
+            'brand' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'cost_price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'min_stock' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'unit_measure' => ['sometimes', 'nullable', 'string', 'in:NIU,UND,KGM,MTR,LTR'],
+            'tax_type' => ['sometimes', 'nullable', 'string', 'in:10,20,30'],
+            'is_active' => ['sometimes', 'nullable', 'boolean'],
+            'is_featured' => ['sometimes', 'nullable', 'boolean'],
+            'visible_online' => ['sometimes', 'nullable', 'boolean'],
             'images' => 'nullable|array|max:5',
             'images.*' => 'image|mimes:jpeg,png,webp|max:2048',
             'delete_images' => 'nullable|array',
