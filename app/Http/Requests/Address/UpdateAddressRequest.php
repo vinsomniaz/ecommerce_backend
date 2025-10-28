@@ -13,17 +13,33 @@ class UpdateAddressRequest extends FormRequest
 
     public function rules(): array
     {
-        // Determinar el country_code actual o el nuevo
-        $countryCode = $this->input('country_code', $this->address->country_code);
+        // Obtener el address desde el route binding
+        $address = $this->route('address');
+
+        // Determinar el country_code: el nuevo si se envía, sino el actual
+        $countryCode = $this->input('country_code', $address?->country_code ?? 'PE');
+
+        // Solo requerir ubigeo si:
+        // 1. Se está cambiando el country_code a PE, O
+        // 2. El país actual es PE Y se está actualizando el address (dirección física)
+        $requiresUbigeo = false;
+
+        if ($this->has('country_code')) {
+            // Si se está enviando country_code en la petición
+            $requiresUbigeo = $countryCode === 'PE';
+        } elseif ($this->has('address') && $address?->country_code === 'PE') {
+            // Si se actualiza la dirección física y el país actual es PE
+            $requiresUbigeo = true;
+        }
 
         return [
-            'address' => ['sometimes', 'required', 'string', 'max:250'],
+            'address' => ['sometimes', 'string', 'max:250'],
             'country_code' => ['sometimes', 'string', 'size:2', 'exists:countries,code'],
             'ubigeo' => [
-                'nullable', 
-                'required_if:country_code,PE', // Solo requerido si el país (nuevo o existente) es PE
-                'string', 
-                'size:6', 
+                'nullable',
+                $requiresUbigeo ? 'required' : 'nullable',
+                'string',
+                'size:6',
                 'exists:ubigeos,ubigeo'
             ],
             'reference' => ['nullable', 'string', 'max:200'],
@@ -37,24 +53,30 @@ class UpdateAddressRequest extends FormRequest
     {
         return [
             'address.required' => 'La dirección es obligatoria.',
+            'address.max' => 'La dirección no puede exceder 250 caracteres.',
             'country_code.exists' => 'El país no es válido.',
-            'ubigeo.required_if' => 'El ubigeo es obligatorio para direcciones en Perú.',
+            'country_code.size' => 'El código de país debe tener 2 caracteres.',
+            'ubigeo.required' => 'El ubigeo es obligatorio para direcciones en Perú.',
             'ubigeo.size' => 'El ubigeo debe tener 6 caracteres.',
             'ubigeo.exists' => 'El ubigeo no existe en nuestra base de datos.',
+            'reference.max' => 'La referencia no puede exceder 200 caracteres.',
+            'phone.max' => 'El teléfono no puede exceder 20 caracteres.',
+            'label.max' => 'La etiqueta no puede exceder 50 caracteres.',
         ];
     }
 
     protected function prepareForValidation(): void
     {
-        // Default country_code to the existing one if not provided in the update request
-        if (!$this->has('country_code') && $this->address) { // Check if address exists (route model binding)
-             $this->mergeIfMissing(['country_code' => $this->address->country_code]);
+        // Obtener el address desde el route binding
+        $address = $this->route('address');
+
+        if (!$address) {
+            return; // Si no hay address, salir
         }
 
-         // Ensure ubigeo is explicitly null if the target country code is not PE
-         // Use mergeIfMissing to avoid overwriting an explicit null from the request
-         if ($this->input('country_code', $this->address?->country_code) !== 'PE') {
-             $this->mergeIfMissing(['ubigeo' => null]);
-         }
+        // Si se está cambiando el país a uno diferente de PE, anular ubigeo
+        if ($this->has('country_code') && $this->input('country_code') !== 'PE') {
+            $this->merge(['ubigeo' => null]);
+        }
     }
 }

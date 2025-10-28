@@ -59,27 +59,47 @@ Route::middleware('auth:sanctum')->prefix('products')->group(function () {
 
 
 
-// Custom routes (before resource routes to avoid conflicts)
-Route::get('/entities/search', [EntityController::class, 'search']);
-Route::get('/entities/find-by-document', [EntityController::class, 'findByDocument']);
-Route::patch('/entities/{entity}/deactivate', [EntityController::class, 'deactivate']);
-Route::patch('/entities/{entity}/activate', [EntityController::class, 'activate']);
+/* ============================================
+   ENTIDADES (CUSTOMERS & SUPPLIERS)
+   ============================================ */
+Route::middleware('auth:sanctum')->prefix('entities')->group(function () {
+    // Rutas especiales PRIMERO (antes del CRUD para evitar conflictos)
+    Route::get('search', [EntityController::class, 'search']);
+    Route::get('find-by-document', [EntityController::class, 'findByDocument']);
+    Route::patch('{entity}/deactivate', [EntityController::class, 'deactivate']);
+    Route::patch('{entity}/activate', [EntityController::class, 'activate']);
 
-// Resource routes
-Route::apiResource('entities', EntityController::class);
+    // CRUD básico
+    Route::get('/', [EntityController::class, 'index']);
+    Route::post('/', [EntityController::class, 'store']);
+    Route::get('{entity}', [EntityController::class, 'show']);
+    Route::match(['put', 'patch'], '{entity}', [EntityController::class, 'update']);
+    Route::delete('{entity}', [EntityController::class, 'destroy']);
 
-// Ruta de validación SUNAT/RENIEC
-Route::get('/sunat/validate/{tipo}/{numero}', [SunatController::class, 'validateDocument'])
-    ->middleware('throttle:10,1'); // Límite: 10 peticiones por minuto
-
-Route::prefix('/entities/{entity}/addresses')->group(function () {
-    Route::get('/', [AddressController::class, 'index']);
-    Route::post('/', [AddressController::class, 'store']);
+    // Direcciones de una entidad específica
+    Route::prefix('{entity}/addresses')->group(function () {
+        Route::get('/', [AddressController::class, 'index']);
+        Route::post('/', [AddressController::class, 'store']);
+    });
 });
 
-Route::prefix('/addresses/{address}')->group(function () {
-    Route::get('/', [AddressController::class, 'show']);
-    Route::put('/', [AddressController::class, 'update']);
-    Route::delete('/', [AddressController::class, 'destroy']);
-    Route::patch('/set-default', [AddressController::class, 'setDefault']);
+/* ============================================
+   DIRECCIONES
+   ============================================ */
+Route::middleware('auth:sanctum')->prefix('addresses')->group(function () {
+    // Rutas especiales PRIMERO
+    Route::patch('{address}/set-default', [AddressController::class, 'setDefault']);
+
+    // CRUD básico
+    Route::get('{address}', [AddressController::class, 'show']);
+    Route::match(['put', 'patch'], '{address}', [AddressController::class, 'update']);
+    Route::delete('{address}', [AddressController::class, 'destroy']);
+});
+
+/* ============================================
+   VALIDACIÓN SUNAT/RENIEC
+   ============================================ */
+Route::middleware('auth:sanctum')->prefix('sunat')->group(function () {
+    Route::get('validate/{tipo}/{numero}', [SunatController::class, 'validateDocument'])
+        ->middleware('throttle:10,1'); // Límite: 10 peticiones por minuto
 });
