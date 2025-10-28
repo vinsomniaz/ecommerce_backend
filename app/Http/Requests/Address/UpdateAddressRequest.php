@@ -43,4 +43,18 @@ class UpdateAddressRequest extends FormRequest
             'ubigeo.exists' => 'El ubigeo no existe en nuestra base de datos.',
         ];
     }
+
+    protected function prepareForValidation(): void
+    {
+        // Default country_code to the existing one if not provided in the update request
+        if (!$this->has('country_code') && $this->address) { // Check if address exists (route model binding)
+             $this->mergeIfMissing(['country_code' => $this->address->country_code]);
+        }
+
+         // Ensure ubigeo is explicitly null if the target country code is not PE
+         // Use mergeIfMissing to avoid overwriting an explicit null from the request
+         if ($this->input('country_code', $this->address?->country_code) !== 'PE') {
+             $this->mergeIfMissing(['ubigeo' => null]);
+         }
+    }
 }

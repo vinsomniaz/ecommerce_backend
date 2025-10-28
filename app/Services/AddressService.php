@@ -70,6 +70,7 @@ class AddressService
         }
 
         $address->update($data);
+        $address->refresh();
 
         // Si se intentó marcar como predeterminada desde el update,
         // se ejecuta la lógica completa para asegurar que sea la única.
@@ -77,7 +78,20 @@ class AddressService
             return $this->setDefault($address);
         }
 
-        return $address->fresh(['ubigeoData', 'country']);
+        // Load relations carefully
+        $relationsToLoad = [];
+        if ($address->ubigeo) { // Only load ubigeoData if ubigeo is not null
+            $relationsToLoad[] = 'ubigeoData';
+        }
+        if ($address->country_code) { // Load country if code exists
+            $relationsToLoad[] = 'country';
+        }
+
+        if (!empty($relationsToLoad)) {
+            $address->load($relationsToLoad);
+        }
+
+        return $address;
     }
 
     /**
@@ -116,6 +130,6 @@ class AddressService
             $address->update(['is_default' => true]);
         });
 
-        return $address->load('ubigeoData');
+        return $address->load(['ubigeoData', 'country']);
     }
 }
