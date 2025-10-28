@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory; // AGREGAR ESTO
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo; // NUEVO
 
 class Ubigeo extends Model
 {
@@ -17,6 +18,7 @@ class Ubigeo extends Model
 
     protected $fillable = [
         'ubigeo',
+        'country_code', // NUEVO
         'departamento',
         'provincia',
         'distrito',
@@ -26,5 +28,13 @@ class Ubigeo extends Model
     public function warehouses()
     {
         return $this->hasMany(Warehouse::class, 'ubigeo', 'ubigeo');
+    }
+
+    /**
+     * NUEVO: Relación con País
+     */
+    public function country(): BelongsTo
+    {
+        return $this->belongsTo(Country::class, 'country_code', 'code');
     }
 }

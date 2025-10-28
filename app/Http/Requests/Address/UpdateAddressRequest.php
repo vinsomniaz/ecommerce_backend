@@ -13,9 +13,19 @@ class UpdateAddressRequest extends FormRequest
 
     public function rules(): array
     {
+        // Determinar el country_code actual o el nuevo
+        $countryCode = $this->input('country_code', $this->address->country_code);
+
         return [
             'address' => ['sometimes', 'required', 'string', 'max:250'],
-            'ubigeo' => ['sometimes', 'required', 'string', 'size:6', 'exists:ubigeos,ubigeo'],
+            'country_code' => ['sometimes', 'string', 'size:2', 'exists:countries,code'],
+            'ubigeo' => [
+                'nullable', 
+                'required_if:country_code,PE', // Solo requerido si el país (nuevo o existente) es PE
+                'string', 
+                'size:6', 
+                'exists:ubigeos,ubigeo'
+            ],
             'reference' => ['nullable', 'string', 'max:200'],
             'phone' => ['nullable', 'string', 'max:20'],
             'label' => ['nullable', 'string', 'max:50'],
@@ -27,7 +37,8 @@ class UpdateAddressRequest extends FormRequest
     {
         return [
             'address.required' => 'La dirección es obligatoria.',
-            'ubigeo.required' => 'El ubigeo es obligatorio.',
+            'country_code.exists' => 'El país no es válido.',
+            'ubigeo.required_if' => 'El ubigeo es obligatorio para direcciones en Perú.',
             'ubigeo.size' => 'El ubigeo debe tener 6 caracteres.',
             'ubigeo.exists' => 'El ubigeo no existe en nuestra base de datos.',
         ];

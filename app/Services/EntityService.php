@@ -41,7 +41,13 @@ class EntityService
         $query = Entity::query();
 
         if (!empty($relations)) {
+            // Make sure 'country' is included if needed by the resource
+            if (!in_array('country', $relations)) {
+                $relations[] = 'country';
+            }
             $query->with($relations);
+        } else {
+            $query->with('country'); 
         }
 
         return $query->find($id);

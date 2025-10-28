@@ -28,7 +28,8 @@ return new class extends Migration
 
             // Address fields
             $table->string('address', 250)->nullable(); // Dirección Fiscal
-            $table->char('ubigeo', 6)->nullable();
+            $table->char('ubigeo', 6)->nullable(); // MODIFICADO: nullable
+            $table->char('country_code', 2)->default('PE'); // NUEVO
             $table->string('phone', 20)->nullable();
             $table->string('email', 100)->nullable();
 
@@ -38,7 +39,6 @@ return new class extends Migration
 
             // Relations and metadata
             $table->foreignId('user_id')->nullable()->constrained('users')->onDelete('set null');
-            // $table->enum('customer_tier', ['new', 'recurring', 'vip'])->default('new')->nullable();
             $table->boolean('is_active')->default(true);
             $table->datetime('registered_at')->useCurrent();
             $table->timestamps();
@@ -47,7 +47,10 @@ return new class extends Migration
             $table->unique(['tipo_documento', 'numero_documento']);
             $table->index('email');
             $table->index('type');
+            
+            // LLAVES FORÁNEAS
             $table->foreign('ubigeo')->references('ubigeo')->on('ubigeos')->onDelete('set null');
+            $table->foreign('country_code')->references('code')->on('countries'); // NUEVO
         });
     }
 

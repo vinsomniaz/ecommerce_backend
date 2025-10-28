@@ -21,6 +21,8 @@ class StoreEntityRequest extends FormRequest
     public function rules(): array
     {
         $isSupplierOrBoth = in_array($this->type, ['supplier', 'both']);
+        $countryCode = $this->input('country_code', 'PE');
+
         return [
             'type' => 'required|in:customer,supplier,both',
             'tipo_documento' => [
@@ -66,7 +68,13 @@ class StoreEntityRequest extends FormRequest
             'phone' => [$isSupplierOrBoth ? 'required' : 'nullable', 'digits:9'],
             'address' => [$isSupplierOrBoth ? 'required' : 'nullable', 'string', 'max:250'],
 
-            'ubigeo' => 'nullable|exists:ubigeos,ubigeo|size:6',
+            'country_code' => ['nullable', 'string', 'size:2', 'exists:countries,code'],
+            'ubigeo' => [
+                'nullable',
+                'required_if:country_code,PE',
+                'exists:ubigeos,ubigeo',
+                'size:6'
+            ],
             'estado_sunat' => 'nullable|in:activo,baja,suspendido',
             'condicion_sunat' => 'nullable|in:habido,no_habido',
             'is_active' => 'boolean',
@@ -97,6 +105,7 @@ class StoreEntityRequest extends FormRequest
             'phone.digits' => 'El teléfono debe tener 9 dígitos',
             'ubigeo.exists' => 'El ubigeo no es válido',
             'ubigeo.size' => 'El ubigeo debe tener 6 caracteres',
+            'ubigeo.required_if' => 'El ubigeo es obligatorio para entidades en Perú.',
         ];
 
         // Se determina dinámicamente el mensaje correcto para 'tipo_persona.in'

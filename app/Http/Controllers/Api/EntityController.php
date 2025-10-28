@@ -60,7 +60,7 @@ class EntityController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        $entity = $this->entityService->findById($id, ['user', 'ubigeoData', 'defaultAddress.ubigeoData']);
+        $entity = $this->entityService->findById($id, ['user', 'ubigeoData', 'defaultAddress.ubigeoData', 'country']);
 
         if (!$entity) {
             return response()->json([

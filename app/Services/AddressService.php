@@ -33,6 +33,12 @@ class AddressService
             $isDefault = true;
         }
 
+        // NUEVO: Lógica de País/Ubigeo
+        $data['country_code'] = $data['country_code'] ?? 'PE';
+        if ($data['country_code'] !== 'PE') {
+            $data['ubigeo'] = null;
+        }
+
         $data['is_default'] = $isDefault;
         $data['entity_id'] = $entity->id;
 
@@ -45,11 +51,11 @@ class AddressService
                     ->where('id', '!=', $address->id)
                     ->update(['is_default' => false]);
             }
-            
+
             return $address;
         });
 
-        return $address->load('ubigeoData');
+        return $address->load(['ubigeoData', 'country']);
     }
 
     /**
@@ -57,15 +63,21 @@ class AddressService
      */
     public function update(Address $address, array $data): Address
     {
+        // NUEVO: Lógica de País/Ubigeo
+        $countryCode = $data['country_code'] ?? $address->country_code;
+        if ($countryCode !== 'PE') {
+            $data['ubigeo'] = null;
+        }
+
         $address->update($data);
-        
+
         // Si se intentó marcar como predeterminada desde el update,
         // se ejecuta la lógica completa para asegurar que sea la única.
         if (isset($data['is_default']) && $data['is_default'] === true) {
             return $this->setDefault($address);
         }
 
-        return $address->fresh('ubigeoData');
+        return $address->fresh(['ubigeoData', 'country']);
     }
 
     /**
@@ -76,7 +88,7 @@ class AddressService
         DB::transaction(function () use ($address) {
             $wasDefault = $address->is_default;
             $entityId = $address->entity_id;
-            
+
             $address->delete();
 
             // Si la dirección eliminada era la predeterminada,

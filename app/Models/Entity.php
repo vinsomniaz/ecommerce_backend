@@ -23,6 +23,7 @@ class Entity extends Model
         'last_name',
         'address',
         'ubigeo',
+        'country_code',
         'phone',
         'email',
         'estado_sunat',
@@ -42,6 +43,7 @@ class Entity extends Model
     protected $attributes = [
         'type' => 'customer',
         'is_active' => true,
+        'country_code' => 'PE',
     ];
 
     /**
@@ -54,6 +56,21 @@ class Entity extends Model
         static::creating(function ($entity) {
             if (!$entity->registered_at) {
                 $entity->registered_at = now();
+            }
+            // Si el país no es PE, anular ubigeo
+            if ($entity->country_code !== 'PE') {
+                $entity->ubigeo = null;
+            }
+        });
+
+        static::updating(function ($entity) {
+            // If country_code is changing to non-PE, or is already non-PE, nullify ubigeo
+            if ($entity->isDirty('country_code') && $entity->country_code !== 'PE') {
+                $entity->ubigeo = null;
+            }
+            // Also handle if country_code remains non-PE and ubigeo is somehow set
+            elseif ($entity->country_code !== 'PE') {
+                $entity->ubigeo = null;
             }
         });
     }
@@ -131,5 +148,10 @@ class Entity extends Model
     public function addresses(): HasMany
     {
         return $this->hasMany(Address::class);
+    }
+
+    public function country(): BelongsTo
+    {
+        return $this->belongsTo(Country::class, 'country_code', 'code');
     }
 }

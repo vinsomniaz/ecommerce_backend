@@ -22,6 +22,13 @@ class EntityResource extends JsonResource
             'trade_name' => $this->when($this->tipo_persona === 'juridica', $this->trade_name),
             'email' => $this->email,
             'phone' => $this->phone,
+            
+            // NUEVO: País y Ubigeo de la dirección fiscal
+            'country_code' => $this->country_code,
+            'country_name' => $this->whenLoaded('country', $this->country->name ?? null),
+            'ubigeo' => $this->ubigeo,
+            'ubigeo_name' => $this->whenLoaded('ubigeoData', $this->ubigeoData->distrito ?? null),
+
             'is_active' => $this->is_active,
             'registered_at' => $this->registered_at?->format('Y-m-d H:i:s'),
 
@@ -31,6 +38,8 @@ class EntityResource extends JsonResource
                 return [
                     'id' => $this->defaultAddress->id,
                     'address' => $this->defaultAddress->address,
+                    'country_code' => $this->defaultAddress->country_code,
+                    'country_name' => $this->defaultAddress->country->name ?? null,
                     'distrito' => $this->defaultAddress->ubigeoData->distrito ?? null,
                     'provincia' => $this->defaultAddress->ubigeoData->provincia ?? null,
                     'departamento' => $this->defaultAddress->ubigeoData->departamento ?? null,

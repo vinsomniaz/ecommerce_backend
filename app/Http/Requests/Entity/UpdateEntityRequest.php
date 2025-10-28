@@ -21,6 +21,7 @@ class UpdateEntityRequest extends FormRequest
     public function rules(): array
     {
         $entityId = $this->route('entity');
+        $countryCode = $this->input('country_code', $this->entity->country_code);
 
         return [
             'type' => 'sometimes|in:customer,supplier,both',
@@ -59,7 +60,13 @@ class UpdateEntityRequest extends FormRequest
             ],
             'phone' => 'nullable|digits:9',
             'address' => 'nullable|string|max:250',
-            'ubigeo' => 'nullable|exists:ubigeos,ubigeo|size:6',
+            'country_code' => ['sometimes', 'string', 'size:2', 'exists:countries,code'],
+            'ubigeo' => [
+                'nullable',
+                'required_if:country_code,PE',
+                'exists:ubigeos,ubigeo',
+                'size:6'
+            ],
             'estado_sunat' => 'nullable|in:activo,baja,suspendido',
             'condicion_sunat' => 'nullable|in:habido,no_habido',
             'is_active' => 'boolean',

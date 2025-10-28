@@ -8,6 +8,7 @@ use App\Models\Inventory;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Database\Seeders\CountrySeeder;
 
 class WarehouseControllerTest extends TestCase
 {
@@ -22,12 +23,16 @@ class WarehouseControllerTest extends TestCase
         // Crear usuario autenticado
         $this->user = User::factory()->create();
 
+        // *** Run CountrySeeder FIRST ***
+        $this->seed(CountrySeeder::class);
+
         // Crear ubigeos de prueba
         Ubigeo::create([
             'ubigeo' => '150101',
             'departamento' => 'Lima',
             'provincia' => 'Lima',
             'distrito' => 'Lima',
+            'country_code' => 'PE',
         ]);
 
         Ubigeo::create([
@@ -35,6 +40,7 @@ class WarehouseControllerTest extends TestCase
             'departamento' => 'Lima',
             'provincia' => 'Lima',
             'distrito' => 'Ancón',
+            'country_code' => 'PE',
         ]);
 
         Ubigeo::create([
@@ -42,6 +48,7 @@ class WarehouseControllerTest extends TestCase
             'departamento' => 'Lima',
             'provincia' => 'Lima',
             'distrito' => 'Ate',
+            'country_code' => 'PE',
         ]);
     }
 

@@ -30,6 +30,7 @@ class UbigeoSeeder extends Seeder
             foreach ($stmt->process($csv) as $row) {
                 Ubigeo::create([
                     'ubigeo'   => $row['UBIGEO_INEI'] ?? null,
+                    'country_code' => 'PE', // NUEVO
                     'departamento' => $row['DEPARTAMENTO'] ?? null,
                     'provincia' => $row['PROVINCIA'] ?? null,
                     'distrito'=> $row['DISTRITO'] ?? null,

@@ -15,6 +15,7 @@ class Address extends Model
         'user_id',
         'address',
         'ubigeo',
+        'country_code', // NUEVO
         'reference',
         'phone',
         'label',
@@ -47,5 +48,13 @@ class Address extends Model
     public function ubigeoData(): BelongsTo
     {
         return $this->belongsTo(Ubigeo::class, 'ubigeo', 'ubigeo');
+    }
+
+    /**
+     * NUEVO: Get the country for the address.
+     */
+    public function country(): BelongsTo
+    {
+        return $this->belongsTo(Country::class, 'country_code', 'code');
     }
 }
