@@ -1,21 +1,15 @@
 <?php
+// routes/api.php
 
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\WarehouseController;
+use App\Http\Controllers\Api\InventoryController; // NUEVO
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\EntityController;
 use App\Http\Controllers\Api\SunatController;
 use App\Http\Controllers\Api\AddressController;
-
-
-/*  PRODUCTOS   */
-
-Route::prefix('products')->middleware(['auth:sanctum'])->group(function () {
-    // CRUD básico
-    Route::post('/', [ProductController::class, 'store']);
-});
 
 /* CATEGORIAS */
 Route::prefix('categories')->middleware(['auth:sanctum'])->group(function () {
@@ -35,6 +29,10 @@ Route::prefix('warehouses')->middleware(['auth:sanctum'])->group(function() {
     Route::put('/{id}', [WarehouseController::class, 'update']);
     Route::patch('/{id}', [WarehouseController::class, 'update']);
     Route::delete('/{id}', [WarehouseController::class, 'destroy']);
+
+    // NUEVO: Inventario de un almacén específico
+    Route::get('/{warehouse}/inventory', [InventoryController::class, 'getByWarehouse']);
+    Route::get('/{warehouse}/inventory/statistics', [InventoryController::class, 'warehouseStatistics']);
 });
 
 /* PRODUCTOS */
@@ -45,9 +43,13 @@ Route::middleware('auth:sanctum')->prefix('products')->group(function () {
     Route::post('{product}/duplicate', [ProductController::class, 'duplicate']);
     Route::post('{id}/restore', [ProductController::class, 'restore']);
 
-    // NUEVO: Gestión de imágenes
+    // Gestión de imágenes
     Route::post('{product}/images', [ProductController::class, 'uploadImages']);
     Route::delete('{product}/images/{mediaId}', [ProductController::class, 'deleteImage']);
+
+    // NUEVO: Inventario del producto
+    Route::get('{product}/inventory', [InventoryController::class, 'getByProduct']);
+    Route::get('{product}/inventory/statistics', [InventoryController::class, 'productStatistics']);
 
     // CRUD básico
     Route::get('/', [ProductController::class, 'index']);
@@ -57,49 +59,60 @@ Route::middleware('auth:sanctum')->prefix('products')->group(function () {
     Route::delete('{product}', [ProductController::class, 'destroy']);
 });
 
-
-
 /* ============================================
-   ENTIDADES (CUSTOMERS & SUPPLIERS)
+   INVENTARIO
    ============================================ */
+Route::middleware('auth:sanctum')->prefix('inventory')->group(function () {
+    // Estáticas/“palabras” primero
+    Route::get('statistics/global', [InventoryController::class, 'globalStatistics']);
+    Route::get('alerts/low-stock', [InventoryController::class, 'lowStockAlert']);
+    Route::get('alerts/out-of-stock', [InventoryController::class, 'outOfStockAlert']);
+
+    // Listado y alta
+    Route::get('/', [InventoryController::class, 'index']);
+    Route::post('/', [InventoryController::class, 'store']);
+    Route::post('bulk-assign', [InventoryController::class, 'bulkAssign']);
+
+    // Dinámicas al final + constraints numéricos
+    Route::get('{product}/{warehouse}', [InventoryController::class, 'show'])
+        ->whereNumber('product')->whereNumber('warehouse');
+
+    Route::match(['put', 'patch'], '{product}/{warehouse}', [InventoryController::class, 'update'])
+        ->whereNumber('product')->whereNumber('warehouse');
+
+    Route::delete('{product}/{warehouse}', [InventoryController::class, 'destroy'])
+        ->whereNumber('product')->whereNumber('warehouse');
+});
+
+/* ENTIDADES (CUSTOMERS & SUPPLIERS) */
 Route::middleware('auth:sanctum')->prefix('entities')->group(function () {
-    // Rutas especiales PRIMERO (antes del CRUD para evitar conflictos)
     Route::get('search', [EntityController::class, 'search']);
     Route::get('find-by-document', [EntityController::class, 'findByDocument']);
     Route::patch('{entity}/deactivate', [EntityController::class, 'deactivate']);
     Route::patch('{entity}/activate', [EntityController::class, 'activate']);
 
-    // CRUD básico
     Route::get('/', [EntityController::class, 'index']);
     Route::post('/', [EntityController::class, 'store']);
     Route::get('{entity}', [EntityController::class, 'show']);
     Route::match(['put', 'patch'], '{entity}', [EntityController::class, 'update']);
     Route::delete('{entity}', [EntityController::class, 'destroy']);
 
-    // Direcciones de una entidad específica
     Route::prefix('{entity}/addresses')->group(function () {
         Route::get('/', [AddressController::class, 'index']);
         Route::post('/', [AddressController::class, 'store']);
     });
 });
 
-/* ============================================
-   DIRECCIONES
-   ============================================ */
+/* DIRECCIONES */
 Route::middleware('auth:sanctum')->prefix('addresses')->group(function () {
-    // Rutas especiales PRIMERO
     Route::patch('{address}/set-default', [AddressController::class, 'setDefault']);
-
-    // CRUD básico
     Route::get('{address}', [AddressController::class, 'show']);
     Route::match(['put', 'patch'], '{address}', [AddressController::class, 'update']);
     Route::delete('{address}', [AddressController::class, 'destroy']);
 });
 
-/* ============================================
-   VALIDACIÓN SUNAT/RENIEC
-   ============================================ */
+/* VALIDACIÓN SUNAT/RENIEC */
 Route::middleware('auth:sanctum')->prefix('sunat')->group(function () {
     Route::get('validate/{tipo}/{numero}', [SunatController::class, 'validateDocument'])
-        ->middleware('throttle:10,1'); // Límite: 10 peticiones por minuto
+        ->middleware('throttle:10,1');
 });
