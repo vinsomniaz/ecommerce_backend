@@ -28,10 +28,6 @@ return new class extends Migration
             $table->string('unit_measure', 10)->default('NIU'); // ← CAMBIO: renombrado
             $table->string('tax_type', 2)->default('10'); // ← CAMBIO: renombrado
 
-            // Precios (OBLIGATORIOS para el sistema)
-            $table->decimal('unit_price', 10, 2)->default(0); // ← CAMBIO: precisión aumentada
-            $table->decimal('cost_price', 10, 2)->default(0);
-
             // Stock y físicos
             $table->integer('min_stock')->default(5);
             $table->decimal('weight', 10, 2)->nullable(); // ← CAMBIO: nombre simplificado

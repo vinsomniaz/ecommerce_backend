@@ -36,8 +36,9 @@ class ProductController extends Controller
             'is_active',
             'is_featured',
             'visible_online',
-            'min_price',
-            'max_price',
+            'warehouse_id',
+            'with_stock',
+            'low_stock',
             'sort_by',
             'sort_order',
             'with_trashed'
@@ -50,7 +51,7 @@ class ProductController extends Controller
     }
 
     /**
-     * Crear un nuevo producto (SIN imágenes aquí)
+     * Crear un nuevo producto (SIN precios - se asignarán con compras)
      */
     public function store(StoreProductRequest $request): JsonResponse
     {
@@ -59,7 +60,7 @@ class ProductController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Producto creado exitosamente. Use el endpoint /products/{id}/images para agregar imágenes.',
+                'message' => 'Producto creado exitosamente. Los precios se asignarán al registrar compras.',
                 'data' => new ProductResource($product->fresh()),
             ], 201);
 
@@ -82,9 +83,9 @@ class ProductController extends Controller
     /**
      * Ver detalles de un producto
      */
-    public function show(Product $product): JsonResponse
+    public function show(Product $product, Request $request): JsonResponse
     {
-        $product->load(['media']);
+        $product->load(['media', 'category']);
 
         return response()->json([
             'success' => true,
@@ -120,6 +121,7 @@ class ProductController extends Controller
             ], 500);
         }
     }
+
     /**
      * Eliminar un producto (soft delete)
      */
@@ -233,15 +235,12 @@ class ProductController extends Controller
         }
     }
 
-
-
     /**
      * Subir imágenes a un producto
      */
     public function uploadImages(UploadProductImagesRequest $request, Product $product): JsonResponse
     {
         try {
-            // Obtener archivos del request validado
             $files = $request->file('images');
 
             if (!$files || !is_array($files)) {
@@ -275,7 +274,7 @@ class ProductController extends Controller
     }
 
     /**
-     * NUEVO: Eliminar una imagen específica
+     * Eliminar una imagen específica
      */
     public function deleteImage(Product $product, int $mediaId): JsonResponse
     {

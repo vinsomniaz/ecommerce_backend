@@ -14,24 +14,29 @@ return new class extends Migration
         Schema::create('purchase_details', function (Blueprint $table) {
             $table->id();
 
-            // Foreign Keys
             $table->foreignId('purchase_id')
                   ->constrained('purchases')
-                  ->onUpdate('restrict')
                   ->onDelete('cascade');
 
             $table->foreignId('product_id')
                   ->constrained('products')
-                  ->onUpdate('restrict')
                   ->onDelete('restrict');
 
-            // Details
+            // Cantidades
             $table->integer('quantity');
-            $table->decimal('unit_price', 12, 2);
-            $table->decimal('discount', 10, 2)->default(0.00);
-            $table->decimal('subtotal', 12, 2);
 
-            // Indexes
+            // Precios unitarios
+            $table->decimal('purchase_price', 10, 2); // Precio de compra
+            $table->decimal('distribution_price', 10, 2); // Precio distribución
+
+            // Subtotales
+            $table->decimal('subtotal', 12, 2);
+            $table->decimal('tax_amount', 12, 2);
+            $table->decimal('total', 12, 2);
+
+            $table->timestamps();
+
+            // Índices
             $table->index(['purchase_id', 'product_id']);
         });
     }
