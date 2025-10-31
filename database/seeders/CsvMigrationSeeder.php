@@ -10,6 +10,7 @@ use App\Models\Product;
 use App\Models\Warehouse;
 use App\Models\Purchase;
 use App\Models\User;
+use App\Models\Entity;
 use Illuminate\Support\Arr;
 
 class CsvMigrationSeeder extends Seeder
@@ -23,6 +24,17 @@ class CsvMigrationSeeder extends Seeder
     private $mapSubfamilias = [];
     private $mapProductos = [];
     private $mapAlmacenes = [];
+
+    /**
+     * Almacena el ID de la compra ficticia para asociar lotes
+     */
+    private $dummyPurchaseId;
+
+    /**
+     * Almacena los precios de costo/distribución por ID de producto nuevo
+     * Formato: [nuevo_product_id => ['purchase' => X, 'distribution' => Y]]
+     */
+    private $mapProductCosts = [];
 
     /**
      * Función helper para leer un CSV y devolverlo como un array asociativo
@@ -65,10 +77,13 @@ class CsvMigrationSeeder extends Seeder
         // Desactivamos llaves foráneas para la BD principal
         DB::statement('SET FOREIGN_KEY_CHECKS=0;');
 
-        // Truncamos las tablas para empezar de cero (opcional pero recomendado)
+        // Truncamos las tablas para empezar de cero
         Category::truncate();
         Product::truncate();
         Warehouse::truncate();
+        Purchase::truncate(); // <-- Limpiar compras
+        DB::table('purchase_details')->truncate(); // <-- Limpiar detalles
+        DB::table('purchase_batches')->truncate(); // <-- LIMPIAR NUEVA TABLA
         DB::table('inventory')->truncate();
 
         // Ejecutamos la importación en orden de dependencia
@@ -76,17 +91,18 @@ class CsvMigrationSeeder extends Seeder
         $this->importFamilias();
         $this->importSubfamilias();
         $this->importAlmacenes();
-        //$this->importProductos();
 
+        // --- LÓGICA DE PRECIOS Y STOCK ACTUALIZADA ---
 
-        // --- NUEVA LÓGICA ---
-        // 1. Creamos la compra ficticia ANTES de importar productos
-        $dummyPurchaseId = $this->createDummyPurchase();
+        // 1. Creamos la compra ficticia y guardamos su ID en la clase
+        $this->createDummyPurchase();
 
-        // 2. Importamos los productos y les asignamos los precios en la compra ficticia
-        $this->importProductos('productos.csv', $dummyPurchaseId);
+        // 2. Importamos productos y guardamos sus costos en $this->mapProductCosts
+        //    Ya no inserta en purchase_details.
+        $this->importProductos('productos.csv');
 
-        // 3. Importamos el stock
+        // 3. Importamos el stock (inventory) Y TAMBIÉN los lotes (purchase_batches)
+        //    usando los costos del mapa y el ID de la compra ficticia.
         $this->importInventario();
 
         // Reactivamos las llaves
@@ -94,7 +110,7 @@ class CsvMigrationSeeder extends Seeder
     }
 
 
-    private function createDummyPurchase(): int
+    private function createDummyPurchase(): void
     {
         $this->command->info('Creando Compra Ficticia...');
 
@@ -112,22 +128,37 @@ class CsvMigrationSeeder extends Seeder
             throw new \Exception('No se encontró almacén para la compra ficticia.');
         }
 
+        // Asumimos que existe un Supplier con ID 1 (o créalo si es necesario)
+        $supplier = Entity::firstOrCreate(
+            ['tipo_documento' => '06', 'numero_documento' => '99999999999'],
+            [
+                'type' => 'supplier',
+                'tipo_persona' => 'juridica',
+                'business_name' => 'PROVEEDOR GENÉRICO DE MIGRACIÓN',
+                'address' => 'S/N',
+                'user_id' => $firstUser->id,
+            ]
+        );
+
         $dummyPurchase = Purchase::create([
             'warehouse_id' => $firstWarehouseId,
             'user_id' => $firstUser->id,
-            'supplier_id' => 1,
-            'series' => 0,
-            'number' => 00,
+            'supplier_id' => $supplier->id, // Usar un supplier válido
+            'series' => 'MIG',
+            'number' => '0001',
             'date' => now(),
             'tax' => 0,
             'subtotal' => 0.00,
             'total' => 0.00,
-            'payment_status' => 'paid', // O el estado que corresponda
+            'payment_status' => 'paid',
         ]);
 
-        $this->command->info('Compra Ficticia creada con ID: ' . $dummyPurchase->id);
-        return $dummyPurchase->id;
+        // Guardamos el ID para usarlo en importInventario
+        $this->dummyPurchaseId = $dummyPurchase->id;
+
+        $this->command->info('Compra Ficticia creada con ID: ' . $this->dummyPurchaseId);
     }
+
     private function importCategorias()
     {
         $this->command->info('Importando Categorías...');
@@ -208,13 +239,13 @@ class CsvMigrationSeeder extends Seeder
         }
     }
 
-    private function importProductos(string $filename, int $dummyPurchaseId)
+    private function importProductos(string $filename)
     {
-        $this->command->info('Importando Productos...');
+        $this->command->info('Importando Productos y mapeando costos...');
         $data = $this->readCsv($filename);
 
-        $purchaseDetails = [];
-        $now = now();
+        // Ya no preparamos purchaseDetails
+        // $purchaseDetails = [];
 
         foreach ($data as $row) {
             $categoryId = $this->mapSubfamilias[$row['subfamilia_id']]
@@ -243,65 +274,88 @@ class CsvMigrationSeeder extends Seeder
             // Guardamos el mapeo del producto
             $this->mapProductos[$row['idproducto']] = $nueva->id;
 
-            // 2. Preparar el Detalle de Compra (para inserción masiva)
-            $purchaseDetails[] = [
-                'purchase_id' => $dummyPurchaseId,
-                'product_id' => $nueva->id,
-                'quantity' => 0, // 0 porque solo queremos registrar precios
-                'purchase_price' => $row['precio_compra'], // Precio de compra
-                'distribution_price' => $row['precio_distribucion'], // Asignamos precio distribución
-                'subtotal' => 0,
-                'tax_amount' => 0,
-                'total' => 0,
-                'created_at' => $now,
-                'updated_at' => $now,
+            // 2. Guardar los costos en el mapa temporal
+            $this->mapProductCosts[$nueva->id] = [
+                'purchase' => $row['precio_compra'] ?? 0.00,
+                'distribution' => $row['precio_distribucion'] ?? 0.00,
             ];
         }
 
-        // 3. Insertar todos los detalles de compra en un solo query
-        if (!empty($purchaseDetails)) {
-            DB::table('purchase_details')->insert($purchaseDetails);
-            $this->command->info(count($purchaseDetails) . ' precios de productos registrados en purchase_details.');
-        }
+        // 3. Ya no insertamos en purchase_details
+        $this->command->info(count($this->mapProductos) . ' productos creados y ' . count($this->mapProductCosts) . ' costos mapeados.');
     }
 
     private function importInventario()
     {
-        $this->command->info('Importando Inventario (stock)...');
-        $data = $this->readCsv('producto_tienda.csv'); // (original: producto_tienda)
+        $this->command->info('Importando Inventario (stock) y Lotes de Compra (batches)...');
+        $data = $this->readCsv('producto_tienda.csv');
 
         $inventarioParaInsertar = [];
+        $lotesParaInsertar = []; // <-- NUEVO: Array para lotes
         $now = now();
 
         foreach ($data as $row) {
             // Verificamos que el producto y el almacén existan en nuestros mapas
             if (isset($this->mapProductos[$row['producto_id']]) && isset($this->mapAlmacenes[$row['tienda_id']])) {
 
-                $precioCsv = $row['precio'] ?? null;
-                $salePrice = null; // Por defecto, será NULL si no es un número válido
+                // --- Datos base ---
+                $newProductId = $this->mapProductos[$row['producto_id']];
+                $newWarehouseId = $this->mapAlmacenes[$row['tienda_id']];
+                $stock = (int) $row['stock'];
 
-                // Verificamos que $precioCsv no sea null, ni un string vacío, 
-                // ni la palabra "NULL" (insensible a mayúsculas)
+                // --- Lógica de Precio de Venta (para inventory) ---
+                $precioCsv = $row['precio'] ?? null;
+                $salePrice = null;
                 if ($precioCsv !== null && $precioCsv !== '' && strcasecmp($precioCsv, 'NULL') !== 0) {
-                    // Si es un valor numérico válido, lo convertimos a float
                     $salePrice = (float) $precioCsv;
                 }
 
+                // 1. Preparar INVENTORY
                 $inventarioParaInsertar[] = [
-                    'product_id' => $this->mapProductos[$row['producto_id']],
-                    'warehouse_id' => $this->mapAlmacenes[$row['tienda_id']],
-                    'available_stock' => $row['stock'],
-                    'sale_price' => $salePrice,
+                    'product_id' => $newProductId,
+                    'warehouse_id' => $newWarehouseId,
+                    'available_stock' => $stock,
+                    'sale_price' => $salePrice, // Precio de VENTA
                     'reserved_stock' => 0,
                     'last_movement_at' => $now,
+                    'price_updated_at' => $salePrice ? $now : null,
+                ];
+
+                // 2. Preparar PURCHASE_BATCHES (NUEVO)
+
+                // Buscamos los costos que guardamos en el mapa
+                $costs = $this->mapProductCosts[$newProductId]
+                    ?? ['purchase' => 0.00, 'distribution' => 0.00];
+
+                $lotesParaInsertar[] = [
+                    'purchase_id' => $this->dummyPurchaseId, // ID de la compra ficticia
+                    'product_id' => $newProductId,
+                    'warehouse_id' => $newWarehouseId,
+                    'batch_code' => 'MIG-' . $newProductId . '-' . $newWarehouseId, // Generamos un código único
+                    'quantity_purchased' => $stock,
+                    'quantity_available' => $stock,
+                    'purchase_price' => $costs['purchase'],     // <-- Precio de Compra
+                    'distribution_price' => $costs['distribution'], // <-- Precio de Distribución
+                    'purchase_date' => $now,
+                    'expiry_date' => null,
+                    'status' => 'active',
+                    'created_at' => $now,
+                    'updated_at' => $now,
                 ];
             }
         }
 
-        // Usamos insert() para alta eficiencia en lugar de create() en un bucle
+        // Insertar en INVENTORY
         if (!empty($inventarioParaInsertar)) {
-            // Usamos el nombre de la tabla 'inventory' de tu migración
             DB::table('inventory')->insert($inventarioParaInsertar);
+            $this->command->info(count($inventarioParaInsertar) . ' registros de inventario creados.');
+        }
+
+        // Insertar en PURCHASE_BATCHES (NUEVO)
+        if (!empty($lotesParaInsertar)) {
+            // Usamos el nombre de la tabla 'purchase_batches' de tu migración
+            DB::table('purchase_batches')->insert($lotesParaInsertar);
+            $this->command->info(count($lotesParaInsertar) . ' lotes de compra (batches) creados.');
         }
     }
 }
