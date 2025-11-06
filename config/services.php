@@ -38,4 +38,8 @@ return [
     'apisperu' => [
         'token' => env('APISPERU_TOKEN'),
     ],
+
+    'gemini' => [
+        'api_key' => env('GEMINI_API_KEY'),
+    ],
 ];

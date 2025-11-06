@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\EntityController;
 use App\Http\Controllers\Api\SunatController;
 use App\Http\Controllers\Api\AddressController;
+use App\Http\Controllers\Api\GeminiController;
 
 /* CATEGORIAS */
 Route::prefix('categories')->middleware(['auth:sanctum'])->group(function () {
@@ -115,4 +116,12 @@ Route::middleware('auth:sanctum')->prefix('addresses')->group(function () {
 Route::middleware('auth:sanctum')->prefix('sunat')->group(function () {
     Route::get('validate/{tipo}/{numero}', [SunatController::class, 'validateDocument'])
         ->middleware('throttle:10,1');
+});
+
+/* GEMINI IA - GENERACIÓN DE CONTENIDO */
+Route::middleware('auth:sanctum')->prefix('gemini')->group(function () {
+    Route::post('/generate-product-info', [GeminiController::class, 'generateProductInfo']);
+    Route::post('/generate-batch', [GeminiController::class, 'generateBatch']);
+    Route::post('/warm-cache', [GeminiController::class, 'warmCache']);
+    Route::post('/clear-cache', [GeminiController::class, 'clearCache']);
 });
