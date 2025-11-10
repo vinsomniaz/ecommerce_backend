@@ -21,7 +21,7 @@ class AdjustmentOutRequest extends FormRequest
             'quantity' => 'required|integer|min:1',
             'reason' => [
                 'required',
-                Rule::in(['damaged', 'expired', 'lost', 'correction', 'sample', 'other'])
+                Rule::in(['sale','damaged', 'expired', 'lost', 'correction', 'sample', 'other'])
             ],
             'notes' => 'nullable|string|max:500',
         ];

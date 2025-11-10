@@ -82,7 +82,6 @@ class StockManagementService
                     'purchase_price' => $batch->purchase_price,
                     'distribution_price' => $batch->distribution_price,
                     'purchase_date' => $batch->purchase_date,
-                    'expiry_date' => $batch->expiry_date,
                     'status' => 'active',
                     'notes' => "Trasladado desde {$fromWarehouse->name}",
                 ]);
@@ -179,9 +178,8 @@ class StockManagementService
         float $unitCost,
         string $reason,
         ?string $notes = null,
-        ?string $expiryDate = null
     ): array {
-        return DB::transaction(function () use ($productId, $warehouseId, $quantity, $unitCost, $reason, $notes, $expiryDate) {
+        return DB::transaction(function () use ($productId, $warehouseId, $quantity, $unitCost, $reason, $notes) {
 
             $product = Product::findOrFail($productId);
             $warehouse = Warehouse::findOrFail($warehouseId);
@@ -199,7 +197,6 @@ class StockManagementService
                 'purchase_price' => $unitCost,
                 'distribution_price' => $unitCost,
                 'purchase_date' => now()->toDateString(),
-                'expiry_date' => $expiryDate,
                 'status' => 'active',
                 'notes' => "Ajuste manual: {$reason}",
             ]);
@@ -378,7 +375,6 @@ class StockManagementService
                     'purchase_price' => $batch->purchase_price,
                     'distribution_price' => $batch->distribution_price,
                     'purchase_date' => $batch->purchase_date->format('Y-m-d'),
-                    'expiry_date' => $batch->expiry_date?->format('Y-m-d'),
                     'total_value' => $batch->quantity_available * $batch->distribution_price,
                 ];
             });

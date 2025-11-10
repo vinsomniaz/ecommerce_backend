@@ -83,9 +83,8 @@ class StockManagementController extends Controller
             'warehouse_id' => 'required|exists:warehouses,id',
             'quantity' => 'required|integer|min:1',
             'unit_cost' => 'required|numeric|min:0',
-            'reason' => ['required', Rule::in(['manual_entry', 'found_stock', 'correction', 'return', 'other'])],
+            'reason' => ['required', Rule::in(['purchase','manual_entry', 'found_stock', 'correction', 'return', 'other'])],
             'notes' => 'nullable|string|max:500',
-            'expiry_date' => 'nullable|date|after:today',
         ]);
 
         try {
@@ -96,7 +95,6 @@ class StockManagementController extends Controller
                 $validated['unit_cost'],
                 $validated['reason'],
                 $validated['notes'] ?? null,
-                $validated['expiry_date'] ?? null
             );
 
             return response()->json([
@@ -133,7 +131,7 @@ class StockManagementController extends Controller
             'product_id' => 'required|exists:products,id',
             'warehouse_id' => 'required|exists:warehouses,id',
             'quantity' => 'required|integer|min:1',
-            'reason' => ['required', Rule::in(['damaged', 'expired', 'lost', 'correction', 'sample', 'other'])],
+            'reason' => ['required', Rule::in(['sale','damaged', 'expired', 'lost', 'correction', 'sample', 'other'])],
             'notes' => 'nullable|string|max:500',
         ]);
 

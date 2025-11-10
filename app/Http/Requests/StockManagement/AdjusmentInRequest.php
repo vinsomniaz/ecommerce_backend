@@ -22,7 +22,7 @@ class AdjustmentInRequest extends FormRequest
             'unit_cost' => 'required|numeric|min:0|max:999999.99',
             'reason' => [
                 'required',
-                Rule::in(['manual_entry', 'found_stock', 'correction', 'return', 'other'])
+                Rule::in(['purchase','manual_entry', 'found_stock', 'correction', 'return', 'other'])
             ],
             'notes' => 'nullable|string|max:500',
             'expiry_date' => 'nullable|date|after:today',

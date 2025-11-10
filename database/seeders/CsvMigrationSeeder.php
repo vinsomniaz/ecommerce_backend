@@ -335,7 +335,6 @@ class CsvMigrationSeeder extends Seeder
                     'purchase_price' => $costs['purchase'],     // <-- Precio de Compra
                     'distribution_price' => $costs['distribution'], // <-- Precio de Distribución
                     'purchase_date' => $now,
-                    'expiry_date' => null,
                     'status' => 'active',
                     'created_at' => $now,
                     'updated_at' => $now,
