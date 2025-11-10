@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\EntityController;
 use App\Http\Controllers\Api\SunatController;
 use App\Http\Controllers\Api\AddressController;
-use App\Http\Controllers\Api\GeminiController;
+use App\Http\Controllers\Api\StockManagementController;
 
 /* CATEGORIAS */
 Route::prefix('categories')->middleware(['auth:sanctum'])->group(function () {
@@ -104,6 +104,26 @@ Route::middleware('auth:sanctum')->prefix('entities')->group(function () {
     });
 });
 
+/* ============================================
+   GESTIÓN DE STOCK (MANUAL)
+   ============================================ */
+Route::middleware('auth:sanctum')->prefix('stock')->group(function () {
+
+    // Traslado entre almacenes
+    Route::post('transfer', [StockManagementController::class, 'transfer']);
+
+    // Ajustes de inventario
+    Route::post('adjustment/in', [StockManagementController::class, 'adjustmentIn']);
+    Route::post('adjustment/out', [StockManagementController::class, 'adjustmentOut']);
+
+    // Consultas
+    Route::get('batches', [StockManagementController::class, 'availableBatches']);
+    Route::get('movements/product/{productId}', [StockManagementController::class, 'productMovements']);
+
+    // Sincronización
+    Route::post('sync', [StockManagementController::class, 'syncInventory']);
+});
+
 /* DIRECCIONES */
 Route::middleware('auth:sanctum')->prefix('addresses')->group(function () {
     Route::patch('{address}/set-default', [AddressController::class, 'setDefault']);
@@ -116,12 +136,4 @@ Route::middleware('auth:sanctum')->prefix('addresses')->group(function () {
 Route::middleware('auth:sanctum')->prefix('sunat')->group(function () {
     Route::get('validate/{tipo}/{numero}', [SunatController::class, 'validateDocument'])
         ->middleware('throttle:10,1');
-});
-
-/* GEMINI IA - GENERACIÓN DE CONTENIDO */
-Route::middleware('auth:sanctum')->prefix('gemini')->group(function () {
-    Route::post('/generate-product-info', [GeminiController::class, 'generateProductInfo']);
-    Route::post('/generate-batch', [GeminiController::class, 'generateBatch']);
-    Route::post('/warm-cache', [GeminiController::class, 'warmCache']);
-    Route::post('/clear-cache', [GeminiController::class, 'clearCache']);
 });
