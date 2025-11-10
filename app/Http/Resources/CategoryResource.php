@@ -23,7 +23,10 @@ class CategoryResource extends JsonResource
             'parent_id' => $this->parent_id,
             'order' => $this->order,
             'is_active' => $this->is_active,
-
+            'products_count' => $this->when(
+                isset($this->products_count),
+                $this->products_count ?? 0
+            ),
             // Relación con padre (solo info básica)
             'parent' => $this->whenLoaded('parent', function () {
                 return [
