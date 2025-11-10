@@ -19,7 +19,17 @@ class ProductResource extends JsonResource
             'primary_name' => $this->primary_name,
             'secondary_name' => $this->secondary_name,
             'description' => $this->description,
-            'category_id' => $this->category_id,
+            'category' => $this->when($this->relationLoaded('category'), function () {
+                return $this->category ? [
+                    'id' => $this->category->id,
+                    'name' => $this->category->name,
+                    'slug' => $this->category->slug,
+                    'level' => $this->category->level,
+                    'parent_id' => $this->category->parent_id,
+                    'is_active' => $this->category->is_active,
+                ] : null;
+            }),
+
             'brand' => $this->brand,
             'unit_measure' => $this->unit_measure,
             'tax_type' => $this->tax_type,

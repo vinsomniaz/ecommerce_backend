@@ -28,22 +28,24 @@ class CategoryService
 
         // Crear cache key basado en los filtros
         $cacheKey = "categories_" . md5(serialize([
-            $perPage, $search, $level, $parentId, $isActive,
+            $perPage,
+            $search,
+            $level,
+            $parentId,
+            $isActive,
             $request->query('page', 1)
         ]));
 
         // Laravel 12: Cache asíncrono para mejor performance
-        return Cache::remember($cacheKey, now()->addMinutes(10), function () use (
-            $perPage, $search, $level, $parentId, $isActive
-        ) {
+        return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($perPage, $search, $level, $parentId, $isActive) {
             $query = Category::query();
 
             // Filtro por búsqueda
             if ($search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('description', 'like', "%{$search}%")
-                      ->orWhere('slug', 'like', "%{$search}%");
+                        ->orWhere('description', 'like', "%{$search}%")
+                        ->orWhere('slug', 'like', "%{$search}%");
                 });
             }
 
@@ -67,11 +69,17 @@ class CategoryService
             }
 
             // Eager loading optimizado
-            return $query->with(['parent', 'children'])
-                  ->withCount('children')
-                  ->orderBy('order')
-                  ->orderBy('name')
-                  ->paginate($perPage);
+            return $query->with([
+                'parent',
+                'children' => function ($q) {
+                    $q->withCount('products'); // 🔥 Contar productos en hijos también
+                }
+            ])
+                ->withCount('children')
+                ->withCount('products') // 🔥 NUEVO: Contar productos de la categoría
+                ->orderBy('order')
+                ->orderBy('name')
+                ->paginate($perPage);
         });
     }
 
@@ -127,9 +135,11 @@ class CategoryService
             }
 
             // Validar nombre único en mismo nivel/padre
-            if (Category::where('name', $data['name'])
-                ->where('parent_id', $data['parent_id'])
-                ->exists()) {
+            if (
+                Category::where('name', $data['name'])
+                    ->where('parent_id', $data['parent_id'])
+                    ->exists()
+            ) {
                 throw new CategoryValidationException(
                     'Ya existe una categoría con ese nombre en el mismo nivel',
                     ['name' => ['El nombre ya está en uso']]
@@ -178,10 +188,12 @@ class CategoryService
 
             // Validar nombre único si cambió
             if (isset($data['name']) && $data['name'] !== $category->name) {
-                if (Category::where('name', $data['name'])
-                    ->where('parent_id', $category->parent_id)
-                    ->where('id', '!=', $id)
-                    ->exists()) {
+                if (
+                    Category::where('name', $data['name'])
+                        ->where('parent_id', $category->parent_id)
+                        ->where('id', '!=', $id)
+                        ->exists()
+                ) {
                     throw new CategoryValidationException(
                         'Ya existe una categoría con ese nombre',
                         ['name' => ['El nombre ya está en uso']]
@@ -191,9 +203,11 @@ class CategoryService
 
             // Validar slug único si cambió
             if (isset($data['slug']) && $data['slug'] !== $category->slug) {
-                if (Category::where('slug', $data['slug'])
-                    ->where('id', '!=', $id)
-                    ->exists()) {
+                if (
+                    Category::where('slug', $data['slug'])
+                        ->where('id', '!=', $id)
+                        ->exists()
+                ) {
                     throw new CategoryValidationException(
                         'El slug ya está en uso',
                         ['slug' => ['El slug debe ser único']]

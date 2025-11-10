@@ -26,7 +26,7 @@ class ProductImageSeeder extends Seeder
 
         if (($handle = fopen($path, 'r')) !== false) {
             // Usamos coma como delimitador para productos.csv
-            while (($row = fgetcsv($handle, 2000, ',')) !== false) { 
+            while (($row = fgetcsv($handle, 2000, ',')) !== false) {
                 if (!$header) {
                     $header = array_map(fn($h) => trim($h, "\"\r\n"), $row); // Limpia cabeceras
                 } else {
@@ -50,7 +50,7 @@ class ProductImageSeeder extends Seeder
         $this->command->info('Iniciando Seeder de Imágenes de Productos...');
 
         // 1. Definir la ruta fuente donde el usuario debe colocar las imágenes
-        $sourceImagePath = database_path('data/images'); 
+        $sourceImagePath = database_path('data/images');
 
         if (!File::exists($sourceImagePath)) {
             $this->command->error("Directorio fuente de imágenes no encontrado.");
@@ -62,14 +62,14 @@ class ProductImageSeeder extends Seeder
         // 2. Limpiar la colección de medios existente
         $this->command->info('Limpiando base de datos de medios "images" existente...');
         DB::table('media')->where('model_type', 'App\Models\Product')->where('collection_name', 'images')->delete();
-        
+
         // Limpiamos el directorio de destino (el *root* del disco 'public')
         $destinationPath = storage_path('app/public');
-        
+
         if (File::exists($destinationPath)) {
             // Obtenemos todos los directorios dentro de storage/app/public
             $directories = File::directories($destinationPath);
-            
+
             foreach ($directories as $directory) {
                 // Borramos solo los directorios que son numéricos (los IDs de media)
                 // y el directorio 'images' que mi seeder anterior pudo haber creado
@@ -87,7 +87,7 @@ class ProductImageSeeder extends Seeder
 
         // 3. Leer el CSV de productos
         $productosCsv = $this->readCsv('productos.csv');
-        
+
         $count = 0;
         $notFound = 0;
 
@@ -99,14 +99,14 @@ class ProductImageSeeder extends Seeder
 
             // 4. Encontrar el producto por el SKU generado en CsvMigrationSeeder
             $sku = $row['codigo'] ?? 'MIG-' . $row['idproducto'];
-            
+
             $product = Product::where('sku', $sku)->first();
 
             if (!$product) {
                 $this->command->warn("Producto no encontrado con SKU: $sku (ID Antiguo: {$row['idproducto']})");
                 continue;
             }
-            
+
             // 5. Preparar la ruta de la imagen
             // La CSV tiene "images/IMAGEN.jpg". Extraemos solo "IMAGEN.jpg".
             $imageName = basename($row['image_url']);
@@ -117,10 +117,10 @@ class ProductImageSeeder extends Seeder
                 try {
                     // Añadir el archivo a la colección de medios
                     $product->addMedia($sourceFile)
-                        ->preservingOriginal() 
+                        ->preservingOriginal()
                         ->usingName($product->primary_name)
                         ->usingFileName($imageName)
-                        
+
                         // --- ¡AQUÍ ESTÁ LA MODIFICACIÓN! ---
                         ->withCustomProperties([
                             'is_primary' => true,

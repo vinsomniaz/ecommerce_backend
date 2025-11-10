@@ -51,7 +51,7 @@ class CsvMigrationSeeder extends Seeder
         $data = [];
 
         if (($handle = fopen($path, 'r')) !== false) {
-            // Asumimos punto y coma (;) como delimitador común de exportación, 
+            // Asumimos punto y coma (;) como delimitador común de exportación,
             // si usas comas (,) cambia el primer parámetro de fgetcsv a ','
             while (($row = fgetcsv($handle, 1000, ',')) !== false) {
                 if (!$header) {
@@ -167,13 +167,12 @@ class CsvMigrationSeeder extends Seeder
         foreach ($data as $row) {
             $nueva = Category::create([
                 'name' => $row['nombre'],
-                'slug' => Str::slug($row['nombre']),
+                'slug' => $this->generateUniqueSlug($row['nombre']), // <-- Aquí
                 'level' => 1,
                 'is_active' => 1,
                 'parent_id' => null
             ]);
 
-            // Guardamos el mapeo de IDs
             $this->mapCategorias[$row['idcategoria']] = $nueva->id;
         }
     }
@@ -186,10 +185,9 @@ class CsvMigrationSeeder extends Seeder
         foreach ($data as $row) {
             $nueva = Category::create([
                 'name' => $row['nombre'],
-                'slug' => Str::slug($row['nombre']),
+                'slug' => $this->generateUniqueSlug($row['nombre']), // <-- Aquí
                 'level' => 2,
                 'is_active' => 1,
-                // Usamos el mapeo para asignar el 'parent_id' correcto
                 'parent_id' => $this->mapCategorias[$row['categoria_id']] ?? null
             ]);
 
@@ -205,7 +203,7 @@ class CsvMigrationSeeder extends Seeder
         foreach ($data as $row) {
             $nueva = Category::create([
                 'name' => $row['nombre'],
-                'slug' => Str::slug($row['nombre']),
+                'slug' => $this->generateUniqueSlug($row['nombre']), // <-- Aquí
                 'level' => 3,
                 'is_active' => 1,
                 'parent_id' => $this->mapFamilias[$row['familia_id']] ?? null
@@ -214,7 +212,6 @@ class CsvMigrationSeeder extends Seeder
             $this->mapSubfamilias[$row['idsubfamilia']] = $nueva->id;
         }
     }
-
     private function importAlmacenes()
     {
         $this->command->info('Importando Almacenes (desde tiendas)...');
@@ -255,10 +252,11 @@ class CsvMigrationSeeder extends Seeder
 
             if (is_null($categoryId)) {
                 $categoryId = Arr::first($this->mapCategorias);
-                if (!$categoryId) continue;
+                if (!$categoryId)
+                    continue;
             }
 
-            // 1. Crear el Producto 
+            // 1. Crear el Producto
             $nueva = Product::create([
                 'primary_name' => $row['nombre'],
                 'brand' => $row['marca'],
@@ -357,5 +355,19 @@ class CsvMigrationSeeder extends Seeder
             DB::table('purchase_batches')->insert($lotesParaInsertar);
             $this->command->info(count($lotesParaInsertar) . ' lotes de compra (batches) creados.');
         }
+    }
+
+    private function generateUniqueSlug(string $name): string
+    {
+        $baseSlug = Str::slug($name);
+        $slug = $baseSlug;
+        $counter = 1;
+
+        while (Category::where('slug', $slug)->exists()) {
+            $slug = $baseSlug . '-' . $counter;
+            $counter++;
+        }
+
+        return $slug;
     }
 }
