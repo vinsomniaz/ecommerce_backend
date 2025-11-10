@@ -1,0 +1,236 @@
+<?php
+// app/Services/ProductService.php
+
+namespace App\Services;
+
+use App\Models\Product;
+use App\Models\Category;
+use Illuminate\Pagination\LengthAwarePaginator;
+
+
+
+class EcommerceService
+{
+
+
+    /**
+     * Obtener productos con filtros (ACTUALIZADO para sistema de lotes)
+     */
+    public function getFiltered(array $filters, int $perPage = 15): LengthAwarePaginator
+    {
+        $query = Product::query()->with(['category', 'media', 'firstWarehouseInventory']);
+
+        if (!empty($filters['search'])) {
+            $search = $filters['search'];
+            $query->where(function ($q) use ($search) {
+                $q->where('primary_name', 'like', "%{$search}%")
+                    ->orWhere('secondary_name', 'like', "%{$search}%")
+                    ->orWhere('sku', 'like', "%{$search}%")
+                    ->orWhere('brand', 'like', "%{$search}%")
+                    ->orWhere('barcode', 'like', "%{$search}%");
+            });
+        }
+
+        if (!empty($filters['category_id'])) {
+            // 1. $filters['category_id'] llega como string '42' o '42,43,44'
+            $selectedCategoryIds = explode(',', $filters['category_id']);
+
+            $allCategoryIds = collect();
+
+            // 2. Buscar las categorías y sus descendientes (hijos y nietos)
+            // Usamos with('children.children') similar a como lo hace tu CategoryService
+            $rootCategories = Category::whereIn('id', $selectedCategoryIds)
+                ->with('children.children')
+                ->get();
+
+            // 3. Recolectar todos los IDs (padres, hijos y nietos)
+            foreach ($rootCategories as $category) {
+                // Agregar el ID de la categoría seleccionada (ej. Nivel 2 "Cases")
+                $allCategoryIds->push($category->id);
+
+                foreach ($category->children as $child) {
+                    // Agregar el ID del hijo (ej. Nivel 3 "Cases ATX")
+                    $allCategoryIds->push($child->id);
+
+                    // Agregar los IDs de los nietos (si los hubiera)
+                    foreach ($child->children as $grandChild) {
+                        $allCategoryIds->push($grandChild->id);
+                    }
+                }
+            }
+
+            // 4. Obtener IDs únicos y aplicar el filtro
+            $finalIds = $allCategoryIds->unique()->values();
+
+            if ($finalIds->isNotEmpty()) {
+                $query->whereIn('category_id', $finalIds);
+            }
+        }
+
+        if (!empty($filters['brand'])) {
+            $query->where('brand', $filters['brand']);
+        }
+
+        if (isset($filters['is_active'])) {
+            $query->where('is_active', $filters['is_active']);
+        }
+
+        if (isset($filters['is_featured'])) {
+            $query->where('is_featured', $filters['is_featured']);
+        }
+
+        if (isset($filters['visible_online'])) {
+            $query->where('visible_online', $filters['visible_online']);
+        }
+
+        // Asignamos 0 si min_price no viene (el bug del frontend)
+        $minPrice = $filters['min_price'] ?? 0;
+
+        // maxPrice puede ser null si el frontend lo omite (cuando es 5000)
+        $maxPrice = $filters['max_price'] ?? null;
+
+        // 1. REGLA DE INCLUSIÓN:
+        // Debe tener AL MENOS UN inventario DENTRO del rango [min, max].
+        // Si maxPrice es null, solo filtra por minPrice.
+        $query->whereHas('firstWarehouseInventory', function ($q) use ($minPrice, $maxPrice) {
+
+        // Aplicar filtro de precio mínimo
+        // (Nota: minPrice es 0 por defecto, así que esto incluirá 0.00)
+        $q->where('sale_price', '>=', $minPrice);
+
+        // Aplicar filtro de precio máximo (solo si se proporciona)
+        if ($maxPrice !== null) {
+            $q->where('sale_price', '<=', $maxPrice);
+        }
+    });
+
+        // 2. REGLA DE EXCLUSIÓN:
+        // Se aplica solo si se envió un precio máximo.
+        if ($maxPrice !== null) {
+            // NO DEBE TENER NINGÚN inventario (que no sea 0)
+            // por ENCIMA del precio máximo.
+            $query->whereDoesntHave('inventory', function ($q) use ($maxPrice) {
+                $q->where('sale_price', '>', $maxPrice)
+                    ->where('sale_price', '!=', 0); // Excluimos 0.00
+            });
+        }
+
+        // Filtrar por almacén específico
+        if (!empty($filters['warehouse_id'])) {
+            $query->whereHas('inventory', function ($q) use ($filters) {
+                $q->where('warehouse_id', $filters['warehouse_id']);
+            });
+        }
+
+        // Filtrar productos con stock
+        if (!empty($filters['with_stock'])) {
+            $query->whereHas('inventory', function ($q) {
+                $q->where('available_stock', '>', 0);
+            });
+        }
+
+        // Filtrar productos con stock bajo
+        if (!empty($filters['low_stock'])) {
+            $query->whereHas('inventory', function ($q) {
+                $q->whereColumn('available_stock', '<=', 'products.min_stock');
+            });
+        }
+
+        $sortBy = $filters['sort_by'] ?? 'created_at';
+        $sortOrder = $filters['sort_order'] ?? 'desc';
+
+        // Validar que el campo de ordenamiento existe
+        $allowedSortFields = ['created_at', 'updated_at', 'primary_name', 'sku', 'brand'];
+        if (in_array($sortBy, $allowedSortFields)) {
+            $query->orderBy($sortBy, $sortOrder);
+        }
+
+        if (!empty($filters['with_trashed'])) {
+            $query->withTrashed();
+        }
+
+        return $query->paginate($perPage);
+    }
+
+
+
+    // ==================== MÉTODOS PRIVADOS ====================
+
+    /**
+     * Verificar si el producto tiene transacciones
+     */
+    private function hasTransactions(Product $product): bool
+    {
+        try {
+            // Verificar movimientos de stock
+            if (method_exists($product, 'stockMovements') && $product->stockMovements()->exists()) {
+                return true;
+            }
+
+            // Verificar lotes de compra
+            if (method_exists($product, 'purchaseBatches') && $product->purchaseBatches()->exists()) {
+                return true;
+            }
+
+            // Verificar inventario con stock
+            if ($product->inventory()->where('available_stock', '>', 0)->exists()) {
+                return true;
+            }
+        } catch (\Exception $e) {
+            // Tabla aún no existe
+        }
+
+        return false;
+    }
+
+    /**
+     * Generar SKU único
+     */
+    private function generateUniqueSku(): string
+    {
+        do {
+            $sku = 'PRD-' . strtoupper(uniqid());
+        } while (Product::where('sku', $sku)->exists());
+
+        return $sku;
+    }
+
+    /**
+     * Establecer valores por defecto
+     */
+    private function setDefaultValues(array $data): array
+    {
+        $defaults = [
+            'min_stock' => 5,
+            'unit_measure' => 'NIU',
+            'tax_type' => '10',
+            'is_active' => true,
+            'is_featured' => false,
+            'visible_online' => true,
+        ];
+
+        foreach ($defaults as $key => $value) {
+            if (!isset($data[$key])) {
+                $data[$key] = $value;
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Formatear bytes
+     */
+    private function formatBytes(int $bytes): string
+    {
+        $units = ['B', 'KB', 'MB', 'GB'];
+        $i = 0;
+
+        while ($bytes >= 1024 && $i < count($units) - 1) {
+            $bytes /= 1024;
+            $i++;
+        }
+
+        return round($bytes, 2) . ' ' . $units[$i];
+    }
+}

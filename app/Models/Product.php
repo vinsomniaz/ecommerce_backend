@@ -124,6 +124,13 @@ class Product extends Model implements HasMedia
         return $this->hasMany(Inventory::class);
     }
 
+    public function firstWarehouseInventory()
+    {
+        // Define una relación "HasOne" que se ordena por warehouse_id ascendente
+        // y toma el primero (el ID más bajo).
+        return $this->hasOne(Inventory::class)->orderBy('warehouse_id', 'asc');
+    }
+
     // ==================== ATRIBUTOS CALCULADOS ====================
 
     /**

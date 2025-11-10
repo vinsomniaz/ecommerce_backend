@@ -10,7 +10,44 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\EntityController;
 use App\Http\Controllers\Api\SunatController;
 use App\Http\Controllers\Api\AddressController;
+use App\Http\Controllers\Api\EcommerceController;
 
+/*
+|--------------------------------------------------------------------------
+| RUTAS PÚBLICAS (Para el E-commerce)
+|--------------------------------------------------------------------------
+|
+| Rutas de lectura (GET) que no requieren autenticación.
+|
+*/
+// --- AÑADE ESTE GRUPO DE RUTAS PARA LA TIENDA ---
+Route::prefix('ecommerce')->name('ecommerce/')->group(function () {
+    
+    // Ruta para la lista de productos: /api/ecommerce/products
+    Route::get('products', [EcommerceController::class, 'index'])
+         ->name('products.index');
+
+    // Ruta para el detalle del producto: /api/ecommerce/products/{product}
+    Route::get('products/{product}', [EcommerceController::class, 'show'])
+         ->name('products.show');
+         
+    // --- NUEVAS RUTAS DE CATEGORÍAS PÚBLICAS ---
+    Route::get('categories', [EcommerceController::class, 'listCategories'])
+         ->name('categories.list');
+         
+    Route::get('categories/tree', [EcommerceController::class, 'getCategoryTree'])
+         ->name('categories.tree');
+         
+    Route::get('categories/{id}', [EcommerceController::class, 'showCategory'])
+         ->name('categories.show');
+});
+
+/*
+|--------------------------------------------------------------------------
+| RUTAS PRIVADAS
+|--------------------------------------------------------------------------
+|
+*/
 /* CATEGORIAS */
 Route::prefix('categories')->middleware(['auth:sanctum'])->group(function () {
     Route::get('/', [CategoryController::class, 'index']);

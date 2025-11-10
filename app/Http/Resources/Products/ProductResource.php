@@ -34,6 +34,12 @@ class ProductResource extends JsonResource
             'average_cost' => $this->average_cost,
             'total_stock' => $this->total_stock,
 
+            //✅ Precio a mostrar en el Ecommerce
+            'display_price' => $this->whenLoaded(
+                'firstWarehouseInventory',
+                $this->firstWarehouseInventory?->sale_price ?? 0.0
+            ),
+
             // ✅ Precio de venta específico si se proporciona warehouse_id
             'sale_price' => $warehouseId
                 ? $this->getSalePriceForWarehouse($warehouseId)
