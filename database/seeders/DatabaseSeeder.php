@@ -17,8 +17,11 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             UserSeeder::class,
-            CountrySeeder::class, // NUEVO: Debe ir antes de UbigeoSeeder
-            UbigeoSeeder::class
+            CountrySeeder::class, // Debe ir antes de UbigeoSeeder
+            UbigeoSeeder::class,
+
+            CsvMigrationSeeder::class, // Primero crea los productos
+            ProductImageSeeder::class,
         ]);
     }
 }
