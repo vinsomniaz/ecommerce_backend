@@ -4,7 +4,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Resources\Ecommerce\EcommerceProductResource;
+use App\Http\Resources\Products\ProductResource;
 use App\Services\EcommerceService;
 use App\Models\Product;
 use Illuminate\Http\Request;
@@ -45,7 +45,7 @@ class EcommerceController extends Controller
         $perPage = $request->input('per_page', 15);
         $products = $this->ecommerceservice->getFiltered($filters, $perPage);
 
-        return EcommerceProductResource::collection($products);
+        return ProductResource::collection($products);
     }
 
     /**
@@ -62,7 +62,7 @@ class EcommerceController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => new EcommerceProductResource($product),
+            'data' => new ProductResource($product),
         ]);
     }
 
