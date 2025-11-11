@@ -36,6 +36,11 @@ class StoreProductRequest extends FormRequest
             'is_active' => 'boolean',
             'is_featured' => 'boolean',
             'visible_online' => 'boolean',
+
+            //ATRIBUTOS
+            'attributes' => 'nullable|array',
+            'attributes.*.name' => 'required|string|max:50',
+            'attributes.*.value' => 'required|string|max:200',
         ];
     }
 
@@ -49,6 +54,8 @@ class StoreProductRequest extends FormRequest
             'sku.unique' => 'Este SKU ya está registrado en el sistema',
             'sku.max' => 'El SKU no puede exceder 50 caracteres',
             'min_stock.min' => 'El stock mínimo debe ser mayor o igual a 0',
+            'attributes.*.name.required' => 'El nombre del atributo es obligatorio',
+            'attributes.*.value.required' => 'El valor del atributo es obligatorio',
         ];
     }
 

@@ -40,6 +40,17 @@ class ProductResource extends JsonResource
             'is_featured' => $this->is_featured,
             'visible_online' => $this->visible_online,
 
+            // ✅ ATRIBUTOS
+            'attributes' => $this->whenLoaded('attributes', function () {
+                return $this->attributes->map(function ($attr) {
+                    return [
+                        'id' => $attr->id,
+                        'name' => $attr->name,
+                        'value' => $attr->value,
+                    ];
+                });
+            }),
+
             // ✅ Atributos calculados (vienen del modelo)
             'average_cost' => $this->average_cost,
             'total_stock' => $this->total_stock,

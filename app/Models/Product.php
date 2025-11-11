@@ -3,6 +3,7 @@
 
 namespace App\Models;
 
+use App\Models\Supports\ProductAttribute;
 use App\Models\Supports\PurchaseBatch;
 use App\Models\Supports\StockMovement;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -59,11 +60,11 @@ class Product extends Model implements HasMedia
             ->dontLogIfAttributesChangedOnly(['updated_at'])
             ->setDescriptionForEvent(function (string $eventName) {
                 return match ($eventName) {
-                    'created'  => 'Producto creado',
-                    'updated'  => 'Producto actualizado',
-                    'deleted'  => 'Producto eliminado',
+                    'created' => 'Producto creado',
+                    'updated' => 'Producto actualizado',
+                    'deleted' => 'Producto eliminado',
                     'restored' => 'Producto restaurado',
-                    default    => "Producto {$eventName}",
+                    default => "Producto {$eventName}",
                 };
             });
     }
@@ -124,6 +125,10 @@ class Product extends Model implements HasMedia
         return $this->hasMany(Inventory::class);
     }
 
+    public function attributes()
+    {
+        return $this->hasMany(ProductAttribute::class);
+    }
     // ==================== ATRIBUTOS CALCULADOS ====================
 
     /**

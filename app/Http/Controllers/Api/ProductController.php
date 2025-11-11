@@ -61,7 +61,7 @@ class ProductController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Producto creado exitosamente. Los precios se asignarán al registrar compras.',
-                'data' => new ProductResource($product->fresh()),
+                'data' => new ProductResource($product->fresh(['attributes', 'category', 'media'])), // ✅ AGREGADO
             ], 201);
 
         } catch (ProductAlreadyExistsException $e) {
@@ -85,7 +85,7 @@ class ProductController extends Controller
      */
     public function show(Product $product, Request $request): JsonResponse
     {
-        $product->load(['media', 'category']);
+        $product->load(['media', 'category', 'attributes']); // ✅ AGREGADO 'attributes'
 
         return response()->json([
             'success' => true,

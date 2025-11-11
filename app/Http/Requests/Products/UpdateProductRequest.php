@@ -47,6 +47,9 @@ class UpdateProductRequest extends FormRequest
             'is_active' => ['sometimes', 'nullable', 'boolean'],
             'is_featured' => ['sometimes', 'nullable', 'boolean'],
             'visible_online' => ['sometimes', 'nullable', 'boolean'],
+            'attributes' => 'nullable|array',
+            'attributes.*.name' => 'required|string|max:50',
+            'attributes.*.value' => 'required|string|max:200',
         ];
     }
 

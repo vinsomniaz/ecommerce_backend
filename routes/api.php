@@ -2,6 +2,7 @@
 // routes/api.php
 
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\ProductAttributeController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\WarehouseController;
 use App\Http\Controllers\Api\InventoryController; // NUEVO
@@ -23,7 +24,7 @@ Route::prefix('categories')->middleware(['auth:sanctum'])->group(function () {
 });
 
 /* ALMACENES */
-Route::prefix('warehouses')->middleware(['auth:sanctum'])->group(function() {
+Route::prefix('warehouses')->middleware(['auth:sanctum'])->group(function () {
     Route::get('/', [WarehouseController::class, 'index']);
     Route::post('/', [WarehouseController::class, 'store']);
     Route::get('/{id}', [WarehouseController::class, 'show']);
@@ -58,6 +59,14 @@ Route::middleware('auth:sanctum')->prefix('products')->group(function () {
     Route::get('{product}', [ProductController::class, 'show']);
     Route::match(['put', 'patch'], '{product}', [ProductController::class, 'update']);
     Route::delete('{product}', [ProductController::class, 'destroy']);
+
+    Route::prefix('{product}/attributes')->group(function () {
+        Route::get('/', [ProductAttributeController::class, 'index']);
+        Route::post('/', [ProductAttributeController::class, 'store']);
+        Route::put('bulk', [ProductAttributeController::class, 'bulkUpdate']);
+        Route::put('{attribute}', [ProductAttributeController::class, 'update']);
+        Route::delete('{attribute}', [ProductAttributeController::class, 'destroy']);
+    });
 });
 
 /* ============================================
