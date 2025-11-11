@@ -24,8 +24,8 @@ return new class extends Migration
             $table->decimal('purchase_price', 10, 2);
             $table->decimal('distribution_price', 10, 2);
             $table->date('purchase_date');
-            $table->date('expiry_date')->nullable();
             $table->enum('status', ['active', 'inactive', 'depleted'])->default('active');
+            $table->text('notes')->nullable();
 
             $table->timestamps();
 
