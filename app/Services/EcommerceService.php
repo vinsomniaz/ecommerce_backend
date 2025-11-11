@@ -84,35 +84,40 @@ class EcommerceService
         }
 
         // Asignamos 0 si min_price no viene (el bug del frontend)
-        $minPrice = $filters['min_price'] ?? 0;
+        $minPrice = $filters['min_price'] ?? null;
 
         // maxPrice puede ser null si el frontend lo omite (cuando es 5000)
         $maxPrice = $filters['max_price'] ?? null;
 
-        // 1. REGLA DE INCLUSIÓN:
-        // Debe tener AL MENOS UN inventario DENTRO del rango [min, max].
-        // Si maxPrice es null, solo filtra por minPrice.
-        $query->whereHas('firstWarehouseInventory', function ($q) use ($minPrice, $maxPrice) {
+        if ($minPrice !== null || $maxPrice !== null) {
 
-        // Aplicar filtro de precio mínimo
-        // (Nota: minPrice es 0 por defecto, así que esto incluirá 0.00)
-        $q->where('sale_price', '>=', $minPrice);
+            // Si solo se envió max_price, minPrice debe ser 0 para el rango
+            $minPrice = $minPrice ?? 0;
 
-        // Aplicar filtro de precio máximo (solo si se proporciona)
-        if ($maxPrice !== null) {
-            $q->where('sale_price', '<=', $maxPrice);
-        }
-    });
+            // 1. REGLA DE INCLUSIÓN:
+            // Debe tener AL MENOS UN inventario DENTRO del rango [min, max].
+            $query->whereHas('firstWarehouseInventory', function ($q) use ($minPrice, $maxPrice) {
+                
+                // Aplicar filtro de precio mínimo
+                $q->where('sale_price', '>=', $minPrice);
 
-        // 2. REGLA DE EXCLUSIÓN:
-        // Se aplica solo si se envió un precio máximo.
-        if ($maxPrice !== null) {
-            // NO DEBE TENER NINGÚN inventario (que no sea 0)
-            // por ENCIMA del precio máximo.
-            $query->whereDoesntHave('inventory', function ($q) use ($maxPrice) {
-                $q->where('sale_price', '>', $maxPrice)
-                    ->where('sale_price', '!=', 0); // Excluimos 0.00
+                // Aplicar filtro de precio máximo (solo si se proporciona)
+                if ($maxPrice !== null) {
+                    $q->where('sale_price', '<=', $maxPrice);
+                }
             });
+
+            // 2. REGLA DE EXCLUSIÓN:
+            // Se aplica solo si se envió un precio máximo.
+            if ($maxPrice !== null) {
+                // NO DEBE TENER NINGÚN inventario (que no sea 0)
+                // por ENCIMA del precio máximo.
+                $query->whereDoesntHave('inventory', function ($q) use ($maxPrice) {
+                    $q->where('sale_price', '>', $maxPrice)
+                        ->where('sale_price', '!=', 0); // Excluimos 0.00
+                });
+            }
+        
         }
 
         // Filtrar por almacén específico
@@ -136,11 +141,11 @@ class EcommerceService
             });
         }
 
-        $sortBy = $filters['sort_by'] ?? 'created_at';
+        $sortBy = $filters['sort_by'] ?? 'id';
         $sortOrder = $filters['sort_order'] ?? 'desc';
 
         // Validar que el campo de ordenamiento existe
-        $allowedSortFields = ['created_at', 'updated_at', 'primary_name', 'sku', 'brand'];
+        $allowedSortFields = ['id', 'created_at', 'updated_at', 'primary_name', 'sku', 'brand'];
         if (in_array($sortBy, $allowedSortFields)) {
             $query->orderBy($sortBy, $sortOrder);
         }
