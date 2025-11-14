@@ -76,7 +76,8 @@ class EcommerceService
         }
 
         if (isset($filters['is_featured'])) {
-            $query->where('is_featured', $filters['is_featured']);
+            $isFeatured = filter_var($filters['is_featured'], FILTER_VALIDATE_BOOLEAN);
+            $query->where('is_featured', $isFeatured);
         }
 
         if (isset($filters['visible_online'])) {
@@ -97,7 +98,7 @@ class EcommerceService
             // 1. REGLA DE INCLUSIÓN:
             // Debe tener AL MENOS UN inventario DENTRO del rango [min, max].
             $query->whereHas('firstWarehouseInventory', function ($q) use ($minPrice, $maxPrice) {
-                
+
                 // Aplicar filtro de precio mínimo
                 $q->where('sale_price', '>=', $minPrice);
 
@@ -117,7 +118,6 @@ class EcommerceService
                         ->where('sale_price', '!=', 0); // Excluimos 0.00
                 });
             }
-        
         }
 
         // Filtrar por almacén específico

@@ -37,6 +37,7 @@ class EcommerceController extends Controller
             'low_stock',
             'sort_by',
             'sort_order',
+            'is_featured',
             'with_trashed',
             'min_price', // <-- CORREGIDO
             'max_price'  // <-- CORREGIDO
