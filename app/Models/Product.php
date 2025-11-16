@@ -79,18 +79,21 @@ class Product extends Model implements HasMedia
             ->height(150)
             ->sharpen(10)
             ->quality(85)
+            ->nonQueued() // ⚠️ IMPORTANTE: Genera inmediatamente
             ->performOnCollections('images');
 
         $this->addMediaConversion('medium')
             ->width(600)
             ->height(600)
             ->quality(85)
+            ->nonQueued() // ⚠️ IMPORTANTE: Genera inmediatamente
             ->performOnCollections('images');
 
         $this->addMediaConversion('large')
             ->width(1200)
             ->height(1200)
             ->quality(85)
+            ->nonQueued() // ⚠️ IMPORTANTE: Genera inmediatamente
             ->performOnCollections('images');
     }
 
