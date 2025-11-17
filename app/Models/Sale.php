@@ -17,6 +17,7 @@ class Sale extends Model
         'order_id',
         'customer_id',
         'warehouse_id',
+        'sale_type', // ⭐ NUEVO
         'date',
         'currency',
         'exchange_rate',
@@ -112,7 +113,7 @@ class Sale extends Model
     // Accessors
     public function getPaymentStatusNameAttribute(): string
     {
-        return match($this->payment_status) {
+        return match ($this->payment_status) {
             'pending' => 'Pendiente',
             'partial' => 'Parcial',
             'paid' => 'Pagado',
@@ -122,7 +123,7 @@ class Sale extends Model
 
     public function getPaymentStatusColorAttribute(): string
     {
-        return match($this->payment_status) {
+        return match ($this->payment_status) {
             'pending' => 'error',
             'partial' => 'warning',
             'paid' => 'success',

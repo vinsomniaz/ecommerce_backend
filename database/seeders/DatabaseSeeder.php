@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
+            RoleSeeder::class,
             UserSeeder::class,
             CountrySeeder::class, // Debe ir antes de UbigeoSeeder
             UbigeoSeeder::class,

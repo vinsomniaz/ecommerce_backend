@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\SunatController;
 use App\Http\Controllers\Api\AddressController;
 use App\Http\Controllers\Api\StockManagementController;
 use App\Http\Controllers\Api\EcommerceController;
+use App\Http\Controllers\Api\GeminiController;
 
 /*
 |--------------------------------------------------------------------------
@@ -24,7 +25,7 @@ use App\Http\Controllers\Api\EcommerceController;
 */
 // --- AÑADE ESTE GRUPO DE RUTAS PARA LA TIENDA ---
 Route::prefix('ecommerce')->name('ecommerce/')->group(function () {
-    
+
     // Ruta para la lista de productos: /api/ecommerce/products
     Route::get('products', [EcommerceController::class, 'index'])
          ->name('products.index');
@@ -32,14 +33,14 @@ Route::prefix('ecommerce')->name('ecommerce/')->group(function () {
     // Ruta para el detalle del producto: /api/ecommerce/products/{product}
     Route::get('products/{product}', [EcommerceController::class, 'show'])
          ->name('products.show');
-         
+
     // --- NUEVAS RUTAS DE CATEGORÍAS PÚBLICAS ---
     Route::get('categories', [EcommerceController::class, 'listCategories'])
          ->name('categories.list');
-         
+
     Route::get('categories/tree', [EcommerceController::class, 'getCategoryTree'])
          ->name('categories.tree');
-         
+
     Route::get('categories/{id}', [EcommerceController::class, 'showCategory'])
          ->name('categories.show');
 });
@@ -182,4 +183,12 @@ Route::middleware('auth:sanctum')->prefix('addresses')->group(function () {
 Route::middleware('auth:sanctum')->prefix('sunat')->group(function () {
     Route::get('validate/{tipo}/{numero}', [SunatController::class, 'validateDocument'])
         ->middleware('throttle:10,1');
+});
+
+/* GEMINI IA - GENERACIÓN DE CONTENIDO */
+Route::middleware('auth:sanctum')->prefix('gemini')->group(function () {
+    Route::post('/generate-product-info', [GeminiController::class, 'generateProductInfo']);
+    Route::post('/generate-batch', [GeminiController::class, 'generateBatch']);
+    Route::post('/warm-cache', [GeminiController::class, 'warmCache']);
+    Route::post('/clear-cache', [GeminiController::class, 'clearCache']);
 });

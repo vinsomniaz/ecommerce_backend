@@ -47,7 +47,7 @@ return new class extends Migration
             $table->unique(['tipo_documento', 'numero_documento']);
             $table->index('email');
             $table->index('type');
-            
+
             // LLAVES FORÁNEAS
             $table->foreign('ubigeo')->references('ubigeo')->on('ubigeos')->onDelete('set null');
             $table->foreign('country_code')->references('code')->on('countries'); // NUEVO
