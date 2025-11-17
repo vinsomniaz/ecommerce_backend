@@ -8,6 +8,7 @@ use App\Models\Supports\PurchaseBatch;
 use App\Models\Supports\StockMovement;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
@@ -138,6 +139,21 @@ class Product extends Model implements HasMedia
     public function attributes()
     {
         return $this->hasMany(ProductAttribute::class);
+    }
+
+    public function cartDetails(): HasMany
+    {
+        return $this->hasMany(CartDetail::class);
+    }
+
+    public function saleDetails(): HasMany
+    {
+        return $this->hasMany(SaleDetail::class);
+    }
+
+    public function isInStock(): bool
+    {
+        return $this->inventory->sum('available_stock') > 0;
     }
     // ==================== ATRIBUTOS CALCULADOS ====================
 

@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('provincia', 50);
             $table->string('distrito', 50);
             $table->string('codigo_sunat', 6)->nullable();
-            
+
             $table->index(['departamento', 'provincia', 'distrito']);
 
             // NUEVA LLAVE FORÁNEA
