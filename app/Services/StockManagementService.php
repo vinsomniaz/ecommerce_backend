@@ -10,6 +10,7 @@ use App\Models\Supports\PurchaseBatch;
 use App\Models\Supports\StockMovement;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 
 class StockManagementService
 {
@@ -96,7 +97,7 @@ class StockManagementService
                     'unit_cost' => $batch->distribution_price,
                     'reference_type' => 'transfer_out',
                     'reference_id' => $toWarehouseId,
-                    'user_id' => auth()->id(),
+                    'user_id' => Auth::user(),
                     'notes' => $notes ?? "Traslado a {$toWarehouse->name}",
                     'moved_at' => now(),
                 ]);
@@ -111,7 +112,7 @@ class StockManagementService
                     'unit_cost' => $batch->distribution_price,
                     'reference_type' => 'transfer_in',
                     'reference_id' => $fromWarehouseId,
-                    'user_id' => auth()->id(),
+                    'user_id' => Auth::user(),
                     'notes' => $notes ?? "Traslado desde {$fromWarehouse->name}",
                     'moved_at' => now(),
                 ]);
@@ -146,7 +147,7 @@ class StockManagementService
             // Log de actividad
             activity()
                 ->performedOn($product)
-                ->causedBy(auth()->user())
+                ->causedBy(Auth::user())
                 ->withProperties([
                     'from_warehouse' => $fromWarehouse->name,
                     'to_warehouse' => $toWarehouse->name,
@@ -211,7 +212,7 @@ class StockManagementService
                 'unit_cost' => $unitCost,
                 'reference_type' => 'adjustment_in',
                 'reference_id' => null,
-                'user_id' => auth()->id(),
+                'user_id' => Auth::user(),
                 'notes' => $notes ?? "Ajuste de entrada: {$reason}",
                 'moved_at' => now(),
             ]);
@@ -234,7 +235,7 @@ class StockManagementService
             // Log
             activity()
                 ->performedOn($product)
-                ->causedBy(auth()->user())
+                ->causedBy(Auth::user())
                 ->withProperties([
                     'warehouse' => $warehouse->name,
                     'quantity' => $quantity,
@@ -315,7 +316,7 @@ class StockManagementService
                     'unit_cost' => $batch->distribution_price,
                     'reference_type' => 'adjustment_out',
                     'reference_id' => null,
-                    'user_id' => auth()->id(),
+                    'user_id' => Auth::user(),
                     'notes' => $notes ?? "Ajuste de salida: {$reason}",
                     'moved_at' => now(),
                 ]);
@@ -335,7 +336,7 @@ class StockManagementService
             // Log
             activity()
                 ->performedOn($product)
-                ->causedBy(auth()->user())
+                ->causedBy(Auth::user())
                 ->withProperties([
                     'warehouse' => $warehouse->name,
                     'quantity' => $quantity,

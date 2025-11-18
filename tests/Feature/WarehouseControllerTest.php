@@ -5,10 +5,12 @@ namespace Tests\Feature;
 use App\Models\Warehouse;
 use App\Models\Ubigeo;
 use App\Models\Inventory;
+use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Database\Seeders\CountrySeeder;
+use PHPUnit\Framework\Attributes\Test;
 
 class WarehouseControllerTest extends TestCase
 {
@@ -51,8 +53,143 @@ class WarehouseControllerTest extends TestCase
             'country_code' => 'PE',
         ]);
     }
+    #[Test]
+    public function asigna_todos_los_productos_existentes_al_crear_almacen_activo()
+    {
+        // Crear productos de prueba
+        $producto1 = Product::factory()->create(['primary_name' => 'Producto 1']);
+        $producto2 = Product::factory()->create(['primary_name' => 'Producto 2']);
+        $producto3 = Product::factory()->create(['primary_name' => 'Producto 3']);
 
-    /** @test */
+        $data = [
+            'name' => 'Almacén Nuevo',
+            'ubigeo' => '150101',
+            'address' => 'Av. Test 123',
+            'is_active' => true,
+        ];
+
+        $response = $this->actingAs($this->user)->postJson('/api/warehouses', $data);
+
+        $response->assertStatus(201);
+        $warehouseId = $response->json('data.id');
+
+        // Verificar que se crearon registros de inventario para todos los productos
+        $this->assertDatabaseHas('inventory', [ // ✅ Cambiar a 'inventory' (singular)
+            'product_id' => $producto1->id,
+            'warehouse_id' => $warehouseId,
+            'available_stock' => 0,
+            'reserved_stock' => 0,
+        ]);
+
+        $this->assertDatabaseHas('inventory', [
+            'product_id' => $producto2->id,
+            'warehouse_id' => $warehouseId,
+            'available_stock' => 0,
+            'reserved_stock' => 0,
+        ]);
+
+        $this->assertDatabaseHas('inventory', [
+            'product_id' => $producto3->id,
+            'warehouse_id' => $warehouseId,
+            'available_stock' => 0,
+            'reserved_stock' => 0,
+        ]);
+
+        // Verificar que el total de registros es correcto
+        $inventoryCount = Inventory::where('warehouse_id', $warehouseId)->count();
+        $this->assertEquals(3, $inventoryCount);
+    }
+    #[Test]
+    public function no_asigna_productos_si_almacen_se_crea_inactivo()
+    {
+        // Crear productos de prueba
+        Product::factory()->count(3)->create();
+
+        $data = [
+            'name' => 'Almacén Inactivo',
+            'ubigeo' => '150101',
+            'address' => 'Av. Test 123',
+            'is_active' => false,
+        ];
+
+        $response = $this->actingAs($this->user)->postJson('/api/warehouses', $data);
+
+        $response->assertStatus(201);
+        $warehouseId = $response->json('data.id');
+
+        // Verificar que NO se crearon registros de inventario
+        $inventoryCount = Inventory::where('warehouse_id', $warehouseId)->count();
+        $this->assertEquals(0, $inventoryCount);
+    }
+
+    public function asigna_productos_al_activar_almacen_inactivo()
+    {
+        // Crear productos de prueba
+        $producto1 = Product::factory()->create(['primary_name' => 'Producto 1']);
+        $producto2 = Product::factory()->create(['primary_name' => 'Producto 2']);
+
+        // Crear almacén inactivo
+        $warehouse = Warehouse::factory()->create([
+            'ubigeo' => '150101',
+            'is_active' => false,
+        ]);
+
+        // Verificar que no tiene inventario
+        $this->assertEquals(0, Inventory::where('warehouse_id', $warehouse->id)->count());
+
+        // Activar el almacén
+        $response = $this->actingAs($this->user)->patchJson("/api/warehouses/{$warehouse->id}", [
+            'is_active' => true,
+        ]);
+
+        $response->assertStatus(200);
+
+        // Verificar que ahora tiene todos los productos asignados
+        $this->assertDatabaseHas('inventory', [ // ✅ Cambiar a 'inventory'
+            'product_id' => $producto1->id,
+            'warehouse_id' => $warehouse->id,
+        ]);
+
+        $this->assertDatabaseHas('inventory', [
+            'product_id' => $producto2->id,
+            'warehouse_id' => $warehouse->id,
+        ]);
+
+        $inventoryCount = Inventory::where('warehouse_id', $warehouse->id)->count();
+        $this->assertEquals(2, $inventoryCount);
+    }
+
+
+    #[Test]
+    public function valores_iniciales_de_inventario_son_correctos()
+    {
+        $producto = Product::factory()->create(['primary_name' => 'Producto Test']);
+
+        $data = [
+            'name' => 'Almacén Nuevo',
+            'ubigeo' => '150101',
+            'address' => 'Av. Test 123',
+            'is_active' => true,
+        ];
+
+        $response = $this->actingAs($this->user)->postJson('/api/warehouses', $data);
+        $warehouseId = $response->json('data.id');
+
+        $inventory = Inventory::where('product_id', $producto->id)
+            ->where('warehouse_id', $warehouseId)
+            ->first();
+
+        $this->assertNotNull($inventory);
+        $this->assertEquals(0, $inventory->available_stock);
+        $this->assertEquals(0, $inventory->reserved_stock);
+        $this->assertEquals(0.00, $inventory->sale_price);
+        $this->assertEquals(0.00, $inventory->min_sale_price);
+        $this->assertEquals(0.00, $inventory->profit_margin);
+        $this->assertNull($inventory->last_movement_at);
+        $this->assertNull($inventory->price_updated_at); // ✅ AGREGADO
+    }
+
+    #[Test]
     public function puede_crear_almacen_exitosamente()
     {
         $data = [
@@ -102,7 +239,7 @@ class WarehouseControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function puede_crear_almacen_con_campos_minimos_requeridos()
     {
         $data = [
@@ -126,7 +263,7 @@ class WarehouseControllerTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function valida_que_nombre_sea_requerido()
     {
         $data = [
@@ -145,7 +282,7 @@ class WarehouseControllerTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function valida_que_ubigeo_sea_requerido()
     {
         $data = [
@@ -159,7 +296,7 @@ class WarehouseControllerTest extends TestCase
             ->assertJsonValidationErrors(['ubigeo']);
     }
 
-    /** @test */
+    #[Test]
     public function valida_que_direccion_sea_requerida()
     {
         $data = [
@@ -173,7 +310,7 @@ class WarehouseControllerTest extends TestCase
             ->assertJsonValidationErrors(['address']);
     }
 
-    /** @test */
+    #[Test]
     public function valida_nombre_unico_de_almacen()
     {
         Warehouse::factory()->create([
@@ -198,7 +335,7 @@ class WarehouseControllerTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function valida_que_ubigeo_exista_en_base_de_datos()
     {
         $data = [
@@ -218,7 +355,7 @@ class WarehouseControllerTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function valida_que_ubigeo_tenga_6_digitos()
     {
         $data = [
@@ -233,7 +370,7 @@ class WarehouseControllerTest extends TestCase
             ->assertJsonValidationErrors(['ubigeo']);
     }
 
-    /** @test */
+    #[Test]
     public function valida_longitud_maxima_de_nombre()
     {
         $data = [
@@ -248,7 +385,7 @@ class WarehouseControllerTest extends TestCase
             ->assertJsonValidationErrors(['name']);
     }
 
-    /** @test */
+    #[Test]
     public function valida_longitud_maxima_de_direccion()
     {
         $data = [
@@ -263,7 +400,7 @@ class WarehouseControllerTest extends TestCase
             ->assertJsonValidationErrors(['address']);
     }
 
-    /** @test */
+    #[Test]
     public function valida_longitud_maxima_de_telefono()
     {
         $data = [
@@ -279,7 +416,7 @@ class WarehouseControllerTest extends TestCase
             ->assertJsonValidationErrors(['phone']);
     }
 
-    /** @test */
+    #[Test]
     public function valida_que_prioridad_sea_numero_entero()
     {
         $data = [
@@ -295,7 +432,7 @@ class WarehouseControllerTest extends TestCase
             ->assertJsonValidationErrors(['picking_priority']);
     }
 
-    /** @test */
+    #[Test]
     public function valida_que_prioridad_este_entre_0_y_100()
     {
         $data = [
@@ -317,7 +454,7 @@ class WarehouseControllerTest extends TestCase
             ->assertJsonValidationErrors(['picking_priority']);
     }
 
-    /** @test */
+    #[Test]
     public function desmarca_almacen_principal_anterior_al_crear_uno_nuevo()
     {
         $oldMain = Warehouse::factory()->create([
@@ -346,7 +483,7 @@ class WarehouseControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function puede_listar_todos_los_almacenes()
     {
         Warehouse::factory()->count(3)->create(['ubigeo' => '150101']);
@@ -377,7 +514,7 @@ class WarehouseControllerTest extends TestCase
         $this->assertEquals(3, $response->json('meta.total'));
     }
 
-    /** @test */
+    #[Test]
     public function puede_filtrar_almacenes_por_estado_activo()
     {
         Warehouse::factory()->create([
@@ -399,7 +536,7 @@ class WarehouseControllerTest extends TestCase
         $this->assertEquals('Activo', $response->json('data.0.name'));
     }
 
-    /** @test */
+    #[Test]
     public function puede_filtrar_almacenes_por_visibilidad_online()
     {
         Warehouse::factory()->create([
@@ -421,7 +558,7 @@ class WarehouseControllerTest extends TestCase
         $this->assertEquals('Visible', $response->json('data.0.name'));
     }
 
-    /** @test */
+    #[Test]
     public function puede_filtrar_almacen_principal()
     {
         Warehouse::factory()->create([
@@ -443,7 +580,7 @@ class WarehouseControllerTest extends TestCase
         $this->assertEquals('Principal', $response->json('data.0.name'));
     }
 
-    /** @test */
+    #[Test]
     public function ordena_almacenes_por_prioridad_descendente()
     {
         Warehouse::factory()->create([
@@ -474,7 +611,7 @@ class WarehouseControllerTest extends TestCase
         $this->assertEquals('Baja', $data[2]['name']);
     }
 
-    /** @test */
+    #[Test]
     public function puede_obtener_detalle_de_almacen()
     {
         $warehouse = Warehouse::factory()->create([
@@ -495,7 +632,7 @@ class WarehouseControllerTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function incluye_datos_de_ubigeo_en_detalle()
     {
         $warehouse = Warehouse::factory()->create(['ubigeo' => '150101']);
@@ -515,7 +652,7 @@ class WarehouseControllerTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function retorna_404_si_almacen_no_existe()
     {
         $response = $this->actingAs($this->user)->getJson('/api/warehouses/999');
@@ -530,7 +667,7 @@ class WarehouseControllerTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function puede_actualizar_almacen_completamente_con_put()
     {
         $warehouse = Warehouse::factory()->create([
@@ -567,7 +704,7 @@ class WarehouseControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function puede_actualizar_almacen_parcialmente_con_patch()
     {
         $warehouse = Warehouse::factory()->create([
@@ -599,7 +736,7 @@ class WarehouseControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function puede_actualizar_solo_el_nombre()
     {
         $warehouse = Warehouse::factory()->create([
@@ -616,7 +753,7 @@ class WarehouseControllerTest extends TestCase
         $this->assertEquals('Nombre Nuevo', $warehouse->name);
     }
 
-    /** @test */
+    #[Test]
     public function valida_nombre_unico_al_actualizar_excluyendo_el_mismo_almacen()
     {
         $warehouse1 = Warehouse::factory()->create([
@@ -637,7 +774,7 @@ class WarehouseControllerTest extends TestCase
             ->assertJsonValidationErrors(['name']);
     }
 
-    /** @test */
+    #[Test]
     public function permite_actualizar_con_el_mismo_nombre()
     {
         $warehouse = Warehouse::factory()->create([
@@ -653,7 +790,7 @@ class WarehouseControllerTest extends TestCase
         $response->assertStatus(200);
     }
 
-    /** @test */
+    #[Test]
     public function desmarca_almacen_principal_anterior_al_actualizar()
     {
         $oldMain = Warehouse::factory()->create([
@@ -681,7 +818,7 @@ class WarehouseControllerTest extends TestCase
         $this->assertTrue($newMain->is_main);
     }
 
-    /** @test */
+    #[Test]
     public function puede_desactivar_almacen()
     {
         $warehouse = Warehouse::factory()->create([
@@ -698,7 +835,7 @@ class WarehouseControllerTest extends TestCase
         $this->assertFalse($warehouse->is_active);
     }
 
-    /** @test */
+    #[Test]
     public function puede_ocultar_almacen_de_ecommerce()
     {
         $warehouse = Warehouse::factory()->create([
@@ -715,7 +852,7 @@ class WarehouseControllerTest extends TestCase
         $this->assertFalse($warehouse->visible_online);
     }
 
-    /** @test */
+    #[Test]
     public function puede_eliminar_almacen_sin_inventario()
     {
         $warehouse = Warehouse::factory()->create(['ubigeo' => '150101']);
@@ -734,8 +871,7 @@ class WarehouseControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
-    /** @test */
+    #[Test]
     public function no_puede_eliminar_almacen_con_inventario()
     {
 
@@ -762,7 +898,7 @@ class WarehouseControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function retorna_404_al_intentar_eliminar_almacen_inexistente()
     {
         $response = $this->actingAs($this->user)->deleteJson('/api/warehouses/999');
@@ -776,7 +912,7 @@ class WarehouseControllerTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function establece_valores_por_defecto_al_crear()
     {
         $data = [
@@ -799,7 +935,7 @@ class WarehouseControllerTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function permite_crear_almacen_sin_telefono()
     {
         $data = [
@@ -817,7 +953,7 @@ class WarehouseControllerTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function puede_crear_multiples_almacenes_no_principales()
     {
         $data1 = [
@@ -843,7 +979,7 @@ class WarehouseControllerTest extends TestCase
         $this->assertEquals(2, Warehouse::where('is_main', false)->count());
     }
 
-    /** @test */
+    #[Test]
     public function solo_permite_un_almacen_principal_a_la_vez()
     {
         $principal1 = Warehouse::factory()->create([
@@ -875,7 +1011,7 @@ class WarehouseControllerTest extends TestCase
         $this->assertFalse($principal1->is_main);
     }
 
-    /** @test */
+    #[Test]
     public function formato_de_respuesta_incluye_fechas_iso()
     {
         $warehouse = Warehouse::factory()->create(['ubigeo' => '150101']);

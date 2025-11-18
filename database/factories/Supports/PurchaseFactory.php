@@ -4,7 +4,7 @@
 namespace Database\Factories\Supports;
 
 use App\Models\Entity;
-use App\Models\Supports\Purchase;
+use App\Models\Purchase;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 class PurchaseFactory extends Factory

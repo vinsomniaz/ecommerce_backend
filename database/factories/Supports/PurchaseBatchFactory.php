@@ -27,7 +27,6 @@ class PurchaseBatchFactory extends Factory
             'purchase_price' => $purchasePrice,
             'distribution_price' => round($purchasePrice * 1.2, 2),
             'purchase_date' => $this->faker->dateTimeBetween('-6 months', 'now'),
-            'expiry_date' => $this->faker->optional(0.3)->dateTimeBetween('now', '+2 years'),
             'status' => 'active',
         ];
     }
@@ -104,23 +103,4 @@ class PurchaseBatchFactory extends Factory
         ]);
     }
 
-    /**
-     * Lote con fecha de expiración
-     */
-    public function withExpiryDate(\DateTimeInterface $date): static
-    {
-        return $this->state(fn (array $attributes) => [
-            'expiry_date' => $date,
-        ]);
-    }
-
-    /**
-     * Lote sin fecha de expiración
-     */
-    public function withoutExpiryDate(): static
-    {
-        return $this->state(fn (array $attributes) => [
-            'expiry_date' => null,
-        ]);
-    }
 }

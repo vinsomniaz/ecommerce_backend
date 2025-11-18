@@ -5,8 +5,11 @@ namespace App\Services;
 use App\Models\Warehouse;
 use App\Models\Ubigeo;
 use App\Exceptions\Warehouses\WarehouseException;
+use App\Models\Inventory;
+use App\Models\Product;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Log;
 
 class WarehouseService
 {
@@ -66,6 +69,11 @@ class WarehouseService
             $warehouse = Warehouse::create($data);
             $warehouse->load('ubigeoData');
 
+            // ✅ NUEVO: Asignar todos los productos existentes al nuevo almacén
+            if ($data['is_active'] ?? true) {
+                $this->assignAllProductsToWarehouse($warehouse);
+            }
+
             return $warehouse;
         });
     }
@@ -77,6 +85,7 @@ class WarehouseService
     {
         return DB::transaction(function () use ($id, $data) {
             $warehouse = $this->getById($id);
+            $wasInactive = !$warehouse->is_active;
 
             // Validar ubigeo si cambió
             if (isset($data['ubigeo']) && $data['ubigeo'] !== $warehouse->ubigeo) {
@@ -97,9 +106,15 @@ class WarehouseService
             $warehouse->refresh();
             $warehouse->load('ubigeoData');
 
+            // ✅ NUEVO: Si se activa el almacén, asignar productos
+            if ($wasInactive && ($data['is_active'] ?? false)) {
+                $this->assignAllProductsToWarehouse($warehouse);
+            }
+
             return $warehouse;
         });
     }
+
 
     /**
      * Eliminar almacén
@@ -125,6 +140,46 @@ class WarehouseService
     {
         if (!Ubigeo::where('ubigeo', $ubigeo)->exists()) {
             throw WarehouseException::invalidUbigeo($ubigeo);
+        }
+    }
+
+    private function assignAllProductsToWarehouse(Warehouse $warehouse): void
+    {
+        $products = Product::select('id')->get();
+
+        if ($products->isEmpty()) {
+            Log::info("No hay productos para asignar al almacén #{$warehouse->id}");
+            return;
+        }
+
+        $inventoryData = [];
+
+        foreach ($products as $product) {
+            // Verificar que no exista ya
+            $exists = Inventory::where('product_id', $product->id)
+                ->where('warehouse_id', $warehouse->id)
+                ->exists();
+
+            if (!$exists) {
+                $inventoryData[] = [
+                    'product_id' => $product->id,
+                    'warehouse_id' => $warehouse->id,
+                    'available_stock' => 0,
+                    'reserved_stock' => 0,
+                    'sale_price' => 0.00,
+                    'min_sale_price' => 0.00,
+                    'profit_margin' => 0.00,
+                    'last_movement_at' => null,
+                    'price_updated_at' => null, // ✅ AGREGADO
+                    // ❌ REMOVIDOS created_at y updated_at
+                ];
+            }
+        }
+
+        if (!empty($inventoryData)) {
+            // Inserción masiva para mejor rendimiento
+            Inventory::insert($inventoryData);
+            Log::info("Almacén #{$warehouse->id} asignado a " . count($inventoryData) . " productos");
         }
     }
 

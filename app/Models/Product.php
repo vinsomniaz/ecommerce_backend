@@ -61,7 +61,7 @@ class Product extends Model implements HasMedia
             ->dontLogIfAttributesChangedOnly(['updated_at'])
             ->setDescriptionForEvent(function (string $eventName) {
                 return match ($eventName) {
-                    'created' => 'Producto creado',
+                    'created' => 'Producto creado y asignado a almacenes',
                     'updated' => 'Producto actualizado',
                     'deleted' => 'Producto eliminado',
                     'restored' => 'Producto restaurado',

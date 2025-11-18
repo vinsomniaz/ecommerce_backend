@@ -7,10 +7,15 @@ use App\Models\Product;
 use App\Exceptions\Products\ProductNotFoundException;
 use App\Exceptions\Products\ProductAlreadyExistsException;
 use App\Exceptions\Products\ProductInUseException;
+use App\Models\Inventory;
+use App\Models\Warehouse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Log;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
+use Illuminate\Support\Facades\Auth;
+use InvalidArgumentException;
 
 class ProductService
 {
@@ -28,27 +33,32 @@ class ProductService
                 $data['sku'] = $this->generateUniqueSku();
             }
 
-            // Extraer atributos antes de crear el producto
+            // Extraer atributos y precios antes de crear el producto
             $attributes = $data['attributes'] ?? [];
-            unset($data['attributes']);
+            $warehousePrices = $data['warehouse_prices'] ?? []; // ✅ NUEVO
+            unset($data['attributes'], $data['warehouse_prices']); // ✅ ACTUALIZADO
 
             $data = $this->setDefaultValues($data);
             $product = Product::create($data);
 
-            // ✅ Crear atributos si existen
+            // Crear atributos si existen
             if (!empty($attributes)) {
                 $this->syncAttributes($product, $attributes);
             }
 
+            // ✅ NUEVO: Asignar producto a todos los almacenes CON PRECIOS
+            $this->assignProductToAllWarehouses($product, $warehousePrices);
+
             activity()
                 ->performedOn($product)
-                ->causedBy(auth()->user())
+                ->causedBy(Auth::user())
                 ->withProperties($data)
-                ->log('Producto creado');
+                ->log('Producto creado y asignado a almacenes');
 
-            return $product->fresh(['attributes', 'category']);
+            return $product->fresh(['attributes', 'category', 'inventory.warehouse']);
         });
     }
+
 
     /**
      * Actualizar un producto existente
@@ -64,15 +74,17 @@ class ProductService
             if (isset($data['sku']) && $data['sku'] !== $product->sku) {
                 if (
                     Product::where('sku', $data['sku'])
-                        ->where('id', '!=', $id)
-                        ->exists()
+                    ->where('id', '!=', $id)
+                    ->exists()
                 ) {
                     throw new ProductAlreadyExistsException($data['sku']);
                 }
             }
-            // Extraer atributos
+
+            // ✅ Extraer atributos y precios antes de actualizar
             $attributes = $data['attributes'] ?? null;
-            unset($data['attributes']);
+            $warehousePrices = $data['warehouse_prices'] ?? null;
+            unset($data['attributes'], $data['warehouse_prices']);
 
             // Actualizar solo los campos enviados
             $product->update($data);
@@ -82,24 +94,32 @@ class ProductService
                 $this->syncAttributes($product, $attributes);
             }
 
+            // ✅ Actualizar precios por almacén si se enviaron
+            if ($warehousePrices !== null) {
+                $this->updateWarehousePrices($product, $warehousePrices);
+            }
+
             activity()
                 ->performedOn($product)
-                ->causedBy(auth()->user())
+                ->causedBy(Auth::user())
                 ->withProperties([
                     'old' => $oldData,
                     'new' => $product->toArray(),
                     'changed_fields' => array_keys($data),
+                    'prices_updated' => $warehousePrices !== null,
                 ])
                 ->log('Producto actualizado');
 
-            \Illuminate\Support\Facades\Log::info('Producto actualizado', [
+            Log::info('Producto actualizado', [
                 'id' => $product->id,
-                'changed_fields' => array_keys($data)
+                'changed_fields' => array_keys($data),
+                'prices_updated' => $warehousePrices !== null,
             ]);
 
-            return $product->fresh(['attributes', 'category', 'media']);
+            return $product->fresh(['attributes', 'category', 'media', 'inventory.warehouse']);
         });
     }
+
 
     /**
      * Eliminar un producto (soft delete)
@@ -116,7 +136,7 @@ class ProductService
 
         activity()
             ->performedOn($product)
-            ->causedBy(auth()->user())
+            ->causedBy(Auth::user())
             ->log('Producto eliminado (soft delete)');
 
         return true;
@@ -132,7 +152,7 @@ class ProductService
 
         activity()
             ->performedOn($product)
-            ->causedBy(auth()->user())
+            ->causedBy(Auth::user())
             ->log('Producto restaurado');
 
         return $product->fresh(['attributes', 'category']);
@@ -147,7 +167,7 @@ class ProductService
         $product->forceDelete();
 
         activity()
-            ->causedBy(auth()->user())
+            ->causedBy(Auth::user())
             ->withProperties(['product_id' => $product->id])
             ->log('Producto eliminado permanentemente');
 
@@ -166,7 +186,7 @@ class ProductService
             if (($currentCount + $newCount) > 5) {
                 throw new \Exception(
                     "No puede tener más de 5 imágenes. Actualmente tiene {$currentCount}. " .
-                    "Solo puede agregar " . (5 - $currentCount) . " más."
+                        "Solo puede agregar " . (5 - $currentCount) . " más."
                 );
             }
 
@@ -205,7 +225,7 @@ class ProductService
 
             activity()
                 ->performedOn($product)
-                ->causedBy(auth()->user())
+                ->causedBy(Auth::user())
                 ->withProperties(['images_count' => $newCount])
                 ->log("Se agregaron {$newCount} imágenes al producto");
 
@@ -261,7 +281,7 @@ class ProductService
 
             activity()
                 ->performedOn($product)
-                ->causedBy(auth()->user())
+                ->causedBy(Auth::user())
                 ->withProperties(['media_id' => $mediaId])
                 ->log('Imagen eliminada del producto');
 
@@ -295,14 +315,14 @@ class ProductService
         $allowedFields = ['is_active', 'is_featured', 'visible_online'];
 
         if (!in_array($field, $allowedFields)) {
-            throw new \InvalidArgumentException("Campo '{$field}' no permitido para actualización de estado");
+            throw new InvalidArgumentException("Campo '{$field}' no permitido para actualización de estado");
         }
 
         $product->update([$field => $value]);
 
         activity()
             ->performedOn($product)
-            ->causedBy(auth()->user())
+            ->causedBy(Auth::user())
             ->log("Estado {$field} actualizado a " . ($value ? 'true' : 'false'));
 
         return $product->fresh();
@@ -325,11 +345,11 @@ class ProductService
                 'show_online' => $query->update(['visible_online' => true]),
                 'hide_online' => $query->update(['visible_online' => false]),
                 'delete' => $query->delete(),
-                default => throw new \InvalidArgumentException("Acción '{$action}' no válida"),
+                default => throw new InvalidArgumentException("Acción '{$action}' no válida"),
             };
 
             activity()
-                ->causedBy(auth()->user())
+                ->causedBy(Auth::user())
                 ->withProperties([
                     'action' => $action,
                     'product_ids' => $productIds,
@@ -486,16 +506,20 @@ class ProductService
                 $newProduct->addMediaFromUrl($media->getUrl())
                     ->toMediaCollection('images');
             }
-            // ✅ Duplicar atributos
-            foreach ($product->attributes as $attribute) {
+
+            // ✅ Duplicar atributos SIN tocar la propiedad protegida $attributes
+            $productAttributes = $product->attributes()->get();
+
+            foreach ($productAttributes as $attribute) {
                 $newProduct->attributes()->create([
                     'name' => $attribute->name,
                     'value' => $attribute->value,
                 ]);
             }
+
             activity()
                 ->performedOn($newProduct)
-                ->causedBy(auth()->user())
+                ->causedBy(Auth::user())
                 ->withProperties(['original_id' => $product->id])
                 ->log('Producto duplicado');
 
@@ -504,7 +528,77 @@ class ProductService
     }
 
     // ==================== MÉTODOS PRIVADOS ====================
+    private function assignProductToAllWarehouses(Product $product, array $warehousePrices = []): void
+    {
+        // Obtener todos los almacenes activos
+        $warehouses = Warehouse::active()->get();
 
+        if ($warehouses->isEmpty()) {
+            Log::warning("No hay almacenes activos para asignar el producto #{$product->id}");
+            return;
+        }
+
+        // ✅ NUEVO: Crear un mapa de precios por warehouse_id
+        $pricesMap = collect($warehousePrices)->keyBy('warehouse_id');
+
+        foreach ($warehouses as $warehouse) {
+            // ✅ NUEVO: Obtener precios específicos del almacén o usar 0.00 por defecto
+            $warehousePriceData = $pricesMap->get($warehouse->id);
+
+            $salePrice = $warehousePriceData['sale_price'] ?? 0.00;
+            $minSalePrice = $warehousePriceData['min_sale_price'] ?? 0.00;
+
+            Inventory::create([
+                'product_id' => $product->id,
+                'warehouse_id' => $warehouse->id,
+                'available_stock' => 0,
+                'reserved_stock' => 0,
+                'sale_price' => $salePrice,           // ✅ ACTUALIZADO
+                'min_sale_price' => $minSalePrice,    // ✅ ACTUALIZADO
+                'profit_margin' => 0.00,
+                'last_movement_at' => null,
+            ]);
+        }
+
+        Log::info("Producto #{$product->id} asignado a {$warehouses->count()} almacenes con precios");
+    }
+
+    private function updateWarehousePrices(Product $product, array $warehousePrices): void
+    {
+        foreach ($warehousePrices as $priceData) {
+            $warehouseId = $priceData['warehouse_id'];
+            $salePrice = $priceData['sale_price'];
+            $minSalePrice = $priceData['min_sale_price'];
+
+            // Buscar o crear el inventario para este almacén
+            $inventory = Inventory::firstOrCreate(
+                [
+                    'product_id' => $product->id,
+                    'warehouse_id' => $warehouseId,
+                ],
+                [
+                    'available_stock' => 0,
+                    'reserved_stock' => 0,
+                    'sale_price' => $salePrice,
+                    'min_sale_price' => $minSalePrice,
+                    'profit_margin' => 0.00,
+                    'last_movement_at' => null,
+                ]
+            );
+
+            // Si ya existe, actualizar solo los precios
+            if (!$inventory->wasRecentlyCreated) {
+                $inventory->update([
+                    'sale_price' => $salePrice,
+                    'min_sale_price' => $minSalePrice,
+                ]);
+            }
+        }
+
+        Log::info("Precios actualizados para producto #{$product->id}", [
+            'warehouses_count' => count($warehousePrices),
+        ]);
+    }
     /**
      * Verificar si el producto tiene transacciones
      */

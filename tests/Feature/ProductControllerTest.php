@@ -77,11 +77,1123 @@ class ProductControllerTest extends TestCase
 
         Storage::fake('public');
     }
+    // ================================================================
+    // TESTS DE ASIGNACIÓN AUTOMÁTICA A ALMACENES
+    // ================================================================
 
+    #[Test]
+    public function producto_se_asigna_automaticamente_a_todos_almacenes_activos_al_crear()
+    {
+        // Crear varios almacenes activos
+        $warehouse2 = Warehouse::create([
+            'name' => 'Almacén Secundario',
+            'ubigeo' => '150101',
+            'address' => 'Av. Test 456',
+            'phone' => '888888888',
+            'is_active' => true,
+            'visible_online' => true,
+            'picking_priority' => 3,
+        ]);
+
+        $warehouse3 = Warehouse::create([
+            'name' => 'Almacén Terciario',
+            'ubigeo' => '150101',
+            'address' => 'Av. Test 789',
+            'phone' => '777777777',
+            'is_active' => true,
+            'visible_online' => true,
+            'picking_priority' => 2,
+        ]);
+
+        $data = [
+            'primary_name' => 'Producto Multi-Almacén',
+            'category_id' => $this->category->id,
+        ];
+
+        $response = $this->postJson('/api/products', $data);
+
+        $response->assertStatus(201);
+
+        $product = Product::latest()->first();
+
+        // Verificar que se creó inventario para cada almacén activo
+        $this->assertDatabaseHas('inventory', [
+            'product_id' => $product->id,
+            'warehouse_id' => $this->warehouse->id,
+            'available_stock' => 0,
+        ]);
+
+        $this->assertDatabaseHas('inventory', [
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse2->id,
+            'available_stock' => 0,
+        ]);
+
+        $this->assertDatabaseHas('inventory', [
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse3->id,
+            'available_stock' => 0,
+        ]);
+
+        // Verificar el conteo total
+        $inventoryCount = Inventory::where('product_id', $product->id)->count();
+        $this->assertEquals(3, $inventoryCount);
+    }
+
+    #[Test]
+    public function producto_no_se_asigna_a_almacenes_inactivos()
+    {
+        // Crear almacén inactivo
+        $inactiveWarehouse = Warehouse::create([
+            'name' => 'Almacén Inactivo',
+            'ubigeo' => '150101',
+            'address' => 'Av. Test 999',
+            'phone' => '666666666',
+            'is_active' => false, // INACTIVO
+            'visible_online' => false,
+            'picking_priority' => 1,
+        ]);
+
+        $data = [
+            'primary_name' => 'Producto Test',
+            'category_id' => $this->category->id,
+        ];
+
+        $response = $this->postJson('/api/products', $data);
+
+        $response->assertStatus(201);
+
+        $product = Product::latest()->first();
+
+        // Verificar que SÍ se creó para el almacén activo
+        $this->assertDatabaseHas('inventory', [
+            'product_id' => $product->id,
+            'warehouse_id' => $this->warehouse->id,
+        ]);
+
+        // Verificar que NO se creó para el almacén inactivo
+        $this->assertDatabaseMissing('inventory', [
+            'product_id' => $product->id,
+            'warehouse_id' => $inactiveWarehouse->id,
+        ]);
+    }
+
+    #[Test]
+    public function mensaje_de_respuesta_indica_cantidad_de_almacenes_asignados()
+    {
+        // Crear más almacenes
+        Warehouse::create([
+            'name' => 'Almacén 2',
+            'ubigeo' => '150101',
+            'address' => 'Av. Test 456',
+            'is_active' => true,
+        ]);
+
+        Warehouse::create([
+            'name' => 'Almacén 3',
+            'ubigeo' => '150101',
+            'address' => 'Av. Test 789',
+            'is_active' => true,
+        ]);
+
+        $data = [
+            'primary_name' => 'Producto Test',
+            'category_id' => $this->category->id,
+        ];
+
+        $response = $this->postJson('/api/products', $data);
+
+        $response->assertStatus(201)
+            ->assertJsonStructure([
+                'success',
+                'message',
+                'data',
+            ]);
+
+        // Verificar que el mensaje menciona la cantidad de almacenes
+        $message = $response->json('message');
+        $this->assertStringContainsString('3', $message);
+        $this->assertStringContainsString('almacén', strtolower($message));
+    }
+
+    #[Test]
+    public function inventario_inicial_tiene_valores_por_defecto_correctos()
+    {
+        $data = [
+            'primary_name' => 'Producto Test',
+            'category_id' => $this->category->id,
+        ];
+
+        $response = $this->postJson('/api/products', $data);
+
+        $response->assertStatus(201);
+
+        $product = Product::latest()->first();
+        $inventory = Inventory::where('product_id', $product->id)->first();
+
+        // Verificar valores por defecto
+        $this->assertEquals(0, $inventory->available_stock);
+        $this->assertEquals(0, $inventory->reserved_stock);
+        $this->assertEquals(0.00, $inventory->sale_price);
+        $this->assertEquals(0.00, $inventory->min_sale_price);
+        $this->assertEquals(0.00, $inventory->profit_margin);
+        $this->assertNull($inventory->last_movement_at);
+    }
+
+    #[Test]
+    public function producto_sin_almacenes_activos_no_crea_inventario()
+    {
+        // Desactivar todos los almacenes
+        Warehouse::query()->update(['is_active' => false]);
+
+        $data = [
+            'primary_name' => 'Producto Sin Almacenes',
+            'category_id' => $this->category->id,
+        ];
+
+        $response = $this->postJson('/api/products', $data);
+
+        // El producto se debe crear sin problemas
+        $response->assertStatus(201);
+
+        $product = Product::latest()->first();
+
+        // No debe tener inventario
+        $inventoryCount = Inventory::where('product_id', $product->id)->count();
+        $this->assertEquals(0, $inventoryCount);
+    }
+
+    #[Test]
+    public function producto_duplicado_tambien_se_asigna_a_todos_almacenes()
+    {
+        $this->markTestSkipped('Duplicacion innecesaria por el momento');
+        // Crear almacenes adicionales
+        Warehouse::create([
+            'name' => 'Almacén 2',
+            'ubigeo' => '150101',
+            'address' => 'Av. Test 456',
+            'is_active' => true,
+        ]);
+
+        // Crear producto original
+        $product = Product::factory()->create();
+
+        // Duplicar
+        $response = $this->postJson("/api/products/{$product->id}/duplicate");
+
+        $response->assertStatus(201);
+
+        $duplicatedProduct = Product::latest()->first();
+
+        // Verificar que el duplicado tiene inventario en todos los almacenes activos
+        $activeWarehousesCount = Warehouse::active()->count();
+        $inventoryCount = Inventory::where('product_id', $duplicatedProduct->id)->count();
+
+        $this->assertEquals($activeWarehousesCount, $inventoryCount);
+    }
+
+    #[Test]
+    public function activity_log_registra_asignacion_a_almacenes()
+    {
+        $data = [
+            'primary_name' => 'Producto Test',
+            'category_id' => $this->category->id,
+        ];
+
+        $this->postJson('/api/products', $data);
+
+        // Verificar que el log menciona la asignación a almacenes
+        $this->assertDatabaseHas('activity_log', [
+            'description' => 'Producto creado y asignado a almacenes',
+            'causer_id' => $this->user->id,
+        ]);
+    }
+
+    #[Test]
+    public function relacion_inventory_carga_datos_correctamente()
+    {
+        $data = [
+            'primary_name' => 'Producto Test',
+            'category_id' => $this->category->id,
+        ];
+
+        $response = $this->postJson('/api/products', $data);
+
+        $response->assertStatus(201);
+
+        $product = Product::with('inventory.warehouse')->latest()->first();
+
+        // Verificar que la relación existe
+        $this->assertNotNull($product->inventory);
+        $this->assertGreaterThan(0, $product->inventory->count());
+
+        // Verificar que cada inventario tiene su almacén cargado
+        foreach ($product->inventory as $inv) {
+            $this->assertNotNull($inv->warehouse);
+            $this->assertEquals($inv->warehouse_id, $inv->warehouse->id);
+        }
+    }
+
+    #[Test]
+    public function producto_responde_con_inventario_de_almacenes()
+    {
+        Warehouse::create([
+            'name' => 'Almacén 2',
+            'ubigeo' => '150101',
+            'address' => 'Av. Test 456',
+            'is_active' => true,
+        ]);
+
+        $data = [
+            'primary_name' => 'Producto Test',
+            'category_id' => $this->category->id,
+        ];
+
+        $response = $this->postJson('/api/products', $data);
+
+        $response->assertStatus(201)
+            ->assertJsonStructure([
+                'data' => [
+                    'id',
+                    'sku',
+                    'primary_name',
+                    // Otros campos...
+                ]
+            ]);
+
+        // Obtener el producto con inventario
+        $product = Product::with('inventory.warehouse')->latest()->first();
+        $productResponse = $this->getJson("/api/products/{$product->id}");
+
+        $productResponse->assertStatus(200);
+
+        // Verificar que incluye información de inventario (si el Resource lo expone)
+        $this->assertIsArray($productResponse->json('data'));
+    }
+
+    #[Test]
+    public function almacenes_recien_creados_no_afectan_productos_existentes()
+    {
+        // Crear producto
+        $data = [
+            'primary_name' => 'Producto Existente',
+            'category_id' => $this->category->id,
+        ];
+
+        $response = $this->postJson('/api/products', $data);
+        $product = Product::latest()->first();
+
+        $initialInventoryCount = Inventory::where('product_id', $product->id)->count();
+
+        // Crear nuevo almacén después
+        $newWarehouse = Warehouse::create([
+            'name' => 'Almacén Nuevo',
+            'ubigeo' => '150101',
+            'address' => 'Av. Nueva 123',
+            'is_active' => true,
+        ]);
+
+        // Verificar que el producto existente NO se asignó automáticamente
+        $this->assertDatabaseMissing('inventory', [
+            'product_id' => $product->id,
+            'warehouse_id' => $newWarehouse->id,
+        ]);
+
+        $finalInventoryCount = Inventory::where('product_id', $product->id)->count();
+        $this->assertEquals($initialInventoryCount, $finalInventoryCount);
+    }
+
+    #[Test]
+    public function multiples_productos_se_asignan_correctamente_a_mismos_almacenes()
+    {
+        $warehouse2 = Warehouse::create([
+            'name' => 'Almacén 2',
+            'ubigeo' => '150101',
+            'address' => 'Av. Test 456',
+            'is_active' => true,
+        ]);
+
+        // Crear dos productos
+        $product1Data = [
+            'primary_name' => 'Producto 1',
+            'category_id' => $this->category->id,
+        ];
+
+        $product2Data = [
+            'primary_name' => 'Producto 2',
+            'category_id' => $this->category->id,
+        ];
+
+        $this->postJson('/api/products', $product1Data);
+        $this->postJson('/api/products', $product2Data);
+
+        $product1 = Product::where('primary_name', 'Producto 1')->first();
+        $product2 = Product::where('primary_name', 'Producto 2')->first();
+
+        // Verificar que ambos productos tienen inventario en ambos almacenes
+        $this->assertEquals(2, Inventory::where('product_id', $product1->id)->count());
+        $this->assertEquals(2, Inventory::where('product_id', $product2->id)->count());
+
+        // Verificar almacenes específicos
+        $this->assertDatabaseHas('inventory', [
+            'product_id' => $product1->id,
+            'warehouse_id' => $this->warehouse->id,
+        ]);
+
+        $this->assertDatabaseHas('inventory', [
+            'product_id' => $product1->id,
+            'warehouse_id' => $warehouse2->id,
+        ]);
+
+        $this->assertDatabaseHas('inventory', [
+            'product_id' => $product2->id,
+            'warehouse_id' => $this->warehouse->id,
+        ]);
+
+        $this->assertDatabaseHas('inventory', [
+            'product_id' => $product2->id,
+            'warehouse_id' => $warehouse2->id,
+        ]);
+    }
+    #[Test]
+    public function puede_crear_producto_con_precios_por_almacen()
+    {
+        $warehouse2 = Warehouse::create([
+            'name' => 'Almacén Norte',
+            'ubigeo' => '150101',
+            'address' => 'Av. Norte 123',
+            'is_active' => true,
+        ]);
+
+        $data = [
+            'primary_name' => 'Laptop Dell XPS',
+            'category_id' => $this->category->id,
+            'warehouse_prices' => [
+                [
+                    'warehouse_id' => $this->warehouse->id,
+                    'sale_price' => 5500.00,
+                    'min_sale_price' => 5200.00,
+                ],
+                [
+                    'warehouse_id' => $warehouse2->id,
+                    'sale_price' => 5400.00,
+                    'min_sale_price' => 5100.00,
+                ],
+            ],
+        ];
+
+        $response = $this->postJson('/api/products', $data);
+
+        $response->assertStatus(201)
+            ->assertJson(['success' => true]);
+
+        $product = Product::latest()->first();
+
+        // Verificar precios del almacén 1
+        $inventory1 = Inventory::where('product_id', $product->id)
+            ->where('warehouse_id', $this->warehouse->id)
+            ->first();
+
+        $this->assertEqualsWithDelta(5500.00, $inventory1->sale_price, 0.001);
+        $this->assertEqualsWithDelta(5200.00, $inventory1->min_sale_price, 0.001);
+
+        // Verificar precios del almacén 2
+        $inventory2 = Inventory::where('product_id', $product->id)
+            ->where('warehouse_id', $warehouse2->id)
+            ->first();
+
+        $this->assertEqualsWithDelta(5400.00, $inventory2->sale_price, 0.001);
+        $this->assertEqualsWithDelta(5100.00, $inventory2->min_sale_price, 0.001);
+    }
+
+    #[Test]
+    public function puede_crear_producto_sin_precios_usa_cero_por_defecto()
+    {
+        $data = [
+            'primary_name' => 'Producto Sin Precios',
+            'category_id' => $this->category->id,
+        ];
+
+        $response = $this->postJson('/api/products', $data);
+
+        $response->assertStatus(201);
+
+        $product = Product::latest()->first();
+        $inventory = Inventory::where('product_id', $product->id)->first();
+
+        $this->assertEqualsWithDelta(0.00, $inventory->sale_price, 0.001);
+        $this->assertEqualsWithDelta(0.00, $inventory->min_sale_price, 0.001);
+    }
+
+    #[Test]
+    public function puede_crear_producto_con_precios_solo_para_algunos_almacenes()
+    {
+        $warehouse2 = Warehouse::create([
+            'name' => 'Almacén 2',
+            'ubigeo' => '150101',
+            'address' => 'Av. Test 456',
+            'is_active' => true,
+        ]);
+
+        $warehouse3 = Warehouse::create([
+            'name' => 'Almacén 3',
+            'ubigeo' => '150101',
+            'address' => 'Av. Test 789',
+            'is_active' => true,
+        ]);
+
+        $data = [
+            'primary_name' => 'Producto Parcial',
+            'category_id' => $this->category->id,
+            'warehouse_prices' => [
+                [
+                    'warehouse_id' => $this->warehouse->id,
+                    'sale_price' => 100.00,
+                    'min_sale_price' => 90.00,
+                ],
+                // Solo configuramos precio para el almacén 1
+            ],
+        ];
+
+        $response = $this->postJson('/api/products', $data);
+
+        $response->assertStatus(201);
+
+        $product = Product::latest()->first();
+
+        // Almacén 1: con precios configurados
+        $inv1 = Inventory::where('product_id', $product->id)
+            ->where('warehouse_id', $this->warehouse->id)
+            ->first();
+        $this->assertEqualsWithDelta(100.00, $inv1->sale_price, 0.001);
+
+        // Almacén 2: sin precios (debe ser 0)
+        $inv2 = Inventory::where('product_id', $product->id)
+            ->where('warehouse_id', $warehouse2->id)
+            ->first();
+        $this->assertEqualsWithDelta(0.00, $inv2->sale_price, 0.001);
+
+        // Almacén 3: sin precios (debe ser 0)
+        $inv3 = Inventory::where('product_id', $product->id)
+            ->where('warehouse_id', $warehouse3->id)
+            ->first();
+        $this->assertEqualsWithDelta(0.00, $inv3->sale_price, 0.001);
+    }
+
+    #[Test]
+    public function valida_que_min_sale_price_no_sea_mayor_que_sale_price()
+    {
+        $data = [
+            'primary_name' => 'Producto Test',
+            'category_id' => $this->category->id,
+            'warehouse_prices' => [
+                [
+                    'warehouse_id' => $this->warehouse->id,
+                    'sale_price' => 100.00,
+                    'min_sale_price' => 150.00, // ❌ Mayor que sale_price
+                ],
+            ],
+        ];
+
+        $response = $this->postJson('/api/products', $data);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['warehouse_prices.0.min_sale_price']);
+    }
+
+    #[Test]
+    public function valida_que_warehouse_id_exista()
+    {
+        $data = [
+            'primary_name' => 'Producto Test',
+            'category_id' => $this->category->id,
+            'warehouse_prices' => [
+                [
+                    'warehouse_id' => 99999, // No existe
+                    'sale_price' => 100.00,
+                    'min_sale_price' => 90.00,
+                ],
+            ],
+        ];
+
+        $response = $this->postJson('/api/products', $data);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['warehouse_prices.0.warehouse_id']);
+    }
+
+    #[Test]
+    public function mensaje_indica_cuantos_almacenes_tienen_precios_configurados()
+    {
+        $warehouse2 = Warehouse::create([
+            'name' => 'Almacén 2',
+            'ubigeo' => '150101',
+            'address' => 'Av. Test 456',
+            'is_active' => true,
+        ]);
+
+        $data = [
+            'primary_name' => 'Producto Test',
+            'category_id' => $this->category->id,
+            'warehouse_prices' => [
+                [
+                    'warehouse_id' => $this->warehouse->id,
+                    'sale_price' => 100.00,
+                    'min_sale_price' => 90.00,
+                ],
+            ],
+        ];
+
+        $response = $this->postJson('/api/products', $data);
+
+        $response->assertStatus(201);
+
+        $message = $response->json('message');
+        $this->assertStringContainsString('Precios configurados para 1 almacén', $message);
+    }
+
+    // ================================================================
+    // TESTS DE ACTUALIZACIÓN CON PRECIOS POR ALMACÉN
+    // ================================================================
+
+    #[Test]
+    public function puede_actualizar_solo_precios_sin_modificar_producto()
+    {
+        $product = Product::factory()->create([
+            'primary_name' => 'Laptop Original',
+            'brand' => 'Dell',
+        ]);
+
+        Inventory::create([
+            'product_id' => $product->id,
+            'warehouse_id' => $this->warehouse->id,
+            'available_stock' => 50,
+            'sale_price' => 100.00,
+            'min_sale_price' => 90.00,
+        ]);
+
+        // Solo actualizar precios
+        $data = [
+            'warehouse_prices' => [
+                [
+                    'warehouse_id' => $this->warehouse->id,
+                    'sale_price' => 150.00,
+                    'min_sale_price' => 130.00,
+                ],
+            ],
+        ];
+
+        $response = $this->patchJson("/api/products/{$product->id}", $data);
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'message' => 'Producto actualizado exitosamente (precios actualizados en 1 almacén(es))',
+            ]);
+
+        // Verificar que los datos del producto NO cambiaron
+        $product->refresh();
+        $this->assertEquals('Laptop Original', $product->primary_name);
+        $this->assertEquals('Dell', $product->brand);
+
+        // Verificar que los precios SÍ cambiaron
+        $inventory = Inventory::where('product_id', $product->id)->first();
+        $this->assertEqualsWithDelta(150.00, $inventory->sale_price, 0.001);
+        $this->assertEqualsWithDelta(130.00, $inventory->min_sale_price, 0.001);
+
+        // El stock no debe cambiar
+        $this->assertEquals(50, $inventory->available_stock);
+    }
+
+    #[Test]
+    public function puede_actualizar_producto_sin_tocar_precios()
+    {
+        $product = Product::factory()->create([
+            'primary_name' => 'Laptop Original',
+            'brand' => 'Dell',
+        ]);
+
+        Inventory::create([
+            'product_id' => $product->id,
+            'warehouse_id' => $this->warehouse->id,
+            'sale_price' => 100.00,
+            'min_sale_price' => 90.00,
+        ]);
+
+        // Solo actualizar datos del producto
+        $data = [
+            'primary_name' => 'Laptop Actualizada',
+            'brand' => 'HP',
+        ];
+
+        $response = $this->patchJson("/api/products/{$product->id}", $data);
+
+        $response->assertStatus(200)
+            ->assertJsonFragment([
+                'message' => 'Producto actualizado exitosamente'
+            ]);
+
+        // Verificar que los datos SÍ cambiaron
+        $product->refresh();
+        $this->assertEquals('Laptop Actualizada', $product->primary_name);
+        $this->assertEquals('HP', $product->brand);
+
+        // Verificar que los precios NO cambiaron
+        $inventory = Inventory::where('product_id', $product->id)->first();
+        $this->assertEqualsWithDelta(100.00, $inventory->sale_price, 0.001);
+        $this->assertEqualsWithDelta(90.00, $inventory->min_sale_price, 0.001);
+    }
+
+    #[Test]
+    public function puede_actualizar_producto_y_precios_simultaneamente()
+    {
+        $product = Product::factory()->create([
+            'primary_name' => 'Original',
+            'brand' => 'Dell',
+        ]);
+
+        Inventory::create([
+            'product_id' => $product->id,
+            'warehouse_id' => $this->warehouse->id,
+            'sale_price' => 100.00,
+            'min_sale_price' => 90.00,
+        ]);
+
+        $data = [
+            'primary_name' => 'Actualizado',
+            'brand' => 'HP',
+            'warehouse_prices' => [
+                [
+                    'warehouse_id' => $this->warehouse->id,
+                    'sale_price' => 200.00,
+                    'min_sale_price' => 180.00,
+                ],
+            ],
+        ];
+
+        $response = $this->patchJson("/api/products/{$product->id}", $data);
+
+        $response->assertStatus(200)
+            ->assertJsonFragment([
+                'message' => 'Producto actualizado exitosamente (precios actualizados en 1 almacén(es))'
+            ]);
+
+        $product->refresh();
+        $this->assertEquals('Actualizado', $product->primary_name);
+        $this->assertEquals('HP', $product->brand);
+
+        $inventory = Inventory::where('product_id', $product->id)->first();
+        $this->assertEqualsWithDelta(200.00, $inventory->sale_price, 0.001);
+        $this->assertEqualsWithDelta(180.00, $inventory->min_sale_price, 0.001);
+    }
+
+    #[Test]
+    public function puede_actualizar_precios_de_multiples_almacenes()
+    {
+        $product = Product::factory()->create();
+
+        $warehouse2 = Warehouse::create([
+            'name' => 'Almacén 2',
+            'ubigeo' => '150101',
+            'address' => 'Av. Test 456',
+            'is_active' => true,
+        ]);
+
+        Inventory::create([
+            'product_id' => $product->id,
+            'warehouse_id' => $this->warehouse->id,
+            'sale_price' => 100.00,
+            'min_sale_price' => 90.00,
+        ]);
+
+        Inventory::create([
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse2->id,
+            'sale_price' => 100.00,
+            'min_sale_price' => 90.00,
+        ]);
+
+        $data = [
+            'warehouse_prices' => [
+                [
+                    'warehouse_id' => $this->warehouse->id,
+                    'sale_price' => 120.00,
+                    'min_sale_price' => 110.00,
+                ],
+                [
+                    'warehouse_id' => $warehouse2->id,
+                    'sale_price' => 125.00,
+                    'min_sale_price' => 115.00,
+                ],
+            ],
+        ];
+
+        $response = $this->patchJson("/api/products/{$product->id}", $data);
+
+        $response->assertStatus(200)
+            ->assertJsonFragment([
+                'message' => 'Producto actualizado exitosamente (precios actualizados en 2 almacén(es))'
+            ]);
+
+        $inv1 = Inventory::where('product_id', $product->id)
+            ->where('warehouse_id', $this->warehouse->id)
+            ->first();
+        $this->assertEqualsWithDelta(120.00, $inv1->sale_price, 0.001);
+
+        $inv2 = Inventory::where('product_id', $product->id)
+            ->where('warehouse_id', $warehouse2->id)
+            ->first();
+        $this->assertEqualsWithDelta(125.00, $inv2->sale_price, 0.001);
+    }
+
+    #[Test]
+    public function actualizacion_parcial_no_afecta_otros_almacenes()
+    {
+        $product = Product::factory()->create();
+
+        $warehouse2 = Warehouse::create([
+            'name' => 'Almacén 2',
+            'ubigeo' => '150101',
+            'address' => 'Av. Test 456',
+            'is_active' => true,
+        ]);
+
+        Inventory::create([
+            'product_id' => $product->id,
+            'warehouse_id' => $this->warehouse->id,
+            'sale_price' => 100.00,
+            'min_sale_price' => 90.00,
+        ]);
+
+        Inventory::create([
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse2->id,
+            'sale_price' => 100.00,
+            'min_sale_price' => 90.00,
+        ]);
+
+        // Solo actualizar almacén 1
+        $data = [
+            'warehouse_prices' => [
+                [
+                    'warehouse_id' => $this->warehouse->id,
+                    'sale_price' => 150.00,
+                    'min_sale_price' => 140.00,
+                ],
+            ],
+        ];
+
+        $response = $this->patchJson("/api/products/{$product->id}", $data);
+
+        $response->assertStatus(200);
+
+        // Almacén 1: actualizado
+        $inv1 = Inventory::where('product_id', $product->id)
+            ->where('warehouse_id', $this->warehouse->id)
+            ->first();
+        $this->assertEqualsWithDelta(150.00, $inv1->sale_price, 0.001);
+
+        // Almacén 2: sin cambios
+        $inv2 = Inventory::where('product_id', $product->id)
+            ->where('warehouse_id', $warehouse2->id)
+            ->first();
+        $this->assertEqualsWithDelta(100.00, $inv2->sale_price, 0.001);
+    }
+
+    #[Test]
+    public function crea_inventario_si_no_existe_al_actualizar_precios()
+    {
+        $product = Product::factory()->create();
+
+        $warehouse2 = Warehouse::create([
+            'name' => 'Almacén Nuevo',
+            'ubigeo' => '150101',
+            'address' => 'Av. Test 456',
+            'is_active' => true,
+        ]);
+
+        // Producto NO tiene inventario en warehouse2
+        $this->assertDatabaseMissing('inventory', [
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse2->id,
+        ]);
+
+        $data = [
+            'warehouse_prices' => [
+                [
+                    'warehouse_id' => $warehouse2->id,
+                    'sale_price' => 150.00,
+                    'min_sale_price' => 130.00,
+                ],
+            ],
+        ];
+
+        $response = $this->patchJson("/api/products/{$product->id}", $data);
+
+        $response->assertStatus(200);
+
+        // Verificar que se creó el inventario
+        $this->assertDatabaseHas('inventory', [
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse2->id,
+        ]);
+
+        $inventory = Inventory::where('product_id', $product->id)
+            ->where('warehouse_id', $warehouse2->id)
+            ->first();
+
+        $this->assertEqualsWithDelta(150.00, $inventory->sale_price, 0.001);
+        $this->assertEqualsWithDelta(130.00, $inventory->min_sale_price, 0.001);
+        $this->assertEquals(0, $inventory->available_stock);
+    }
+
+    #[Test]
+    public function validacion_min_sale_price_no_mayor_que_sale_price_en_update()
+    {
+        $product = Product::factory()->create();
+
+        $data = [
+            'warehouse_prices' => [
+                [
+                    'warehouse_id' => $this->warehouse->id,
+                    'sale_price' => 100.00,
+                    'min_sale_price' => 150.00, // ❌ Inválido
+                ],
+            ],
+        ];
+
+        $response = $this->patchJson("/api/products/{$product->id}", $data);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['warehouse_prices.0.min_sale_price']);
+    }
+
+    #[Test]
+    public function validacion_warehouse_id_debe_existir_en_update()
+    {
+        $product = Product::factory()->create();
+
+        $data = [
+            'warehouse_prices' => [
+                [
+                    'warehouse_id' => 99999, // No existe
+                    'sale_price' => 100.00,
+                    'min_sale_price' => 90.00,
+                ],
+            ],
+        ];
+
+        $response = $this->patchJson("/api/products/{$product->id}", $data);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['warehouse_prices.0.warehouse_id']);
+    }
+
+    #[Test]
+    public function validacion_precios_deben_ser_numericos()
+    {
+        $product = Product::factory()->create();
+
+        $data = [
+            'warehouse_prices' => [
+                [
+                    'warehouse_id' => $this->warehouse->id,
+                    'sale_price' => 'abc', // ❌ No numérico
+                    'min_sale_price' => 90.00,
+                ],
+            ],
+        ];
+
+        $response = $this->patchJson("/api/products/{$product->id}", $data);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['warehouse_prices.0.sale_price']);
+    }
+
+    #[Test]
+    public function validacion_precios_no_pueden_ser_negativos()
+    {
+        $product = Product::factory()->create();
+
+        $data = [
+            'warehouse_prices' => [
+                [
+                    'warehouse_id' => $this->warehouse->id,
+                    'sale_price' => -50.00, // ❌ Negativo
+                    'min_sale_price' => 90.00,
+                ],
+            ],
+        ];
+
+        $response = $this->patchJson("/api/products/{$product->id}", $data);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['warehouse_prices.0.sale_price']);
+    }
+
+    #[Test]
+    public function puede_establecer_precios_en_cero_en_update()
+    {
+        $product = Product::factory()->create();
+
+        Inventory::create([
+            'product_id' => $product->id,
+            'warehouse_id' => $this->warehouse->id,
+            'sale_price' => 100.00,
+            'min_sale_price' => 90.00,
+        ]);
+
+        $data = [
+            'warehouse_prices' => [
+                [
+                    'warehouse_id' => $this->warehouse->id,
+                    'sale_price' => 0.00,
+                    'min_sale_price' => 0.00,
+                ],
+            ],
+        ];
+
+        $response = $this->patchJson("/api/products/{$product->id}", $data);
+
+        $response->assertStatus(200);
+
+        $inventory = Inventory::where('product_id', $product->id)->first();
+        $this->assertEqualsWithDelta(0.00, $inventory->sale_price, 0.001);
+        $this->assertEqualsWithDelta(0.00, $inventory->min_sale_price, 0.001);
+    }
+
+    #[Test]
+    public function stock_no_cambia_al_actualizar_solo_precios()
+    {
+        $product = Product::factory()->create();
+
+        Inventory::create([
+            'product_id' => $product->id,
+            'warehouse_id' => $this->warehouse->id,
+            'available_stock' => 75,
+            'reserved_stock' => 5,
+            'sale_price' => 100.00,
+            'min_sale_price' => 90.00,
+        ]);
+
+        $data = [
+            'warehouse_prices' => [
+                [
+                    'warehouse_id' => $this->warehouse->id,
+                    'sale_price' => 200.00,
+                    'min_sale_price' => 180.00,
+                ],
+            ],
+        ];
+
+        $response = $this->patchJson("/api/products/{$product->id}", $data);
+
+        $response->assertStatus(200);
+
+        $inventory = Inventory::where('product_id', $product->id)->first();
+
+        // Precios actualizados
+        $this->assertEqualsWithDelta(200.00, $inventory->sale_price, 0.001);
+
+        // Stock sin cambios
+        $this->assertEquals(75, $inventory->available_stock);
+        $this->assertEquals(5, $inventory->reserved_stock);
+    }
+
+    #[Test]
+    public function registra_actividad_al_actualizar_precios()
+    {
+        $product = Product::factory()->create();
+
+        Inventory::create([
+            'product_id' => $product->id,
+            'warehouse_id' => $this->warehouse->id,
+            'sale_price' => 100.00,
+            'min_sale_price' => 90.00,
+        ]);
+
+        $data = [
+            'warehouse_prices' => [
+                [
+                    'warehouse_id' => $this->warehouse->id,
+                    'sale_price' => 150.00,
+                    'min_sale_price' => 130.00,
+                ],
+            ],
+        ];
+
+        $this->patchJson("/api/products/{$product->id}", $data);
+
+        $this->assertDatabaseHas('activity_log', [
+            'description' => 'Producto actualizado',
+            'subject_id' => $product->id,
+            'causer_id' => $this->user->id,
+        ]);
+
+        $activity = ActivityModel::where('subject_id', $product->id)
+            ->where('description', 'Producto actualizado')
+            ->latest()
+            ->first();
+
+        $properties = $activity->properties;
+        $this->assertTrue($properties['prices_updated']);
+    }
+
+    #[Test]
+    public function put_requiere_campos_obligatorios_pero_precios_son_opcionales()
+    {
+        $product = Product::factory()->create([
+            'primary_name' => 'Original',
+            'category_id' => $this->category->id,
+        ]);
+
+        // PUT sin category_id debe fallar
+        $data = [
+            'primary_name' => 'Actualizado',
+        ];
+
+        $response = $this->putJson("/api/products/{$product->id}", $data);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['category_id']);
+
+        // PUT con campos obligatorios pero sin precios debe pasar
+        $data = [
+            'primary_name' => 'Actualizado',
+            'category_id' => $this->category->id,
+        ];
+
+        $response = $this->putJson("/api/products/{$product->id}", $data);
+
+        $response->assertStatus(200);
+    }
+
+    #[Test]
+    public function patch_no_requiere_campos_obligatorios_ni_precios()
+    {
+        $product = Product::factory()->create([
+            'primary_name' => 'Original',
+            'brand' => 'Dell',
+        ]);
+
+        // Solo actualizar descripción
+        $data = [
+            'description' => 'Nueva descripción',
+        ];
+
+        $response = $this->patchJson("/api/products/{$product->id}", $data);
+
+        $response->assertStatus(200);
+
+        $product->refresh();
+        $this->assertEquals('Nueva descripción', $product->description);
+        $this->assertEquals('Original', $product->primary_name); // Sin cambios
+    }
     // ================================================================
     // TESTS DE CREACIÓN DE PRODUCTOS
     // ================================================================
 
+    // MODIFICAR ESTE TEST EXISTENTE:
     #[Test]
     public function puede_crear_producto_con_datos_minimos_requeridos()
     {
@@ -126,6 +1238,14 @@ class ProductControllerTest extends TestCase
             'primary_name' => 'Producto Test',
             'category_id' => $this->category->id,
         ]);
+
+        // ✅ AGREGAR: Verificar que se creó inventario
+        $product = Product::latest()->first();
+        $activeWarehousesCount = Warehouse::active()->count();
+        $inventoryCount = Inventory::where('product_id', $product->id)->count();
+
+        $this->assertEquals($activeWarehousesCount, $inventoryCount);
+        $this->assertGreaterThan(0, $inventoryCount, 'El producto debe tener inventario en al menos un almacén');
     }
 
     #[Test]
@@ -184,6 +1304,7 @@ class ProductControllerTest extends TestCase
             ->assertJsonPath('errors.sku.0', 'Este SKU ya está registrado en el sistema');
     }
 
+    // MODIFICAR ESTE TEST EXISTENTE:
     #[Test]
     public function puede_crear_producto_con_todos_los_campos()
     {
@@ -217,6 +1338,10 @@ class ProductControllerTest extends TestCase
             'weight' => 2.5,
             'barcode' => '1234567890',
         ]);
+
+        // ✅ AGREGAR: Verificar asignación a almacenes
+        $product = Product::where('sku', 'FULL-PRODUCT-001')->first();
+        $this->assertGreaterThan(0, $product->inventory()->count());
     }
 
     #[Test]
@@ -278,14 +1403,15 @@ class ProductControllerTest extends TestCase
 
         $this->postJson('/api/products', $data);
 
+        // ✅ CAMBIAR EL TEXTO ESPERADO:
         $this->assertDatabaseHas('activity_log', [
-            'description' => 'Producto creado',
+            'description' => 'Producto creado y asignado a almacenes', // ← CAMBIADO
             'causer_id' => $this->user->id,
             'causer_type' => get_class($this->user),
         ]);
 
         $activity = ActivityModel::latest()->first();
-        $this->assertEquals('Producto creado', $activity->description);
+        $this->assertEquals('Producto creado y asignado a almacenes', $activity->description); // ← CAMBIADO
         $this->assertEquals($this->user->id, $activity->causer_id);
         $this->assertNotNull($activity->subject_id);
     }
@@ -1967,8 +3093,8 @@ class ProductControllerTest extends TestCase
     }
 
     // ================================================================
-// TESTS DE CASOS ESPECIALES
-// ================================================================
+    // TESTS DE CASOS ESPECIALES
+    // ================================================================
 
     #[Test]
     public function producto_sin_lotes_muestra_costo_cero()
@@ -2149,8 +3275,8 @@ class ProductControllerTest extends TestCase
     }
 
     // ================================================================
-// TESTS DE VALIDACIÓN DE MENSAJES EN ESPAÑOL
-// ================================================================
+    // TESTS DE VALIDACIÓN DE MENSAJES EN ESPAÑOL
+    // ================================================================
 
     #[Test]
     public function mensajes_de_validacion_estan_en_espanol()
@@ -2189,8 +3315,8 @@ class ProductControllerTest extends TestCase
     }
 
     // ================================================================
-// TESTS DE PAGINACIÓN VACÍA
-// ================================================================
+    // TESTS DE PAGINACIÓN VACÍA
+    // ================================================================
 
     #[Test]
     public function paginacion_vacia_retorna_estructura_correcta()
@@ -2208,8 +3334,8 @@ class ProductControllerTest extends TestCase
     }
 
     // ================================================================
-// TESTS DE SCOPES Y QUERIES AVANZADAS
-// ================================================================
+    // TESTS DE SCOPES Y QUERIES AVANZADAS
+    // ================================================================
 
     #[Test]
     public function scope_active_filtra_productos_activos()
@@ -2300,8 +3426,8 @@ class ProductControllerTest extends TestCase
     }
 
     // ================================================================
-// TESTS DE SOFT DELETE
-// ================================================================
+    // TESTS DE SOFT DELETE
+    // ================================================================
 
     #[Test]
     public function productos_eliminados_no_aparecen_en_listado_normal()
@@ -2330,7 +3456,7 @@ class ProductControllerTest extends TestCase
     }
 
     // TESTS DE CAMPOS OPCIONALES
-// ================================================================
+    // ================================================================
 
     #[Test]
     public function acepta_secondary_name_opcional()
@@ -2402,8 +3528,8 @@ class ProductControllerTest extends TestCase
     }
 
     // ================================================================
-// TESTS DE LÍMITES Y CASOS EXTREMOS
-// ================================================================
+    // TESTS DE LÍMITES Y CASOS EXTREMOS
+    // ================================================================
 
     #[Test]
     public function valida_descripcion_maximo_5000_caracteres()
