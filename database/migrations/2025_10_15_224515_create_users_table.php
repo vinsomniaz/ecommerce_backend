@@ -19,7 +19,14 @@ return new class extends Migration
             $table->string('email')->unique()->nullable();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
+            $table->boolean('is_active')->default(true);
+            // 👉 ALMACÉN ASIGNADO (solo para vendedores normalmente)
+            $table->foreignId('warehouse_id')
+                ->nullable()
+                ->constrained('warehouses')
+                ->nullOnDelete();
             $table->timestamps();
+            $table->softDeletes();
         });
 
         Schema::create('password_reset_tokens', function (Blueprint $table) {

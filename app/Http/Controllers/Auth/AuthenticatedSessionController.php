@@ -28,7 +28,13 @@ class AuthenticatedSessionController extends Controller
             ], 403);
         }
 
-        // Eliminar tokens antiguos (opcional - mantener solo 1 sesión activa)
+        // 🔹 SOLO CLIENTES: asegurar que tengan entity (lazy)
+        $entity = null;
+        if ($user->hasRole('customer')) {
+            $entity = $user->getOrCreateEntity(); // esto ya respeta la regla de roles
+        }
+
+        // Eliminar tokens antiguos (opcional)
         $user->tokens()->delete();
 
         // Crear nuevo token
@@ -37,24 +43,24 @@ class AuthenticatedSessionController extends Controller
         return response()->json([
             'message' => 'Login exitoso',
             'user' => [
-                'id' => $user->id,
+                'id'         => $user->id,
                 'first_name' => $user->first_name,
-                'last_name' => $user->last_name,
-                'full_name' => $user->full_name,
-                'email' => $user->email,
-                'cellphone' => $user->cellphone,
-                'is_active' => $user->is_active,
-                'roles' => $user->getRoleNames(),
+                'last_name'  => $user->last_name,
+                'full_name'  => $user->full_name,
+                'email'      => $user->email,
+                'cellphone'  => $user->cellphone,
+                'is_active'  => $user->is_active,
+                'roles'      => $user->getRoleNames(),
                 'permissions' => $user->getAllPermissions()->pluck('name'),
                 'has_entity' => $user->hasEntity(),
             ],
-            'entity' => $user->entity ? [
-                'id' => $user->entity->id,
-                'tipo_documento' => $user->entity->tipo_documento,
-                'numero_documento' => $user->entity->numero_documento,
-                'full_name' => $user->entity->full_name,
+            'entity' => $entity ? [
+                'id'              => $entity->id,
+                'tipo_documento'  => $entity->tipo_documento,
+                'numero_documento' => $entity->numero_documento,
+                'full_name'       => $entity->full_name,
             ] : null,
-            'token' => $token,
+            'token'      => $token,
             'token_type' => 'Bearer',
         ], 200);
     }
@@ -66,23 +72,29 @@ class AuthenticatedSessionController extends Controller
     {
         $user = $request->user();
 
+        // Igual: solo clientes tienen entity
+        $entity = null;
+        if ($user->hasRole('customer')) {
+            $entity = $user->entity; // aquí NO creamos, solo leemos
+        }
+
         return response()->json([
             'user' => [
-                'id' => $user->id,
-                'first_name' => $user->first_name,
-                'last_name' => $user->last_name,
-                'full_name' => $user->full_name,
-                'email' => $user->email,
-                'cellphone' => $user->cellphone,
+                'id'               => $user->id,
+                'first_name'       => $user->first_name,
+                'last_name'        => $user->last_name,
+                'full_name'        => $user->full_name,
+                'email'            => $user->email,
+                'cellphone'        => $user->cellphone,
                 'email_verified_at' => $user->email_verified_at,
-                'is_active' => $user->is_active,
-                'roles' => $user->getRoleNames(),
-                'permissions' => $user->getAllPermissions()->pluck('name'),
-                'has_entity' => $user->hasEntity(),
+                'is_active'        => $user->is_active,
+                'roles'            => $user->getRoleNames(),
+                'permissions'      => $user->getAllPermissions()->pluck('name'),
+                'has_entity'       => $user->hasEntity(),
             ],
-            'entity' => $user->entity,
-            'addresses' => $user->addresses,
-            'current_cart' => $user->current_cart,
+            'entity'      => $entity,
+            'addresses'   => $user->hasRole('customer') ? $user->addresses : [],
+            'current_cart' => $user->hasRole('customer') ? $user->current_cart : null,
         ]);
     }
 

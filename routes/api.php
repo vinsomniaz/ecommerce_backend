@@ -14,6 +14,8 @@ use App\Http\Controllers\Api\AddressController;
 use App\Http\Controllers\Api\StockManagementController;
 use App\Http\Controllers\Api\EcommerceController;
 use App\Http\Controllers\Api\GeminiController;
+use App\Http\Controllers\Api\PermissionController;
+use App\Http\Controllers\Api\UserController;
 
 /*
 |--------------------------------------------------------------------------
@@ -28,21 +30,21 @@ Route::prefix('ecommerce')->name('ecommerce/')->group(function () {
 
     // Ruta para la lista de productos: /api/ecommerce/products
     Route::get('products', [EcommerceController::class, 'index'])
-         ->name('products.index');
+        ->name('products.index');
 
     // Ruta para el detalle del producto: /api/ecommerce/products/{product}
     Route::get('products/{product}', [EcommerceController::class, 'show'])
-         ->name('products.show');
+        ->name('products.show');
 
     // --- NUEVAS RUTAS DE CATEGORÍAS PÚBLICAS ---
     Route::get('categories', [EcommerceController::class, 'listCategories'])
-         ->name('categories.list');
+        ->name('categories.list');
 
     Route::get('categories/tree', [EcommerceController::class, 'getCategoryTree'])
-         ->name('categories.tree');
+        ->name('categories.tree');
 
     Route::get('categories/{id}', [EcommerceController::class, 'showCategory'])
-         ->name('categories.show');
+        ->name('categories.show');
 });
 
 /*
@@ -51,7 +53,58 @@ Route::prefix('ecommerce')->name('ecommerce/')->group(function () {
 |--------------------------------------------------------------------------
 |
 */
-/* CATEGORIAS */
+// ========================================
+// RUTAS DE PERMISOS (Solo Super-Admin)
+// ========================================
+Route::middleware(['auth:sanctum', 'role:super-admin'])->prefix('permissions')->group(function () {
+
+    // Listar todos los permisos disponibles
+    Route::get('/', [PermissionController::class, 'index'])
+        ->name('permissions.index');
+
+    // Obtener permisos de un usuario
+    Route::get('/users/{userId}', [PermissionController::class, 'getUserPermissions'])
+        ->name('permissions.user');
+
+    // Asignar permisos adicionales a un usuario
+    Route::post('/users/{userId}/assign', [PermissionController::class, 'assignToUser'])
+        ->name('permissions.assign');
+
+    // Revocar permisos de un usuario
+    Route::post('/users/{userId}/revoke', [PermissionController::class, 'revokeFromUser'])
+        ->name('permissions.revoke');
+
+    // Sincronizar permisos (reemplazar todos los directos)
+    Route::post('/users/{userId}/sync', [PermissionController::class, 'syncUserPermissions'])
+        ->name('permissions.sync');
+
+    // Obtener sugerencias de permisos para un rol
+    Route::get('/suggestions/{role}', [PermissionController::class, 'getSuggestedPermissions'])
+        ->name('permissions.suggestions');
+});
+/* ============================================
+   USUARIOS
+   ============================================ */
+Route::prefix('users')->middleware(['auth:sanctum'])->group(function () {
+    // CRUD REST (index, store, show, update, destroy)
+    Route::apiResource('/', UserController::class)->parameters([
+        '' => 'user'
+    ]);
+
+    // Rutas adicionales
+    Route::post('{id}/restore', [UserController::class, 'restore'])
+        ->name('users.restore');
+
+    Route::patch('{id}/toggle-active', [UserController::class, 'toggleActive'])
+        ->name('users.toggle-active');
+
+    Route::patch('{id}/change-role', [UserController::class, 'changeRole'])
+        ->name('users.change-role');
+});
+
+/* ============================================
+   CATEGORIAS
+   ============================================ */
 Route::prefix('categories')->middleware(['auth:sanctum'])->group(function () {
     Route::get('/', [CategoryController::class, 'index']);
     Route::get('/tree', [CategoryController::class, 'tree']);
@@ -61,7 +114,9 @@ Route::prefix('categories')->middleware(['auth:sanctum'])->group(function () {
     Route::delete('/{id}', [CategoryController::class, 'destroy']);
 });
 
-/* ALMACENES */
+/* ============================================
+   ALMACENES
+   ============================================ */
 Route::prefix('warehouses')->middleware(['auth:sanctum'])->group(function () {
     Route::get('/', [WarehouseController::class, 'index']);
     Route::post('/', [WarehouseController::class, 'store']);
@@ -75,7 +130,9 @@ Route::prefix('warehouses')->middleware(['auth:sanctum'])->group(function () {
     Route::get('/{warehouse}/inventory/statistics', [InventoryController::class, 'warehouseStatistics']);
 });
 
-/* PRODUCTOS */
+/* ============================================
+   PRODUCTOS
+   ============================================ */
 Route::middleware('auth:sanctum')->prefix('products')->group(function () {
     // Rutas especiales PRIMERO
     Route::post('bulk-update', [ProductController::class, 'bulkUpdate']);
@@ -132,7 +189,9 @@ Route::middleware('auth:sanctum')->prefix('inventory')->group(function () {
         ->whereNumber('product')->whereNumber('warehouse');
 });
 
-/* ENTIDADES (CUSTOMERS & SUPPLIERS) */
+/* ============================================
+   ENTIDADES
+   ============================================ */
 Route::middleware('auth:sanctum')->prefix('entities')->group(function () {
     Route::get('search', [EntityController::class, 'search']);
     Route::get('find-by-document', [EntityController::class, 'findByDocument']);
