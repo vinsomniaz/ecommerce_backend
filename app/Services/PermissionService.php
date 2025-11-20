@@ -75,29 +75,64 @@ class PermissionService
     }
 
     /**
-     * Obtener permisos sugeridos para escalar privilegios de un rol
+     * 🔥 ACTUALIZADO: Obtener permisos sugeridos para escalar privilegios de un rol
+     *
+     * Estos son permisos que típicamente querrías dar a un usuario de ese rol
+     * para extender sus capacidades sin cambiar su rol base
      */
     public function getSuggestedPermissionsForRole(string $role): array
     {
         return match ($role) {
             'vendor' => [
-                'inventory.view.all-warehouses',
-                'inventory.manage.all-warehouses',
-                'sales.view.all-warehouses',
-                'sales.create.all-warehouses',
-                'reports.view.all-warehouses',
+                // 🔥 Escalado 1: Acceso a múltiples almacenes (pero NO todos)
+                // Nota: El super-admin tendría que asignar manualmente almacenes específicos
+
+                // 🔥 Escalado 2: Permisos adicionales de gestión
+                'inventory.store',              // Crear registros de inventario
+                'inventory.update',             // Modificar inventario
+                'inventory.bulk-assign',        // Asignación masiva (de su almacén)
+                'products.store',               // Crear productos
+                'products.update',              // Editar productos
+                'products.images.upload',       // Subir imágenes
+                'categories.store',             // Crear categorías
+                'categories.update',            // Editar categorías
+                'entities.deactivate',          // Desactivar clientes
+                'entities.activate',            // Activar clientes
+
+                // 🔥 Escalado 3: Acceso a reportes/estadísticas avanzadas
+                'inventory.statistics.global',  // Ver estadísticas globales (de su almacén)
+                'products.statistics',          // Estadísticas de productos
             ],
+
             'admin' => [
-                'permissions.manage',
-                'users.delete',
-                'warehouses.delete',
+                // 🔥 Permisos que solo tiene super-admin
+                'permissions.index',            // Ver todos los permisos
+                'permissions.user',             // Ver permisos de usuarios
+                'permissions.assign',           // Asignar permisos personalizados
+                'permissions.revoke',           // Revocar permisos
+                'permissions.sync',             // Sincronizar permisos
+                'users.destroy',                // Eliminar usuarios
+                'users.restore',                // Restaurar usuarios
+                'users.change-role',            // Cambiar roles
+                'warehouses.destroy',           // Eliminar almacenes
+                'stock.sync',                   // Sincronizar inventario global
             ],
+
+            'customer' => [
+                // Customers normalmente no necesitan escalado
+                // Son usuarios finales del ecommerce
+            ],
+
             default => [],
         };
     }
 
     /**
      * Verificar si un usuario puede acceder a un almacén específico
+     *
+     * @param User $user
+     * @param int|null $warehouseId
+     * @return bool
      */
     public function canAccessWarehouse(User $user, ?int $warehouseId = null): bool
     {
@@ -122,12 +157,15 @@ class PermissionService
 
     /**
      * Obtener IDs de almacenes accesibles para un usuario
+     *
+     * @param User $user
+     * @return string|array Retorna 'all' si tiene acceso total, o array de IDs
      */
-    public function getAccessibleWarehouses(User $user)
+    public function getAccessibleWarehouses(User $user): string|array
     {
         // Super-admin y admin ven todos
         if ($user->hasAnyRole(['super-admin', 'admin'])) {
-            return 'all'; // Indicador especial
+            return 'all';
         }
 
         // Si tiene permiso de ver todos
@@ -137,6 +175,86 @@ class PermissionService
 
         // Solo su almacén asignado
         return $user->warehouse_id ? [$user->warehouse_id] : [];
+    }
+
+    /**
+     * 🔥 NUEVO: Verificar si puede gestionar inventario de un almacén
+     */
+    public function canManageWarehouseInventory(User $user, int $warehouseId): bool
+    {
+        // Super-admin y admin siempre pueden
+        if ($user->hasAnyRole(['super-admin', 'admin'])) {
+            return true;
+        }
+
+        // Si tiene permiso de gestionar todos los almacenes
+        if ($user->hasPermissionTo('inventory.manage.all-warehouses')) {
+            return true;
+        }
+
+        // Solo puede gestionar su almacén asignado
+        return $user->warehouse_id === $warehouseId;
+    }
+
+    /**
+     * 🔥 NUEVO: Verificar si puede hacer transferencias entre almacenes específicos
+     */
+    public function canTransferBetweenWarehouses(User $user, int $fromWarehouseId, int $toWarehouseId): bool
+    {
+        // Super-admin y admin siempre pueden
+        if ($user->hasAnyRole(['super-admin', 'admin'])) {
+            return true;
+        }
+
+        // Si tiene permiso de transferir entre cualquier almacén
+        if ($user->hasPermissionTo('stock.transfer.any')) {
+            return true;
+        }
+
+        // Debe tener acceso al menos a uno de los almacenes (origen o destino)
+        $hasAccessToOrigin = $this->canAccessWarehouse($user, $fromWarehouseId);
+        $hasAccessToDestination = $this->canAccessWarehouse($user, $toWarehouseId);
+
+        return $hasAccessToOrigin || $hasAccessToDestination;
+    }
+
+    /**
+     * 🔥 NUEVO: Obtener permisos peligrosos que requieren aprobación especial
+     *
+     * Estos permisos NO deben ser sugeridos automáticamente
+     */
+    public function getDangerousPermissions(): array
+    {
+        return [
+            'permissions.assign',           // Puede dar permisos a otros
+            'permissions.revoke',           // Puede quitar permisos
+            'users.destroy',                // Eliminar usuarios
+            'users.change-role',            // Cambiar roles (escalado crítico)
+            'warehouses.destroy',           // Eliminar almacenes (pérdida de datos)
+            'inventory.view.all-warehouses', // Rompe restricción de almacén
+            'inventory.manage.all-warehouses', // Rompe restricción de almacén
+            'stock.transfer.any',           // Puede mover stock libremente
+            'stock.sync',                   // Puede alterar todo el inventario
+        ];
+    }
+
+    /**
+     * 🔥 NUEVO: Validar que no se están asignando permisos peligrosos sin autorización
+     */
+    public function validateSafePermissionAssignment(User $assigningUser, array $permissions): void
+    {
+        // Solo super-admin puede asignar permisos peligrosos
+        if (!$assigningUser->hasRole('super-admin')) {
+            $dangerousPermissions = $this->getDangerousPermissions();
+            $attemptedDangerous = array_intersect($permissions, $dangerousPermissions);
+
+            if (!empty($attemptedDangerous)) {
+                throw new \InvalidArgumentException(
+                    'No tienes autorización para asignar los siguientes permisos críticos: ' .
+                    implode(', ', $attemptedDangerous)
+                );
+            }
+        }
     }
 
     /**

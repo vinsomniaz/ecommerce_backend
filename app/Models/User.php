@@ -16,6 +16,8 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable, HasRoles, SoftDeletes; // ⭐ AGREGADO
 
+    protected $guard_name = 'sanctum';
+
     protected $fillable = [
         'first_name',
         'last_name',
@@ -132,27 +134,24 @@ class User extends Authenticatable
      */
     public function getOrCreateEntity(array $data = []): ?Entity
     {
-        // Si NO es cliente e-commerce, no debe tener entity
         if (!$this->hasRole('customer')) {
             return null;
         }
 
-        // Si ya tiene, la devolvemos
         if ($this->entity) {
             return $this->entity;
         }
 
-        // Crear una entity "cliente" básica
         return Entity::create(array_merge([
-            'user_id'         => $this->id,
-            'type'            => 'customer',   // o el tipo que uses
-            'tipo_documento'  => 'DNI',        // por defecto
+            'user_id'          => $this->id,
+            'type'             => 'customer',
+            'tipo_documento'   => '01',
             'numero_documento' => $this->cellphone ?? 'TEMP_' . $this->id,
-            'tipo_persona'    => 'natural',
-            'first_name'      => $this->first_name,
-            'last_name'       => $this->last_name,
-            'email'           => $this->email,
-            'phone'           => $this->cellphone,
+            'tipo_persona'     => 'natural',
+            'first_name'       => $this->first_name,
+            'last_name'        => $this->last_name,
+            'email'            => $this->email,
+            'phone'            => $this->cellphone,
         ], $data));
     }
 

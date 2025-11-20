@@ -14,11 +14,22 @@ use Illuminate\Support\Facades\Log;
 class WarehouseService
 {
     /**
-     * Listar todos los almacenes con filtros opcionales
+     * Listar almacenes con filtros opcionales
+     *
+     * @param array $filters
+     *  - is_active: bool
+     *  - visible_online: bool
+     *  - is_main: bool
+     *  - warehouse_ids: array (🔥 NUEVO: filtrar por IDs específicos)
      */
     public function list(array $filters = []): Collection
     {
         $query = Warehouse::with('ubigeoData');
+
+        // 🔥 FILTRO PRINCIPAL: Restricción por IDs de almacenes accesibles
+        if (isset($filters['warehouse_ids']) && is_array($filters['warehouse_ids'])) {
+            $query->whereIn('id', $filters['warehouse_ids']);
+        }
 
         if (isset($filters['is_active'])) {
             $query->where('is_active', $filters['is_active']);
@@ -55,13 +66,9 @@ class WarehouseService
     public function create(array $data): Warehouse
     {
         return DB::transaction(function () use ($data) {
-            // Validar que el ubigeo exista
             $this->validateUbigeo($data['ubigeo']);
-
-            // Validar nombre único
             $this->validateUniqueName($data['name']);
 
-            // Manejar lógica de almacén principal
             if ($data['is_main'] ?? false) {
                 $this->unsetCurrentMainWarehouse();
             }
@@ -69,7 +76,6 @@ class WarehouseService
             $warehouse = Warehouse::create($data);
             $warehouse->load('ubigeoData');
 
-            // ✅ NUEVO: Asignar todos los productos existentes al nuevo almacén
             if ($data['is_active'] ?? true) {
                 $this->assignAllProductsToWarehouse($warehouse);
             }
@@ -87,17 +93,14 @@ class WarehouseService
             $warehouse = $this->getById($id);
             $wasInactive = !$warehouse->is_active;
 
-            // Validar ubigeo si cambió
             if (isset($data['ubigeo']) && $data['ubigeo'] !== $warehouse->ubigeo) {
                 $this->validateUbigeo($data['ubigeo']);
             }
 
-            // Validar nombre único si cambió
             if (isset($data['name']) && $data['name'] !== $warehouse->name) {
                 $this->validateUniqueName($data['name'], $id);
             }
 
-            // Manejar lógica de almacén principal
             if (isset($data['is_main']) && $data['is_main'] && !$warehouse->is_main) {
                 $this->unsetCurrentMainWarehouse($id);
             }
@@ -106,7 +109,6 @@ class WarehouseService
             $warehouse->refresh();
             $warehouse->load('ubigeoData');
 
-            // ✅ NUEVO: Si se activa el almacén, asignar productos
             if ($wasInactive && ($data['is_active'] ?? false)) {
                 $this->assignAllProductsToWarehouse($warehouse);
             }
@@ -114,7 +116,6 @@ class WarehouseService
             return $warehouse;
         });
     }
-
 
     /**
      * Eliminar almacén
@@ -124,7 +125,6 @@ class WarehouseService
         return DB::transaction(function () use ($id) {
             $warehouse = $this->getById($id);
 
-            // Verificar si el almacén tiene inventario
             if ($warehouse->hasInventory()) {
                 throw WarehouseException::cannotDeleteWithInventory($id);
             }
@@ -143,6 +143,9 @@ class WarehouseService
         }
     }
 
+    /**
+     * Asignar todos los productos al almacén nuevo
+     */
     private function assignAllProductsToWarehouse(Warehouse $warehouse): void
     {
         $products = Product::select('id')->get();
@@ -155,7 +158,6 @@ class WarehouseService
         $inventoryData = [];
 
         foreach ($products as $product) {
-            // Verificar que no exista ya
             $exists = Inventory::where('product_id', $product->id)
                 ->where('warehouse_id', $warehouse->id)
                 ->exists();
@@ -170,14 +172,12 @@ class WarehouseService
                     'min_sale_price' => 0.00,
                     'profit_margin' => 0.00,
                     'last_movement_at' => null,
-                    'price_updated_at' => null, // ✅ AGREGADO
-                    // ❌ REMOVIDOS created_at y updated_at
+                    'price_updated_at' => null,
                 ];
             }
         }
 
         if (!empty($inventoryData)) {
-            // Inserción masiva para mejor rendimiento
             Inventory::insert($inventoryData);
             Log::info("Almacén #{$warehouse->id} asignado a " . count($inventoryData) . " productos");
         }

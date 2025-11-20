@@ -7,26 +7,36 @@ use App\Http\Requests\Warehouses\StoreWarehouseRequest;
 use App\Http\Requests\Warehouses\UpdateWarehouseRequest;
 use App\Http\Resources\Warehouses\WarehouseResource;
 use App\Services\WarehouseService;
+use App\Services\PermissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class WarehouseController extends Controller
 {
     public function __construct(
-        private WarehouseService $warehouseService
+        private WarehouseService $warehouseService,
+        private PermissionService $permissionService
     ) {}
 
     /**
-     * Listar almacenes
+     * Listar almacenes con filtrado automático según permisos
      *
      * @group Almacenes
-     * @queryParam is_active boolean Filtrar por estado activo. Example: 1
-     * @queryParam visible_online boolean Filtrar por visibilidad online. Example: 1
-     * @queryParam is_main boolean Filtrar almacén principal. Example: 1
      */
     public function index(Request $request): JsonResponse
     {
+        $user = $request->user();
         $filters = $request->only(['is_active', 'visible_online', 'is_main']);
+
+        // 🔥 SOLO FILTRADO: Si no tiene acceso a todos, agregar filtro
+        if (!$user->hasPermissionTo('warehouses.view.all')) {
+            $accessibleWarehouses = $this->permissionService->getAccessibleWarehouses($user);
+
+            if ($accessibleWarehouses !== 'all') {
+                $filters['warehouse_ids'] = $accessibleWarehouses;
+            }
+        }
+
         $warehouses = $this->warehouseService->list($filters);
 
         return response()->json([
@@ -39,20 +49,12 @@ class WarehouseController extends Controller
     }
 
     /**
-     * Crear nuevo almacén
-     *
-     * @group Almacenes
-     * @bodyParam name string required Nombre del almacén. Example: Almacén Principal
-     * @bodyParam ubigeo string required Código ubigeo de 6 dígitos. Example: 150101
-     * @bodyParam address string required Dirección del almacén. Example: Av. Ejemplo 123, Lima
-     * @bodyParam phone string optional Número de teléfono. Example: 987654321
-     * @bodyParam is_main boolean optional Marcar como almacén principal. Example: true
-     * @bodyParam is_active boolean optional Estado activo. Example: true
-     * @bodyParam visible_online boolean optional Visible en ecommerce. Example: true
-     * @bodyParam picking_priority integer optional Prioridad de picking (0-100). Example: 1
+     * Crear almacén
      */
     public function store(StoreWarehouseRequest $request): JsonResponse
     {
+        // ✅ No validar permisos: la ruta ya lo hizo con middleware('permission:warehouses.store')
+
         $warehouse = $this->warehouseService->create($request->validated());
 
         return response()->json([
@@ -63,13 +65,22 @@ class WarehouseController extends Controller
     }
 
     /**
-     * Obtener detalle de almacén
-     *
-     * @group Almacenes
-     * @urlParam id integer required ID del almacén. Example: 1
+     * Ver almacén con validación de acceso
      */
-    public function show(int $id): JsonResponse
+    public function show(Request $request, int $id): JsonResponse
     {
+        $user = $request->user();
+
+        // 🔥 SOLO VALIDAR SI NO TIENE ACCESO A TODOS
+        if (!$user->hasPermissionTo('warehouses.view.all')) {
+            if (!$this->permissionService->canAccessWarehouse($user, $id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No tienes acceso a este almacén',
+                ], 403);
+            }
+        }
+
         $warehouse = $this->warehouseService->getById($id);
 
         return response()->json([
@@ -80,20 +91,11 @@ class WarehouseController extends Controller
 
     /**
      * Actualizar almacén
-     *
-     * @group Almacenes
-     * @urlParam id integer required ID del almacén. Example: 1
-     * @bodyParam name string optional Nombre del almacén. Example: Almacén Secundario
-     * @bodyParam ubigeo string optional Código ubigeo de 6 dígitos. Example: 150102
-     * @bodyParam address string optional Dirección del almacén. Example: Jr. Nueva 456
-     * @bodyParam phone string optional Número de teléfono. Example: 987654321
-     * @bodyParam is_main boolean optional Marcar como almacén principal. Example: false
-     * @bodyParam is_active boolean optional Estado activo. Example: true
-     * @bodyParam visible_online boolean optional Visible en ecommerce. Example: true
-     * @bodyParam picking_priority integer optional Prioridad de picking (0-100). Example: 5
      */
     public function update(UpdateWarehouseRequest $request, int $id): JsonResponse
     {
+        // ✅ No validar permisos: la ruta ya lo hizo
+
         $warehouse = $this->warehouseService->update($id, $request->validated());
 
         return response()->json([
@@ -105,12 +107,11 @@ class WarehouseController extends Controller
 
     /**
      * Eliminar almacén
-     *
-     * @group Almacenes
-     * @urlParam id integer required ID del almacén. Example: 1
      */
     public function destroy(int $id): JsonResponse
     {
+        // ✅ No validar permisos: la ruta ya lo hizo con middleware('permission:warehouses.destroy')
+
         $this->warehouseService->delete($id);
 
         return response()->json([

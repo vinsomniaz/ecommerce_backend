@@ -15,8 +15,7 @@ class CategoryController extends Controller
 {
     public function __construct(
         private CategoryService $categoryService
-    ) {
-    }
+    ) {}
 
     /**
      * Listar todas las categorías con filtros
