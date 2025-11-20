@@ -32,15 +32,15 @@ class EcommerceController extends Controller
             'is_active',
             'is_featured',
             'visible_online',
+            'is_new',           // ✅ AGREGAR ESTA LÍNEA
             'warehouse_id',
             'with_stock',
             'low_stock',
             'sort_by',
             'sort_order',
-            'is_featured',
             'with_trashed',
-            'min_price', // <-- CORREGIDO
-            'max_price'  // <-- CORREGIDO
+            'min_price',
+            'max_price'
         ]);
 
         $perPage = $request->input('per_page', 15);
@@ -48,7 +48,6 @@ class EcommerceController extends Controller
 
         return ProductResource::collection($products);
     }
-
     /**
      * Crear un nuevo producto (SIN precios - se asignarán con compras)
      */
@@ -81,12 +80,12 @@ class EcommerceController extends Controller
     {
         // Solo permitir filtros públicos
         $publicRequest = new Request($request->only([
-            'per_page', 
-            'search', 
-            'level', 
+            'per_page',
+            'search',
+            'level',
             'parent_id'
         ]));
-        
+
         // Forzar que solo se muestren activas
         $publicRequest->merge(['is_active' => true]);
 
@@ -132,11 +131,11 @@ class EcommerceController extends Controller
     public function showCategory(int $id): JsonResponse
     {
         $category = $this->categoryService->getCategoryById($id);
-        
+
         // Asegurarse que solo se muestren categorías activas al público
         if (!$category->is_active) {
             // Podrías lanzar una excepción personalizada que el Handler capture como 404
-             return response()->json([
+            return response()->json([
                 'success' => false,
                 'message' => 'Categoría no encontrada'
             ], 404);
@@ -168,5 +167,4 @@ class EcommerceController extends Controller
             'data' => CategoryResource::collection($categories)
         ], 200);
     }
-
 }

@@ -34,6 +34,7 @@ return new class extends Migration
             $table->string('barcode', 50)->nullable();
 
             // Estados booleanos
+            $table->boolean('is_new')->default(false);
             $table->boolean('is_active')->default(true);
             $table->boolean('is_featured')->default(false);
             $table->boolean('visible_online')->default(true); // ← AGREGADO: nuevo campo

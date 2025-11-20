@@ -84,6 +84,11 @@ class EcommerceService
             $query->where('visible_online', $filters['visible_online']);
         }
 
+        if (isset($filters['is_new'])) {
+            $isNew = filter_var($filters['is_new'], FILTER_VALIDATE_BOOLEAN);
+            $query->where('is_new', $isNew);
+        }
+        
         // Asignamos 0 si min_price no viene (el bug del frontend)
         $minPrice = $filters['min_price'] ?? null;
 
