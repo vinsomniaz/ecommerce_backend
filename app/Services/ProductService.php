@@ -344,6 +344,8 @@ class ProductService
                 'unfeature' => $query->update(['is_featured' => false]),
                 'show_online' => $query->update(['visible_online' => true]),
                 'hide_online' => $query->update(['visible_online' => false]),
+                'mark_new' => $query->update(['is_new' => true]), // ✅ AGREGAR
+                'unmark_new' => $query->update(['is_new' => false]), // ✅ AGREGAR
                 'delete' => $query->delete(),
                 default => throw new InvalidArgumentException("Acción '{$action}' no válida"),
             };
@@ -387,16 +389,21 @@ class ProductService
             $query->where('brand', $filters['brand']);
         }
 
-        if (isset($filters['is_active'])) {
-            $query->where('is_active', $filters['is_active']);
+        // ✅ CORRECCIÓN: Convertir strings a booleanos antes de filtrar
+        if (array_key_exists('is_active', $filters)) {
+            $query->where('is_active', filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN));
         }
 
-        if (isset($filters['is_featured'])) {
-            $query->where('is_featured', $filters['is_featured']);
+        if (array_key_exists('is_featured', $filters)) {
+            $query->where('is_featured', filter_var($filters['is_featured'], FILTER_VALIDATE_BOOLEAN));
         }
 
-        if (isset($filters['visible_online'])) {
-            $query->where('visible_online', $filters['visible_online']);
+        if (array_key_exists('visible_online', $filters)) {
+            $query->where('visible_online', filter_var($filters['visible_online'], FILTER_VALIDATE_BOOLEAN));
+        }
+
+        if (array_key_exists('is_new', $filters)) {
+            $query->where('is_new', filter_var($filters['is_new'], FILTER_VALIDATE_BOOLEAN));
         }
 
         // Filtrar por almacén específico
@@ -435,7 +442,6 @@ class ProductService
 
         return $query->paginate($perPage);
     }
-
     /**
      * Obtener estadísticas de productos (ACTUALIZADO)
      */
@@ -669,6 +675,7 @@ class ProductService
             'is_active' => true,
             'is_featured' => false,
             'visible_online' => true,
+            'is_new' => false, // ✅ AGREGAR ESTA LÍNEA
         ];
 
         foreach ($defaults as $key => $value) {

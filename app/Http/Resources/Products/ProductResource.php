@@ -39,6 +39,7 @@ class ProductResource extends JsonResource
             'is_active' => $this->is_active,
             'is_featured' => $this->is_featured,
             'visible_online' => $this->visible_online,
+            'is_new' => $this->is_new,
 
             // ✅ ATRIBUTOS
             'attributes' => $this->whenLoaded('attributes', function () {

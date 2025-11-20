@@ -47,7 +47,8 @@ class UpdateProductRequest extends FormRequest
             'is_active' => ['sometimes', 'nullable', 'boolean'],
             'is_featured' => ['sometimes', 'nullable', 'boolean'],
             'visible_online' => ['sometimes', 'nullable', 'boolean'],
-
+            'is_new' => ['sometimes', 'nullable', 'boolean'],
+            
             // ✅ PRECIOS POR ALMACÉN (OPCIONAL)
             'warehouse_prices' => 'sometimes|nullable|array',
             'warehouse_prices.*.warehouse_id' => 'required|exists:warehouses,id',

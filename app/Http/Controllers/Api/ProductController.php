@@ -35,6 +35,7 @@ class ProductController extends Controller
             'is_active',
             'is_featured',
             'visible_online',
+            'is_new', // ✅ AGREGAR ESTA LÍNEA
             'warehouse_id',
             'with_stock',
             'low_stock',

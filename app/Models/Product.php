@@ -35,6 +35,7 @@ class Product extends Model implements HasMedia
         'is_active',
         'is_featured',
         'visible_online',
+        'is_new',
     ];
 
     protected $casts = [
@@ -43,6 +44,7 @@ class Product extends Model implements HasMedia
         'is_active' => 'boolean',
         'is_featured' => 'boolean',
         'visible_online' => 'boolean',
+        'is_new' => 'boolean',
     ];
 
     // Append attributes calculados
@@ -80,6 +82,7 @@ class Product extends Model implements HasMedia
             ->height(150)
             ->sharpen(10)
             ->quality(85)
+            ->background('rgba(0, 0, 0, 0)')
             ->nonQueued() // ⚠️ IMPORTANTE: Genera inmediatamente
             ->performOnCollections('images');
 
@@ -87,6 +90,7 @@ class Product extends Model implements HasMedia
             ->width(600)
             ->height(600)
             ->quality(85)
+            ->background('rgba(0, 0, 0, 0)')
             ->nonQueued() // ⚠️ IMPORTANTE: Genera inmediatamente
             ->performOnCollections('images');
 
@@ -94,7 +98,16 @@ class Product extends Model implements HasMedia
             ->width(1200)
             ->height(1200)
             ->quality(85)
+            ->background('rgba(0, 0, 0, 0)')
             ->nonQueued() // ⚠️ IMPORTANTE: Genera inmediatamente
+            ->performOnCollections('images');
+            
+        $this->addMediaConversion('webp')
+            ->width(800)
+            ->height(800)
+            ->format('webp')
+            ->quality(85)
+            ->background('rgba(0, 0, 0, 0)')
             ->performOnCollections('images');
     }
 
@@ -237,6 +250,10 @@ class Product extends Model implements HasMedia
     }
 
     // ==================== SCOPES ====================
+    public function scopeNew($query)
+    {
+        return $query->where('is_new', true);
+    }
 
     public function scopeActive($query)
     {

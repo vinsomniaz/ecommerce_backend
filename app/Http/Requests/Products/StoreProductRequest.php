@@ -36,6 +36,7 @@ class StoreProductRequest extends FormRequest
             'is_active' => 'boolean',
             'is_featured' => 'boolean',
             'visible_online' => 'boolean',
+            'is_new' => 'boolean',
 
             // ✅ NUEVO: PRECIOS POR ALMACÉN
             'warehouse_prices' => 'nullable|array',
