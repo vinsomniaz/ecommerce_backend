@@ -21,8 +21,7 @@ class ProductController extends Controller
 {
     public function __construct(
         private ProductService $productService
-    ) {
-    }
+    ) {}
 
     /**
      * Listar productos
@@ -58,19 +57,33 @@ class ProductController extends Controller
         try {
             $product = $this->productService->create($request->validated());
 
+            // Contar almacenes asignados
+            $warehousesCount = $product->inventory()->count();
+
+            // ✅ NUEVO: Verificar si se configuraron precios
+            $pricesConfigured = $product->inventory()
+                ->where('sale_price', '>', 0)
+                ->count();
+
+            $message = "Producto creado exitosamente y asignado a {$warehousesCount} almacén(es).";
+
+            if ($pricesConfigured > 0) {
+                $message .= " Precios configurados para {$pricesConfigured} almacén(es).";
+            } else {
+                $message .= " Los precios pueden ser configurados posteriormente.";
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => 'Producto creado exitosamente. Los precios se asignarán al registrar compras.',
-                'data' => new ProductResource($product->fresh(['attributes', 'category', 'media'])), // ✅ AGREGADO
+                'message' => $message,
+                'data' => new ProductResource($product->fresh(['attributes', 'category', 'media', 'inventory.warehouse'])),
             ], 201);
-
         } catch (ProductAlreadyExistsException $e) {
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
                 'errors' => ['sku' => [$e->getMessage()]],
             ], 409);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -101,18 +114,26 @@ class ProductController extends Controller
         try {
             $updatedProduct = $this->productService->updateProduct($product->id, $request->validated());
 
+            // ✅ Verificar si se actualizaron precios
+            $pricesUpdated = $request->has('warehouse_prices');
+
+            $message = 'Producto actualizado exitosamente';
+
+            if ($pricesUpdated) {
+                $pricesCount = count($request->warehouse_prices);
+                $message .= " (precios actualizados en {$pricesCount} almacén(es))";
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => 'Producto actualizado exitosamente',
+                'message' => $message,
                 'data' => new ProductResource($updatedProduct),
             ]);
-
         } catch (ProductAlreadyExistsException $e) {
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
             ], 409);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -121,6 +142,7 @@ class ProductController extends Controller
             ], 500);
         }
     }
+
 
     /**
      * Eliminar un producto (soft delete)
@@ -134,13 +156,11 @@ class ProductController extends Controller
                 'success' => true,
                 'message' => 'Producto eliminado exitosamente',
             ]);
-
         } catch (ProductInUseException $e) {
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
             ], 422);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -163,7 +183,6 @@ class ProductController extends Controller
                 'message' => 'Producto restaurado exitosamente',
                 'data' => new ProductResource($product),
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -189,7 +208,6 @@ class ProductController extends Controller
                 'message' => "{$count} productos actualizados exitosamente",
                 'count' => $count,
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -225,7 +243,6 @@ class ProductController extends Controller
                 'message' => 'Producto duplicado exitosamente',
                 'data' => new ProductResource($newProduct),
             ], 201);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -257,14 +274,12 @@ class ProductController extends Controller
                 'message' => 'Imágenes subidas exitosamente',
                 'images' => $images,
             ], 201);
-
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Error de validación',
                 'errors' => $e->errors(),
             ], 422);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -285,7 +300,6 @@ class ProductController extends Controller
                 'success' => true,
                 'message' => 'Imagen eliminada exitosamente',
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,

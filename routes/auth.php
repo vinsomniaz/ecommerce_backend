@@ -9,9 +9,9 @@ use App\Http\Controllers\Auth\VerifyEmailController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
-    return $request->user();
-});
+// ========================================
+// RUTAS PÚBLICAS (GUEST)
+// ========================================
 
 Route::post('/register', [RegisteredUserController::class, 'store'])
     ->middleware('guest')
@@ -29,14 +29,50 @@ Route::post('/reset-password', [NewPasswordController::class, 'store'])
     ->middleware('guest')
     ->name('password.store');
 
-Route::get('/verify-email/{id}/{hash}', VerifyEmailController::class)
-    ->middleware(['auth', 'signed', 'throttle:6,1'])
-    ->name('verification.verify');
+// ========================================
+// RUTAS AUTENTICADAS USUARIO ECOMMERCE
+// ========================================
 
-Route::post('/email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
-    ->middleware(['auth', 'throttle:6,1'])
-    ->name('verification.send');
+Route::middleware('auth:sanctum')->group(function () {
 
-Route::delete('/logout', [AuthenticatedSessionController::class, 'destroy'])
-    ->middleware('auth:sanctum') // Asegúrate de que solo los usuarios autenticados puedan hacer logout
-    ->name('logout');
+    // Obtener usuario autenticado
+    Route::get('/user', [AuthenticatedSessionController::class, 'me'])
+        ->name('user.me');
+
+    // Logout
+    Route::delete('/logout', [AuthenticatedSessionController::class, 'destroy'])
+        ->name('logout');
+
+    // Verificación de email
+    Route::get('/verify-email/{id}/{hash}', VerifyEmailController::class)
+        ->middleware(['signed', 'throttle:6,1'])
+        ->name('verification.verify');
+
+    Route::post('/email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
+        ->middleware('throttle:6,1')
+        ->name('verification.send');
+});
+
+// ========================================
+// RUTAS AUTENTICADAS USUARIO ECOMMERCE
+// ========================================
+
+Route::middleware('auth:sanctum')->group(function () {
+
+    // Obtener usuario autenticado
+    Route::get('/user', [AuthenticatedSessionController::class, 'me'])
+        ->name('user.me');
+
+    // Logout
+    Route::delete('/logout', [AuthenticatedSessionController::class, 'destroy'])
+        ->name('logout');
+
+    // Verificación de email
+    Route::get('/verify-email/{id}/{hash}', VerifyEmailController::class)
+        ->middleware(['signed', 'throttle:6,1'])
+        ->name('verification.verify');
+
+    Route::post('/email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
+        ->middleware('throttle:6,1')
+        ->name('verification.send');
+});

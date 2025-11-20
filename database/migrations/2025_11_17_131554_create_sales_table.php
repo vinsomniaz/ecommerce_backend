@@ -14,12 +14,11 @@ return new class extends Migration
         Schema::create('sales', function (Blueprint $table) {
             $table->id();
 
-            // Foreign Keys
-            // $table->foreignId('order_id')
-            //       ->nullable()
-            //       ->constrained('orders')
-            //       ->onUpdate('restrict')
-            //       ->onDelete('set null');
+            $table->foreignId('order_id')
+                  ->nullable()
+                  ->constrained('orders')
+                  ->onUpdate('restrict')
+                  ->onDelete('set null');
 
             $table->foreignId('customer_id')
                   ->constrained('entities')

@@ -6,7 +6,6 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use App\Models\Product;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Storage;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class ProductImageSeeder extends Seeder
@@ -57,35 +56,36 @@ class ProductImageSeeder extends Seeder
             return;
         }
 
-        // 2. Limpiar SOLO los registros de media de productos (no los archivos físicos aún)
+        // 2. Limpiar media anteriores de forma masiva
         $this->command->info('🧹 Limpiando registros de media anteriores...');
 
-        $oldMediaIds = Media::where('model_type', Product::class)
+        $oldMediaCount = Media::where('model_type', Product::class)
             ->where('collection_name', 'images')
-            ->pluck('id')
-            ->toArray();
+            ->count();
 
-        // Eliminar los archivos físicos de los medios antiguos
+        // Eliminar en bloques para evitar problemas de memoria
         Media::where('model_type', Product::class)
             ->where('collection_name', 'images')
-            ->each(function ($media) {
-                try {
-                    $media->delete(); // Esto elimina el registro Y los archivos
-                } catch (\Exception $e) {
-                    $this->command->warn("Error al eliminar media {$media->id}: {$e->getMessage()}");
+            ->chunkById(100, function ($medias) {
+                foreach ($medias as $media) {
+                    try {
+                        $media->delete();
+                    } catch (\Exception $e) {
+                        // Silenciar errores para no detener el proceso
+                    }
                 }
             });
 
-        $this->command->info("   ✓ Eliminados " . count($oldMediaIds) . " registros de media antiguos");
+        $this->command->info("   ✓ Eliminados $oldMediaCount registros de media antiguos");
 
-        // 3. Verificar que el enlace simbólico existe
+        // 3. Verificar enlace simbólico
         if (!File::exists(public_path('storage'))) {
             $this->command->error('❌ El enlace simbólico storage no existe.');
             $this->command->error('   Ejecute: php artisan storage:link');
             return;
         }
 
-        // 4. Leer el CSV de productos
+        // 4. Leer CSV
         $productosCsv = $this->readCsv('productos.csv');
 
         if (empty($productosCsv)) {
@@ -93,50 +93,66 @@ class ProductImageSeeder extends Seeder
             return;
         }
 
-        $count = 0;
-        $notFound = 0;
-        $errors = 0;
+        // 5. ⚡ OPTIMIZACIÓN: Cargar todos los productos en memoria una sola vez
+        $this->command->info("📦 Cargando productos en memoria...");
+        $products = Product::select('id', 'sku', 'primary_name')
+            ->get()
+            ->keyBy('sku');
 
-        $this->command->info("📦 Procesando " . count($productosCsv) . " productos...");
-
-        $progressBar = $this->command->getOutput()->createProgressBar(count($productosCsv));
-        $progressBar->start();
-
+        // 6. ⚡ OPTIMIZACIÓN: Pre-validar archivos existentes
+        $this->command->info("🔍 Validando archivos de imágenes...");
+        $validRows = [];
         foreach ($productosCsv as $row) {
-            $progressBar->advance();
-
-            // Validar fila
             if (empty($row['idproducto']) || empty($row['image_url']) || $row['image_url'] === 'NULL') {
                 continue;
             }
 
-            // Encontrar el producto
             $sku = $row['codigo'] ?? 'MIG-' . $row['idproducto'];
-            $product = Product::where('sku', $sku)->first();
-
-            if (!$product) {
-                $notFound++;
-                continue;
-            }
-
-            // Preparar la ruta de la imagen
             $imageName = basename($row['image_url']);
             $sourceFile = $sourceImagePath . '/' . $imageName;
 
-            // Verificar y agregar la imagen
-            if (File::exists($sourceFile)) {
+            // Solo procesar si el producto existe Y el archivo existe
+            if ($products->has($sku) && File::exists($sourceFile)) {
+                $validRows[] = [
+                    'product' => $products[$sku],
+                    'sourceFile' => $sourceFile,
+                    'imageName' => $imageName
+                ];
+            }
+        }
+
+        $this->command->info("   ✓ " . count($validRows) . " imágenes válidas para procesar");
+
+        // 7. ⚡ OPTIMIZACIÓN: Deshabilitar eventos temporalmente
+        Product::flushEventListeners();
+
+        // 8. ⚡ OPTIMIZACIÓN: Procesar en transacción
+        $count = 0;
+        $errors = 0;
+
+        $this->command->info("🚀 Procesando imágenes...");
+        $progressBar = $this->command->getOutput()->createProgressBar(count($validRows));
+        $progressBar->start();
+
+        DB::transaction(function () use ($validRows, &$count, &$errors, $progressBar) {
+            foreach ($validRows as $item) {
+                $progressBar->advance();
+
                 try {
-                    // Verificar que el archivo es una imagen válida
+                    $product = $item['product'];
+                    $sourceFile = $item['sourceFile'];
+                    $imageName = $item['imageName'];
+
+                    // Verificar MIME type rápidamente
                     $mimeType = mime_content_type($sourceFile);
                     if (!str_starts_with($mimeType, 'image/')) {
-                        $this->command->warn("\n⚠️  Archivo no es imagen: $imageName");
                         $errors++;
                         continue;
                     }
 
-                    // Agregar la imagen
+                    // Agregar media SIN generar conversiones aún (más rápido)
                     $media = $product->addMedia($sourceFile)
-                        ->preservingOriginal() // Mantiene el original en database/data/images
+                        ->preservingOriginal()
                         ->usingName($product->primary_name)
                         ->usingFileName($imageName)
                         ->withCustomProperties([
@@ -145,41 +161,33 @@ class ProductImageSeeder extends Seeder
                         ])
                         ->toMediaCollection('images', 'public');
 
-                    // ✅ FORZAR la generación de conversiones inmediatamente
-                    try {
-                        $media->getUrl('thumb');
-                        $media->getUrl('medium');
-                        $media->getUrl('large');
-                    } catch (\Exception $conversionError) {
-                        $this->command->warn("\n⚠️  Error generando conversiones para $imageName");
-                    }
-
                     $count++;
 
-                    // Verificar que se crearon las conversiones
-                    if (!$media->hasGeneratedConversion('thumb')) {
-                        $this->command->warn("\n⚠️  No se generó conversión thumb para: $imageName");
-                    }
-
                 } catch (\Exception $e) {
-                    $this->command->warn("\n❌ Error con $imageName: " . $e->getMessage());
                     $errors++;
                 }
-            } else {
-                $notFound++;
             }
-        }
+        });
 
         $progressBar->finish();
         $this->command->newLine(2);
 
-        // 5. Resumen
+        // 9. Resumen
+        $notFound = count($productosCsv) - count($validRows);
+
         $this->command->info("✅ Proceso completado:");
         $this->command->info("   • Imágenes agregadas: $count");
         $this->command->info("   • Imágenes no encontradas: $notFound");
         $this->command->info("   • Errores: $errors");
 
-        // 6. Verificar que las imágenes son accesibles
+        // 10. Opción: Generar conversiones después
+        if ($count > 0) {
+            $this->command->newLine();
+            $this->command->info("💡 Tip: Las conversiones se generarán automáticamente al acceder a las imágenes.");
+            $this->command->info("   O ejecute: php artisan media-library:regenerate");
+        }
+
+        // 11. Verificación rápida
         $this->verifyImages();
     }
 
@@ -188,7 +196,7 @@ class ProductImageSeeder extends Seeder
      */
     private function verifyImages(): void
     {
-        $this->command->info("\n🔍 Verificando accesibilidad de imágenes...");
+        $this->command->info("\n🔍 Verificación rápida...");
 
         $firstProduct = Product::has('media')->first();
 
@@ -204,26 +212,23 @@ class ProductImageSeeder extends Seeder
             return;
         }
 
-        $this->command->info("   Producto de prueba: {$firstProduct->primary_name}");
+        $this->command->info("   Producto: {$firstProduct->primary_name}");
         $this->command->info("   URL original: {$media->getUrl()}");
-        $this->command->info("   URL thumb: {$media->getUrl('thumb')}");
 
-        // Verificar que el archivo físico existe
+        // Verificar archivo físico
         $fullPath = $media->getPath();
         if (File::exists($fullPath)) {
-            $this->command->info("   ✓ Archivo físico existe: $fullPath");
+            $this->command->info("   ✓ Archivo físico verificado");
         } else {
-            $this->command->error("   ❌ Archivo físico NO existe: $fullPath");
+            $this->command->error("   ❌ Archivo físico NO existe");
         }
 
-        // Verificar conversiones
-        $conversions = ['thumb', 'medium', 'large'];
-        foreach ($conversions as $conversion) {
-            if ($media->hasGeneratedConversion($conversion)) {
-                $this->command->info("   ✓ Conversión '$conversion' generada");
-            } else {
-                $this->command->warn("   ⚠️  Conversión '$conversion' NO generada");
-            }
+        // Intentar generar una conversión como prueba
+        try {
+            $thumbUrl = $media->getUrl('thumb');
+            $this->command->info("   ✓ URL thumb: $thumbUrl");
+        } catch (\Exception $e) {
+            $this->command->warn("   ⚠️  Error generando thumb: " . $e->getMessage());
         }
     }
 }

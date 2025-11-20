@@ -37,7 +37,13 @@ class StoreProductRequest extends FormRequest
             'is_featured' => 'boolean',
             'visible_online' => 'boolean',
 
-            //ATRIBUTOS
+            // ✅ NUEVO: PRECIOS POR ALMACÉN
+            'warehouse_prices' => 'nullable|array',
+            'warehouse_prices.*.warehouse_id' => 'required|exists:warehouses,id',
+            'warehouse_prices.*.sale_price' => 'required|numeric|min:0',
+            'warehouse_prices.*.min_sale_price' => 'required|numeric|min:0',
+
+            // ATRIBUTOS
             'attributes' => 'nullable|array',
             'attributes.*.name' => 'required|string|max:50',
             'attributes.*.value' => 'required|string|max:200',
@@ -54,6 +60,18 @@ class StoreProductRequest extends FormRequest
             'sku.unique' => 'Este SKU ya está registrado en el sistema',
             'sku.max' => 'El SKU no puede exceder 50 caracteres',
             'min_stock.min' => 'El stock mínimo debe ser mayor o igual a 0',
+
+            // ✅ NUEVO: Mensajes para precios por almacén
+            'warehouse_prices.array' => 'Los precios de almacén deben ser un array',
+            'warehouse_prices.*.warehouse_id.required' => 'El ID del almacén es obligatorio',
+            'warehouse_prices.*.warehouse_id.exists' => 'El almacén seleccionado no existe',
+            'warehouse_prices.*.sale_price.required' => 'El precio de venta es obligatorio',
+            'warehouse_prices.*.sale_price.numeric' => 'El precio de venta debe ser un número',
+            'warehouse_prices.*.sale_price.min' => 'El precio de venta debe ser mayor o igual a 0',
+            'warehouse_prices.*.min_sale_price.required' => 'El precio mínimo es obligatorio',
+            'warehouse_prices.*.min_sale_price.numeric' => 'El precio mínimo debe ser un número',
+            'warehouse_prices.*.min_sale_price.min' => 'El precio mínimo debe ser mayor o igual a 0',
+
             'attributes.*.name.required' => 'El nombre del atributo es obligatorio',
             'attributes.*.value.required' => 'El valor del atributo es obligatorio',
         ];
@@ -81,6 +99,26 @@ class StoreProductRequest extends FormRequest
             'is_featured' => $this->boolean('is_featured', false),
             'visible_online' => $this->boolean('visible_online', true),
         ]);
+    }
+
+    // ✅ NUEVO: Validación adicional
+    public function withValidator($validator)
+    {
+        $validator->after(function ($validator) {
+            $warehousePrices = $this->input('warehouse_prices', []);
+
+            foreach ($warehousePrices as $index => $prices) {
+                // Validar que min_sale_price no sea mayor que sale_price
+                if (isset($prices['sale_price']) && isset($prices['min_sale_price'])) {
+                    if ($prices['min_sale_price'] > $prices['sale_price']) {
+                        $validator->errors()->add(
+                            "warehouse_prices.{$index}.min_sale_price",
+                            'El precio mínimo no puede ser mayor al precio de venta'
+                        );
+                    }
+                }
+            }
+        });
     }
 
     protected function failedValidation(Validator $validator)
