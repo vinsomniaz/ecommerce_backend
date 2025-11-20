@@ -30,7 +30,7 @@ class GeminiController extends Controller
 
         $productName = trim($request->product_name);
         $cacheKey = 'gemini_product_' . md5(strtolower($productName));
-        
+
         // Cache HIT - respuesta instantánea
         $cachedData = Cache::get($cacheKey);
         if ($cachedData) {
@@ -40,20 +40,19 @@ class GeminiController extends Controller
                 'cached' => true
             ]);
         }
-        
+
         // Cache MISS - generar ahora (sin locks complicados)
         try {
             $result = $this->callGeminiAPI($productName);
-            
+
             // Cachear 30 días
             Cache::put($cacheKey, $result, now()->addDays(30));
-            
+
             return response()->json([
                 'success' => true,
                 'data' => $result,
                 'cached' => false
             ]);
-
         } catch (\Exception $e) {
             Log::error('Gemini API Error', [
                 'product' => $productName,
@@ -75,7 +74,7 @@ class GeminiController extends Controller
     public function generateBatch(Request $request)
     {
         set_time_limit(120);
-        
+
         $validator = Validator::make($request->all(), [
             'products' => 'required|array|min:1|max:10',
             'products.*.name' => 'required|string|max:255'
@@ -92,10 +91,10 @@ class GeminiController extends Controller
         $results = [];
         $promises = [];
         $client = new Client(['timeout' => 25, 'connect_timeout' => 5]);
-        
+
         foreach ($products as $productName) {
             $cacheKey = 'gemini_product_' . md5(strtolower($productName));
-            
+
             // Si está en caché, agregar directamente
             $cachedData = Cache::get($cacheKey);
             if ($cachedData) {
@@ -106,23 +105,23 @@ class GeminiController extends Controller
                 ];
                 continue;
             }
-            
+
             // Si NO está en caché, crear promesa para request paralelo
             $promises[$productName] = $this->createGeminiPromise($client, $productName);
         }
-        
+
         // Ejecutar TODAS las promesas en PARALELO
         if (count($promises) > 0) {
             $responses = Promise\Utils::settle($promises)->wait();
-            
+
             foreach ($responses as $productName => $response) {
                 $cacheKey = 'gemini_product_' . md5(strtolower($productName));
-                
+
                 if ($response['state'] === 'fulfilled') {
                     try {
                         $data = $this->parseGeminiResponse($response['value']);
                         Cache::put($cacheKey, $data, now()->addDays(30));
-                        
+
                         $results[$productName] = [
                             'product_name' => $productName,
                             'data' => $data,
@@ -142,7 +141,7 @@ class GeminiController extends Controller
                 }
             }
         }
-        
+
         $stats = [
             'total' => count($results),
             'from_cache' => collect($results)->where('cached', true)->count(),
@@ -163,7 +162,7 @@ class GeminiController extends Controller
     private function createGeminiPromise(Client $client, string $productName)
     {
         $apiKey = config('services.gemini.api_key');
-        
+
         $prompt = "Producto: {$productName}
 
 Responde SOLO JSON sin markdown:
@@ -172,7 +171,7 @@ Responde SOLO JSON sin markdown:
 6-8 specs técnicas.";
 
         return $client->postAsync(
-            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent',
+            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
             [
                 'headers' => ['Content-Type' => 'application/json'],
                 'query' => ['key' => $apiKey],
@@ -196,21 +195,21 @@ Responde SOLO JSON sin markdown:
     {
         $data = json_decode($response->getBody(), true);
         $text = $data['candidates'][0]['content']['parts'][0]['text'] ?? null;
-        
+
         if (!$text) {
             throw new \Exception('Respuesta vacía');
         }
-        
+
         // Limpiar markdown
         $text = preg_replace('/```(?:json)?\s*|\s*```/', '', $text);
         $text = trim($text);
-        
+
         $parsed = json_decode($text, true);
-        
+
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new \Exception('JSON inválido');
         }
-        
+
         return [
             'description' => $parsed['description'] ?? '',
             'specifications' => $parsed['specifications'] ?? []
@@ -226,9 +225,9 @@ Responde SOLO JSON sin markdown:
             'timeout' => 25,
             'connect_timeout' => 5
         ]);
-        
+
         $apiKey = config('services.gemini.api_key');
-        
+
         if (!$apiKey) {
             throw new \Exception('API Key no configurada');
         }
@@ -242,7 +241,7 @@ Incluye 6-8 especificaciones técnicas relevantes.";
 
         try {
             $response = $client->post(
-                'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent',
+                'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
                 [
                     'headers' => ['Content-Type' => 'application/json'],
                     'query' => ['key' => $apiKey],
@@ -257,20 +256,19 @@ Incluye 6-8 especificaciones técnicas relevantes.";
                     ]
                 ]
             );
-            
+
             return $this->parseGeminiResponse($response);
-            
         } catch (\GuzzleHttp\Exception\RequestException $e) {
             if ($e->hasResponse()) {
                 $status = $e->getResponse()->getStatusCode();
-                
+
                 if ($status === 429) {
                     throw new \Exception('Rate limit alcanzado. Intenta más tarde.');
                 }
-                
+
                 throw new \Exception("Error API Gemini (HTTP {$status})");
             }
-            
+
             throw new \Exception('Error de conexión con Gemini');
         }
     }
@@ -298,17 +296,17 @@ Incluye 6-8 especificaciones técnicas relevantes.";
 
         foreach ($products as $productName) {
             $cacheKey = 'gemini_product_' . md5(strtolower($productName));
-            
+
             if (Cache::has($cacheKey)) {
                 $skipped++;
                 continue;
             }
-            
+
             try {
                 $result = $this->callGeminiAPI($productName);
                 Cache::put($cacheKey, $result, now()->addDays(30));
                 $warmed++;
-                
+
                 // Esperar 1.5s entre llamadas
                 if ($warmed < $products->count() - $skipped) {
                     sleep(2);
@@ -336,7 +334,7 @@ Incluye 6-8 especificaciones técnicas relevantes.";
         if ($request->product_name) {
             $cacheKey = 'gemini_product_' . md5(strtolower($request->product_name));
             Cache::forget($cacheKey);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Caché del producto limpiado'
@@ -345,7 +343,7 @@ Incluye 6-8 especificaciones técnicas relevantes.";
 
         if ($request->clear_all) {
             Cache::flush();
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Todo el caché limpiado'
