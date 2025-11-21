@@ -21,9 +21,7 @@ class PurchaseBatch extends Model
         'quantity_available',
         'purchase_price',
         'distribution_price',
-        'additional_costs',
         'purchase_date',
-        'expiry_date',
         'status',
         'notes',
     ];
@@ -33,9 +31,7 @@ class PurchaseBatch extends Model
         'quantity_available' => 'integer',
         'purchase_price' => 'decimal:2',
         'distribution_price' => 'decimal:2',
-        'additional_costs' => 'decimal:2',
         'purchase_date' => 'date',
-        'expiry_date' => 'date',
     ];
 
     // Relaciones

@@ -72,6 +72,7 @@ class StockManagementController extends Controller
      *   "warehouse_id": 1,
      *   "quantity": 100,
      *   "unit_cost": 15.50,
+     *   "distribution_price": 18.00,  // OPCIONAL - si no se envía, usa unit_cost
      *   "reason": "manual_entry",
      *   "notes": "Corrección de inventario"
      * }
@@ -83,6 +84,7 @@ class StockManagementController extends Controller
             'warehouse_id' => 'required|exists:warehouses,id',
             'quantity' => 'required|integer|min:1',
             'unit_cost' => 'required|numeric|min:0',
+            'distribution_price' => 'nullable|numeric|min:0',
             'reason' => ['required', Rule::in(['purchase','manual_entry', 'found_stock', 'correction', 'return', 'other'])],
             'notes' => 'nullable|string|max:500',
         ]);
@@ -95,6 +97,7 @@ class StockManagementController extends Controller
                 $validated['unit_cost'],
                 $validated['reason'],
                 $validated['notes'] ?? null,
+                $validated['distribution_price'] ?? null
             );
 
             return response()->json([

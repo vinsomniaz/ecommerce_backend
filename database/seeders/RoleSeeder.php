@@ -104,6 +104,8 @@ class RoleSeeder extends Seeder
                 ['name' => 'products.images.delete', 'display_name' => 'Eliminar imágenes de producto', 'description' => 'Elimina imágenes asociadas a un producto.'],
                 ['name' => 'products.inventory', 'display_name' => 'Inventario por producto', 'description' => 'Consulta el inventario asociado a un producto específico.'],
                 ['name' => 'products.inventory.statistics', 'display_name' => 'Estadísticas de inventario por producto', 'description' => 'Obtiene estadísticas de stock para un producto.'],
+                ['name' => 'products.images.set-primary', 'display_name' => 'Cambiar imagen primaria de un producto', 'description' => 'Cambia la imagen principal de un producto por alguno que tenga'],
+                ['name' => 'products.images.reorder', 'display_name' => 'Cambiar orden de imagens de productos', 'description' => 'Cambiar el orden de imagenes del producto'],
             ],
 
             'Product Attributes' => [
