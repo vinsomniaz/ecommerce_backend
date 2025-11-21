@@ -288,7 +288,52 @@ class ProductController extends Controller
             ], 422);
         }
     }
+    /**
+     * Establecer una imagen como principal
+     */
+    public function setPrimaryImage(Product $product, int $mediaId): JsonResponse
+    {
+        try {
+            $images = $this->productService->setPrimaryImage($product, $mediaId);
 
+            return response()->json([
+                'success' => true,
+                'message' => 'Imagen principal actualizada exitosamente',
+                'images' => $images,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 404);
+        }
+    }
+
+    /**
+     * Reordenar imágenes del producto
+     */
+    public function reorderImages(Request $request, Product $product): JsonResponse
+    {
+        $request->validate([
+            'image_order' => 'required|array',
+            'image_order.*' => 'required|integer|exists:media,id',
+        ]);
+
+        try {
+            $images = $this->productService->reorderImages($product, $request->image_order);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Orden de imágenes actualizado exitosamente',
+                'images' => $images,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
     /**
      * Eliminar una imagen específica
      */

@@ -193,6 +193,14 @@ Route::middleware('auth:sanctum')->prefix('products')->group(function () {
     Route::delete('{product}/images/{mediaId}', [ProductController::class, 'deleteImage'])
         ->middleware('permission:products.images.delete');
 
+    // Establecer imagen principal
+    Route::patch('{product}/images/{mediaId}/set-primary', [ProductController::class, 'setPrimaryImage'])
+        ->middleware('permission:products.images.set-primary');
+
+    // Reordenar imágenes
+    Route::patch('{product}/images/reorder', [ProductController::class, 'reorderImages'])
+        ->middleware('permission:products.images.reorder');
+
     Route::get('{product}/inventory', [InventoryController::class, 'getByProduct'])
         ->middleware('permission:products.inventory');
 

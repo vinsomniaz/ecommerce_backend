@@ -175,6 +175,127 @@ class ProductService
     }
 
     /**
+     * Establecer una imagen como principal
+     */
+    public function setPrimaryImage(Product $product, int $mediaId): array
+    {
+        return DB::transaction(function () use ($product, $mediaId) {
+
+            // Obtener todas las imágenes del producto
+            $media = Media::query()
+                ->where('model_type', Product::class)
+                ->where('model_id', $product->id)
+                ->where('collection_name', 'images')
+                ->get();
+
+            if ($media->isEmpty()) {
+                throw new \Exception('El producto no tiene imágenes');
+            }
+
+            // Verificar que la imagen existe
+            $targetMedia = $media->firstWhere('id', $mediaId);
+
+            if (!$targetMedia) {
+                throw new \Exception('Imagen no encontrada');
+            }
+
+            // Remover la propiedad is_primary de todas las imágenes
+            foreach ($media as $item) {
+                $item->setCustomProperty('is_primary', false);
+                $item->save();
+            }
+
+            // Establecer la nueva imagen principal
+            $targetMedia->setCustomProperty('is_primary', true);
+            $targetMedia->save();
+
+            activity()
+                ->performedOn($product)
+                ->causedBy(Auth::user())
+                ->withProperties([
+                    'media_id' => $mediaId,
+                    'action' => 'set_primary_image'
+                ])
+                ->log('Imagen principal actualizada');
+
+            Log::info('Imagen principal actualizada', [
+                'product_id' => $product->id,
+                'media_id' => $mediaId,
+            ]);
+
+            // Retornar todas las imágenes actualizadas
+            return $media->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'name' => $item->file_name,
+                    'original_url' => $item->getUrl(),
+                    'thumb_url' => $item->getUrl('thumb'),
+                    'medium_url' => $item->getUrl('medium'),
+                    'large_url' => $item->getUrl('large'),
+                    'size' => $this->formatBytes($item->size),
+                    'order' => $item->getCustomProperty('order'),
+                    'is_primary' => $item->getCustomProperty('is_primary', false),
+                ];
+            })->toArray();
+        });
+    }
+
+    /**
+     * Reordenar imágenes del producto
+     */
+    public function reorderImages(Product $product, array $imageOrder): array
+    {
+        return DB::transaction(function () use ($product, $imageOrder) {
+
+            // $imageOrder debe ser un array como: [3, 1, 5, 2, 4]
+            // donde cada número es el ID de la imagen en el orden deseado
+
+            foreach ($imageOrder as $index => $mediaId) {
+                $media = Media::query()
+                    ->where('model_type', Product::class)
+                    ->where('model_id', $product->id)
+                    ->where('id', $mediaId)
+                    ->first();
+
+                if ($media) {
+                    $media->setCustomProperty('order', $index + 1);
+                    $media->save();
+                }
+            }
+
+            activity()
+                ->performedOn($product)
+                ->causedBy(Auth::user())
+                ->withProperties(['new_order' => $imageOrder])
+                ->log('Orden de imágenes actualizado');
+
+            // Retornar imágenes ordenadas
+            $media = Media::query()
+                ->where('model_type', Product::class)
+                ->where('model_id', $product->id)
+                ->whereIn('id', $imageOrder)
+                ->get()
+                ->sortBy(function ($item) use ($imageOrder) {
+                    return array_search($item->id, $imageOrder);
+                });
+
+            return $media->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'name' => $item->file_name,
+                    'original_url' => $item->getUrl(),
+                    'thumb_url' => $item->getUrl('thumb'),
+                    'medium_url' => $item->getUrl('medium'),
+                    'large_url' => $item->getUrl('large'),
+                    'size' => $this->formatBytes($item->size),
+                    'order' => $item->getCustomProperty('order'),
+                    'is_primary' => $item->getCustomProperty('is_primary', false),
+                ];
+            })->values()->toArray();
+        });
+    }
+
+    /**
      * Subir imágenes a un producto con conversiones automáticas
      */
     public function uploadImages(Product $product, array $images): array
