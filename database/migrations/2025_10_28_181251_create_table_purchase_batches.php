@@ -22,7 +22,6 @@ return new class extends Migration
             $table->integer('quantity_purchased');
             $table->integer('quantity_available');
             $table->decimal('purchase_price', 10, 2);
-            $table->decimal('distribution_price', 10, 2);
             $table->date('purchase_date');
             $table->enum('status', ['active', 'inactive', 'depleted'])->default('active');
             $table->text('notes')->nullable();

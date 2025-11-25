@@ -23,6 +23,7 @@ return new class extends Migration {
             $table->integer('reserved_stock')->default(0);
 
             // Precios
+            $table->decimal('average_cost', 10, 4)->default(0);
             $table->decimal('sale_price', 10, 2)->nullable();
             $table->decimal('profit_margin', 5, 2)->nullable();
             $table->decimal('min_sale_price', 10, 2)->nullable();

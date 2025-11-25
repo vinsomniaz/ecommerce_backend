@@ -15,20 +15,20 @@ return new class extends Migration
             $table->id();
 
             $table->foreignId('order_id')
-                  ->nullable()
-                  ->constrained('orders')
-                  ->onUpdate('restrict')
-                  ->onDelete('set null');
+                ->nullable()
+                ->constrained('orders')
+                ->onUpdate('restrict')
+                ->onDelete('set null');
 
             $table->foreignId('customer_id')
-                  ->constrained('entities')
-                  ->onUpdate('restrict')
-                  ->onDelete('restrict');
+                ->constrained('entities')
+                ->onUpdate('restrict')
+                ->onDelete('restrict');
 
             $table->foreignId('warehouse_id')
-                  ->constrained('warehouses')
-                  ->onUpdate('restrict')
-                  ->onDelete('restrict');
+                ->constrained('warehouses')
+                ->onUpdate('restrict')
+                ->onDelete('restrict');
 
             // Document Info
             $table->date('date');
@@ -44,13 +44,13 @@ return new class extends Migration
 
             // Payment Status
             $table->enum('payment_status', ['pending', 'partial', 'paid'])
-                  ->default('pending');
+                ->default('pending');
 
             // User
             $table->foreignId('user_id')
-                  ->constrained('users')
-                  ->onUpdate('restrict')
-                  ->onDelete('restrict');
+                ->constrained('users')
+                ->onUpdate('restrict')
+                ->onDelete('restrict');
 
             // Timestamps
             $table->timestamp('registered_at')->useCurrent();

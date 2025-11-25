@@ -20,6 +20,8 @@ return new class extends Migration
             $table->string('slug', 150)->unique();
             $table->integer('order')->default(0);
             $table->boolean('is_active')->default(true);
+            $table->decimal('margin_retail', 5, 2)->default(0.00);      // 10.00 = 10%
+            $table->decimal('margin_retail_min', 5, 2)->default(0.00);
             $table->timestamps();
 
             $table->index('level');
