@@ -299,6 +299,8 @@ class CsvMigrationSeeder extends Seeder
                 // --- Datos base ---
                 $newProductId = $this->mapProductos[$row['producto_id']];
                 $newWarehouseId = $this->mapAlmacenes[$row['tienda_id']];
+
+                // Obtenemos el stock
                 $stock = (int) $row['stock'];
 
                 // --- Lógica de Precio de Venta (para inventory) ---
@@ -322,8 +324,7 @@ class CsvMigrationSeeder extends Seeder
                 // 2. Preparar PURCHASE_BATCHES (NUEVO)
 
                 // Buscamos los costos que guardamos en el mapa
-                $costs = $this->mapProductCosts[$newProductId]
-                    ?? ['purchase' => 0.00, 'distribution' => 0.00];
+                $costs = $this->mapProductCosts[$newProductId] ?? ['purchase' => 0.00];
 
                 $lotesParaInsertar[] = [
                     'purchase_id' => $this->dummyPurchaseId, // ID de la compra ficticia
@@ -332,8 +333,7 @@ class CsvMigrationSeeder extends Seeder
                     'batch_code' => 'MIG-' . $newProductId . '-' . $newWarehouseId, // Generamos un código único
                     'quantity_purchased' => $stock,
                     'quantity_available' => $stock,
-                    'purchase_price' => $costs['purchase'],     // <-- Precio de Compra
-                    'distribution_price' => $costs['distribution'], // <-- Precio de Distribución
+                    'purchase_price' => $costs['purchase'], // <-- Solo mantenemos el precio de compra
                     'purchase_date' => $now,
                     'status' => 'active',
                     'created_at' => $now,

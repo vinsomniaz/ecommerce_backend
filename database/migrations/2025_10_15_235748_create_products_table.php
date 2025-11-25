@@ -32,6 +32,7 @@ return new class extends Migration
             $table->integer('min_stock')->default(5);
             $table->decimal('weight', 10, 2)->nullable(); // ← CAMBIO: nombre simplificado
             $table->string('barcode', 50)->nullable();
+            $table->decimal('distribution_price', 10, 2)->nullable();
 
             // Estados booleanos
             $table->boolean('is_new')->default(false);
