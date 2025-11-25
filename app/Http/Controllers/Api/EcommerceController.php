@@ -58,7 +58,7 @@ class EcommerceController extends Controller
      */
     public function show(Product $product, Request $request): JsonResponse
     {
-        $product->load(['media', 'category']);
+        $product->load(['media', 'category', 'attributes']);
 
         return response()->json([
             'success' => true,
