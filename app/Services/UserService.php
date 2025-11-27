@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
-use App\Exceptions\Users\UserException;
+use App\Exceptions\User\UserException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Pagination\LengthAwarePaginator;
