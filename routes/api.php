@@ -14,7 +14,7 @@ use App\Http\Controllers\Api\AddressController;
 use App\Http\Controllers\Api\StockManagementController;
 use App\Http\Controllers\Api\EcommerceController;
 use App\Http\Controllers\Api\GeminiController;
-use App\Http\Controllers\Api\PermissionController;
+use App\Http\Controllers\Auth\PermissionController;
 use App\Http\Controllers\Api\UserController;
 
 /*
