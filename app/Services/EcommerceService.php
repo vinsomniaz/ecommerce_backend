@@ -6,7 +6,7 @@ namespace App\Services;
 use App\Models\Product;
 use App\Models\Category;
 use Illuminate\Pagination\LengthAwarePaginator;
-
+use Illuminate\Database\Eloquent\Collection;
 
 
 class EcommerceService
@@ -88,7 +88,7 @@ class EcommerceService
             $isNew = filter_var($filters['is_new'], FILTER_VALIDATE_BOOLEAN);
             $query->where('is_new', $isNew);
         }
-        
+
         // Asignamos 0 si min_price no viene (el bug del frontend)
         $minPrice = $filters['min_price'] ?? null;
 
@@ -242,5 +242,73 @@ class EcommerceService
         }
 
         return round($bytes, 2) . ' ' . $units[$i];
+    }
+
+    /**
+     * Obtener lista de distribución completa (SIN PAGINACIÓN)
+     * Solo productos con distribution_price > 0
+     */
+    public function getDistributionList(array $filters): Collection
+    {
+        $query = Product::query()
+            ->with(['category', 'media', 'firstWarehouseInventory'])
+            ->whereNotNull('distribution_price')
+            ->where('distribution_price', '>', 0)
+            ->where('is_active', true);
+
+        // --- Filtros (Se mantienen igual) ---
+
+        // 1. Búsqueda
+        if (!empty($filters['search'])) {
+            $search = $filters['search'];
+            $query->where(function ($q) use ($search) {
+                $q->where('primary_name', 'like', "%{$search}%")
+                    ->orWhere('secondary_name', 'like', "%{$search}%")
+                    ->orWhere('sku', 'like', "%{$search}%")
+                    ->orWhere('brand', 'like', "%{$search}%")
+                    ->orWhere('barcode', 'like', "%{$search}%");
+            });
+        }
+
+        // 2. Categoría (Lógica recursiva)
+        if (!empty($filters['category_id'])) {
+            $selectedCategoryIds = explode(',', $filters['category_id']);
+            $allCategoryIds = collect();
+
+            $rootCategories = Category::whereIn('id', $selectedCategoryIds)
+                ->with('children.children')
+                ->get();
+
+            foreach ($rootCategories as $category) {
+                $allCategoryIds->push($category->id);
+                foreach ($category->children as $child) {
+                    $allCategoryIds->push($child->id);
+                    foreach ($child->children as $grandChild) {
+                        $allCategoryIds->push($grandChild->id);
+                    }
+                }
+            }
+
+            $finalIds = $allCategoryIds->unique()->values();
+            if ($finalIds->isNotEmpty()) {
+                $query->whereIn('category_id', $finalIds);
+            }
+        }
+
+        // 3. Ordenamiento
+        $sortBy = $filters['sort_by'] ?? 'primary_name';
+        $sortOrder = $filters['sort_order'] ?? 'asc';
+
+        if ($sortBy === 'price') {
+            $query->orderBy('distribution_price', $sortOrder);
+        } else {
+            $allowedSorts = ['primary_name', 'sku', 'brand', 'created_at'];
+            if (in_array($sortBy, $allowedSorts)) {
+                $query->orderBy($sortBy, $sortOrder);
+            }
+        }
+
+        // RETORNAR COLECCIÓN COMPLETA
+        return $query->get();
     }
 }

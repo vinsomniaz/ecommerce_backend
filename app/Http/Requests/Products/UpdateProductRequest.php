@@ -42,6 +42,7 @@ class UpdateProductRequest extends FormRequest
             'tax_type' => ['sometimes', 'nullable', 'string', 'in:10,20,30'],
             'weight' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'barcode' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'distribution_price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
 
             // Estados
             'is_active' => ['sometimes', 'nullable', 'boolean'],
