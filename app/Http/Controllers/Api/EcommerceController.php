@@ -123,6 +123,24 @@ class EcommerceController extends Controller
     }
 
     /**
+     * Endpoint para Lista de Distribución (Sin paginación)
+     */
+    public function distributionList(Request $request)
+    {
+        $filters = $request->only([
+            'search',
+            'category_id',
+            'sort_by',
+            'sort_order'
+        ]);
+
+        // Ya no enviamos per_page
+        $products = $this->ecommerceservice->getDistributionList($filters);
+
+        return ProductResource::collection($products);
+    }
+
+    /**
      * Mostrar una categoría específica (Público)
      * Lógica movida desde CategoryController@show
      * Nota: CategoryService->getCategoryById($id) debe lanzar

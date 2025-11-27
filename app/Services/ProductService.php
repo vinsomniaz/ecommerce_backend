@@ -793,10 +793,11 @@ class ProductService
             'min_stock' => 5,
             'unit_measure' => 'NIU',
             'tax_type' => '10',
+            'distribution_price' => 0.00,
             'is_active' => true,
             'is_featured' => false,
             'visible_online' => true,
-            'is_new' => false, // ✅ AGREGAR ESTA LÍNEA
+            'is_new' => false, 
         ];
 
         foreach ($defaults as $key => $value) {
