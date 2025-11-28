@@ -1,4 +1,5 @@
 <?php
+// app/Models/Category.php
 
 namespace App\Models;
 
@@ -21,6 +22,8 @@ class Category extends Model
         'slug',
         'order',
         'is_active',
+        'normal_margin_percentage',  // ✅ NUEVO
+        'min_margin_percentage',      // ✅ NUEVO
     ];
 
     protected $casts = [
@@ -28,111 +31,85 @@ class Category extends Model
         'level' => 'integer',
         'order' => 'integer',
         'parent_id' => 'integer',
+        'normal_margin_percentage' => 'decimal:2',  // ✅ NUEVO
+        'min_margin_percentage' => 'decimal:2',      // ✅ NUEVO
     ];
 
-    /**
-     * Summary of getActivitylogOptions
-     * @return LogOptions
-     */
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logFillable() // registra todos los campos fillable
-            ->logOnlyDirty() // solo guarda los cambios (no valores iguales)
+            ->logFillable()
+            ->logOnlyDirty()
             ->setDescriptionForEvent(fn(string $eventName) => "Categoría {$eventName}");
     }
 
-    /**
-     * Relación con categoría padre
-     */
+    // ========================================
+    // RELACIONES
+    // ========================================
+    
     public function parent(): BelongsTo
     {
         return $this->belongsTo(Category::class, 'parent_id');
     }
 
-    /**
-     * Relación con subcategorías (hijos)
-     */
     public function children(): HasMany
     {
         return $this->hasMany(Category::class, 'parent_id')->orderBy('order');
     }
 
-    /**
-     * Relación con productos
-     */
     public function products(): HasMany
     {
         return $this->hasMany(Product::class);
     }
 
-    /**
-     * Scope para categorías activas
-     */
+    // ========================================
+    // SCOPES
+    // ========================================
+    
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
     }
 
-    /**
-     * Scope para categorías raíz (nivel 1)
-     */
     public function scopeRoot($query)
     {
         return $query->where('level', 1)->whereNull('parent_id');
     }
 
-    /**
-     * Scope para familias (nivel 2)
-     */
     public function scopeFamily($query)
     {
         return $query->where('level', 2);
     }
 
-    /**
-     * Scope para subfamilias (nivel 3)
-     */
     public function scopeSubfamily($query)
     {
         return $query->where('level', 3);
     }
 
-    /**
-     * Scope por nivel
-     */
     public function scopeByLevel($query, int $level)
     {
         return $query->where('level', $level);
     }
 
-    /**
-     * Verificar si es categoría raíz
-     */
+    // ========================================
+    // MÉTODOS DE CATEGORÍA
+    // ========================================
+    
     public function isRoot(): bool
     {
         return $this->level === 1 && is_null($this->parent_id);
     }
 
-    /**
-     * Verificar si tiene subcategorías
-     */
     public function hasChildren(): bool
     {
         return $this->children()->exists();
     }
 
-    /**
-     * Obtener todas las subcategorías recursivamente
-     */
     public function getAllChildren(): HasMany
     {
         return $this->children()->with('children');
     }
 
-    /**
-     * Obtener el path completo de la categoría (breadcrumb)
-     */
     public function getPathAttribute(): string
     {
         $path = collect([$this->name]);
@@ -146,9 +123,6 @@ class Category extends Model
         return $path->implode(' > ');
     }
 
-    /**
-     * Obtener todos los ancestros
-     */
     public function ancestors()
     {
         $ancestors = collect();
@@ -162,9 +136,6 @@ class Category extends Model
         return $ancestors;
     }
 
-    /**
-     * Contar productos en esta categoría y subcategorías
-     */
     public function getTotalProductsAttribute(): int
     {
         $count = $this->products()->count();
@@ -174,5 +145,70 @@ class Category extends Model
         }
 
         return $count;
+    }
+
+    // ========================================
+    // ✅ NUEVOS MÉTODOS DE MARGEN
+    // ========================================
+    
+    /**
+     * Obtiene el margen mínimo efectivo (heredado o propio)
+     * Busca hacia arriba en la jerarquía hasta encontrar un valor > 0
+     */
+    public function getEffectiveMinMargin(): float
+    {
+        // Si tiene valor propio y es > 0, usarlo
+        if ($this->min_margin_percentage > 0) {
+            return (float) $this->min_margin_percentage;
+        }
+        
+        // Si tiene padre, buscar en el padre recursivamente
+        if ($this->parent) {
+            return $this->parent->getEffectiveMinMargin();
+        }
+        
+        // Si no tiene valor ni padre, usar default del sistema
+        return 10.00; // Default fallback
+    }
+    
+    /**
+     * Obtiene el margen normal efectivo (heredado o propio)
+     */
+    public function getEffectiveNormalMargin(): float
+    {
+        if ($this->normal_margin_percentage > 0) {
+            return (float) $this->normal_margin_percentage;
+        }
+        
+        if ($this->parent) {
+            return $this->parent->getEffectiveNormalMargin();
+        }
+        
+        return 20.00; // Default fallback
+    }
+    
+    /**
+     * Verifica si hereda márgenes del padre
+     */
+    public function inheritsMargins(): bool
+    {
+        return $this->min_margin_percentage == 0 && $this->normal_margin_percentage == 0;
+    }
+    
+    /**
+     * Obtiene información completa de márgenes (para debugging/admin)
+     */
+    public function getMarginInfo(): array
+    {
+        return [
+            'category_name' => $this->name,
+            'level' => $this->level,
+            'own_min_margin' => (float) $this->min_margin_percentage,
+            'own_normal_margin' => (float) $this->normal_margin_percentage,
+            'effective_min_margin' => $this->getEffectiveMinMargin(),
+            'effective_normal_margin' => $this->getEffectiveNormalMargin(),
+            'inherits_from_parent' => $this->inheritsMargins(),
+            'parent_category' => $this->parent?->name,
+        ];
     }
 }
