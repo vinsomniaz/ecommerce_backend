@@ -52,7 +52,6 @@ class RoleSeeder extends Seeder
             $this->command->info("📊 Total de permisos: " . Permission::count());
             $this->command->info("🔐 Roles configurados: 4");
             $this->command->newLine();
-
         } catch (\Exception $e) {
             DB::rollBack();
             $this->command->error('❌ Error: ' . $e->getMessage());
@@ -210,6 +209,86 @@ class RoleSeeder extends Seeder
                 ['name' => 'ecommerce.categories.tree', 'display_name' => 'Árbol de categorías e-commerce', 'description' => 'Obtiene la estructura de categorías públicas en formato árbol.'],
                 ['name' => 'ecommerce.categories.show', 'display_name' => 'Ver categoría e-commerce', 'description' => 'Muestra el detalle público de una categoría específica.'],
             ],
+
+            'Quotations' => [
+                // CRUD Básico
+                ['name' => 'quotations.index', 'display_name' => 'Listar cotizaciones', 'description' => 'Obtiene el listado de cotizaciones con filtros.'],
+                ['name' => 'quotations.show', 'display_name' => 'Ver cotización', 'description' => 'Muestra el detalle completo de una cotización.'],
+                ['name' => 'quotations.store', 'display_name' => 'Crear cotización', 'description' => 'Crea una nueva cotización para un cliente.'],
+                ['name' => 'quotations.update', 'display_name' => 'Actualizar cotización', 'description' => 'Actualiza una cotización en estado draft.'],
+                ['name' => 'quotations.destroy', 'display_name' => 'Eliminar cotización', 'description' => 'Elimina (soft delete) una cotización en draft.'],
+
+                // Gestión de Items
+                ['name' => 'quotations.items.add', 'display_name' => 'Agregar producto a cotización', 'description' => 'Agrega un producto al detalle de la cotización.'],
+                ['name' => 'quotations.items.update', 'display_name' => 'Actualizar item de cotización', 'description' => 'Actualiza cantidad o precio de un item.'],
+                ['name' => 'quotations.items.remove', 'display_name' => 'Eliminar producto de cotización', 'description' => 'Quita un producto del detalle.'],
+                ['name' => 'quotations.items.update-quantity', 'display_name' => 'Actualizar cantidad de item', 'description' => 'Cambia la cantidad de un producto en la cotización.'],
+
+                // Envío y comunicación
+                ['name' => 'quotations.send', 'display_name' => 'Enviar cotización', 'description' => 'Envía la cotización por email o WhatsApp al cliente.'],
+                ['name' => 'quotations.resend', 'display_name' => 'Reenviar cotización', 'description' => 'Reenvía una cotización ya enviada.'],
+                ['name' => 'quotations.generate-pdf', 'display_name' => 'Generar PDF de cotización', 'description' => 'Genera o regenera el PDF de la cotización.'],
+                ['name' => 'quotations.download-pdf', 'display_name' => 'Descargar PDF de cotización', 'description' => 'Descarga el PDF generado de la cotización.'],
+
+                // Cambios de estado
+                ['name' => 'quotations.change-status', 'display_name' => 'Cambiar estado de cotización', 'description' => 'Cambia manualmente el estado de una cotización.'],
+                ['name' => 'quotations.accept', 'display_name' => 'Aceptar cotización', 'description' => 'Marca una cotización como aceptada por el cliente.'],
+                ['name' => 'quotations.reject', 'display_name' => 'Rechazar cotización', 'description' => 'Marca una cotización como rechazada.'],
+                ['name' => 'quotations.expire', 'display_name' => 'Expirar cotización', 'description' => 'Marca una cotización como expirada manualmente.'],
+
+                // Conversión y comisiones
+                ['name' => 'quotations.convert-to-sale', 'display_name' => 'Convertir cotización a venta', 'description' => 'Genera una venta a partir de una cotización aceptada.'],
+                ['name' => 'quotations.pay-commission', 'display_name' => 'Pagar comisión', 'description' => 'Marca la comisión de una cotización como pagada.'],
+
+                // Estadísticas y reportes
+                ['name' => 'quotations.statistics', 'display_name' => 'Estadísticas de cotizaciones', 'description' => 'Consulta estadísticas generales de cotizaciones.'],
+                ['name' => 'quotations.statistics.by-seller', 'display_name' => 'Estadísticas por vendedor', 'description' => 'Consulta estadísticas de cotizaciones por vendedor.'],
+                ['name' => 'quotations.reports.commissions', 'display_name' => 'Reporte de comisiones', 'description' => 'Genera reporte de comisiones pendientes y pagadas.'],
+                ['name' => 'quotations.alerts.expiring', 'display_name' => 'Alertas de cotizaciones próximas a expirar', 'description' => 'Lista cotizaciones que vencen pronto.'],
+                ['name' => 'quotations.history', 'display_name' => 'Historial de cotización', 'description' => 'Ver historial de cambios de estado de una cotización.'],
+
+                // Utilidades
+                ['name' => 'quotations.products.suppliers', 'display_name' => 'Ver proveedores de producto', 'description' => 'Lista proveedores disponibles para un producto.'],
+                ['name' => 'quotations.check-stock', 'display_name' => 'Verificar stock', 'description' => 'Verifica disponibilidad de stock para cotización.'],
+                ['name' => 'quotations.duplicate', 'display_name' => 'Duplicar cotización', 'description' => 'Crea una copia de una cotización existente.'],
+                ['name' => 'quotations.calculate-totals', 'display_name' => 'Calcular totales', 'description' => 'Calcula totales de cotización (preview sin guardar).'],
+            ],
+
+            // 🔥 NUEVO: Control de acceso a cotizaciones
+            'Quotation Access' => [
+                ['name' => 'quotations.view.all', 'display_name' => 'Ver todas las cotizaciones', 'description' => 'Puede ver cotizaciones de cualquier vendedor.'],
+                ['name' => 'quotations.view.own', 'display_name' => 'Ver solo sus cotizaciones', 'description' => 'Solo puede ver cotizaciones que él creó.'],
+                ['name' => 'quotations.manage.all', 'display_name' => 'Gestionar todas las cotizaciones', 'description' => 'Puede editar/eliminar cotizaciones de cualquiera.'],
+                ['name' => 'quotations.manage.own', 'display_name' => 'Gestionar solo sus cotizaciones', 'description' => 'Solo puede editar/eliminar sus propias cotizaciones.'],
+            ],
+
+            'Supplier Products' => [
+                ['name' => 'supplier-products.index', 'display_name' => 'Listar productos de proveedores', 'description' => 'Lista todos los productos asociados a proveedores.'],
+                ['name' => 'supplier-products.show', 'display_name' => 'Ver producto de proveedor', 'description' => 'Muestra detalle de un producto-proveedor específico.'],
+                ['name' => 'supplier-products.store', 'display_name' => 'Crear producto-proveedor', 'description' => 'Asocia un producto con un proveedor y su precio.'],
+                ['name' => 'supplier-products.update', 'display_name' => 'Actualizar producto-proveedor', 'description' => 'Actualiza precio, stock o datos de producto-proveedor.'],
+                ['name' => 'supplier-products.destroy', 'display_name' => 'Eliminar producto-proveedor', 'description' => 'Elimina la asociación producto-proveedor.'],
+                ['name' => 'supplier-products.bulk-update-prices', 'display_name' => 'Actualización masiva de precios', 'description' => 'Actualiza precios de múltiples productos-proveedores.'],
+                ['name' => 'supplier-products.by-product', 'display_name' => 'Proveedores por producto', 'description' => 'Lista todos los proveedores de un producto.'],
+                ['name' => 'supplier-products.by-supplier', 'display_name' => 'Productos por proveedor', 'description' => 'Lista todos los productos de un proveedor.'],
+                ['name' => 'supplier-products.compare-prices', 'display_name' => 'Comparar precios entre proveedores', 'description' => 'Compara precios de un producto entre proveedores.'],
+            ],
+
+            'Supplier Imports' => [
+                ['name' => 'supplier-imports.index', 'display_name' => 'Listar importaciones', 'description' => 'Lista historial de importaciones desde scrapers.'],
+                ['name' => 'supplier-imports.show', 'display_name' => 'Ver importación', 'description' => 'Muestra detalle de una importación específica.'],
+                ['name' => 'supplier-imports.reprocess', 'display_name' => 'Reprocesar importación', 'description' => 'Reintenta procesar una importación fallida.'],
+                ['name' => 'supplier-imports.statistics', 'display_name' => 'Estadísticas de importaciones', 'description' => 'Consulta estadísticas de importaciones.'],
+            ],
+
+            'Settings' => [
+                ['name' => 'settings.index', 'display_name' => 'Listar configuraciones', 'description' => 'Lista todas las configuraciones del sistema.'],
+                ['name' => 'settings.show', 'display_name' => 'Ver configuración', 'description' => 'Muestra una configuración específica.'],
+                ['name' => 'settings.store', 'display_name' => 'Crear/actualizar configuración', 'description' => 'Guarda o actualiza una configuración.'],
+                ['name' => 'settings.destroy', 'display_name' => 'Eliminar configuración', 'description' => 'Elimina una configuración del sistema.'],
+                ['name' => 'settings.bulk-update', 'display_name' => 'Actualización masiva de configuraciones', 'description' => 'Actualiza múltiples configuraciones a la vez.'],
+                ['name' => 'settings.restore-defaults', 'display_name' => 'Restaurar configuraciones por defecto', 'description' => 'Restaura todas las configuraciones a valores predeterminados.'],
+            ],
         ];
 
         $totalCreated = 0;
@@ -256,55 +335,157 @@ class RoleSeeder extends Seeder
             'stock.transfer.any',
 
             // CATEGORIES
-            'categories.index', 'categories.tree', 'categories.show',
-            'categories.store', 'categories.update', 'categories.destroy',
+            'categories.index',
+            'categories.tree',
+            'categories.show',
+            'categories.store',
+            'categories.update',
+            'categories.destroy',
 
             // WAREHOUSES
-            'warehouses.index', 'warehouses.show', 'warehouses.store',
-            'warehouses.update', 'warehouses.inventory', 'warehouses.inventory.statistics',
+            'warehouses.index',
+            'warehouses.show',
+            'warehouses.store',
+            'warehouses.update',
+            'warehouses.inventory',
+            'warehouses.inventory.statistics',
 
             // PRODUCTS
-            'products.index', 'products.show', 'products.store', 'products.update',
-            'products.destroy', 'products.restore', 'products.bulk-update',
-            'products.statistics', 'products.duplicate', 'products.images.upload',
-            'products.images.delete', 'products.inventory', 'products.inventory.statistics',
+            'products.index',
+            'products.show',
+            'products.store',
+            'products.update',
+            'products.destroy',
+            'products.restore',
+            'products.bulk-update',
+            'products.statistics',
+            'products.duplicate',
+            'products.images.upload',
+            'products.images.delete',
+            'products.inventory',
+            'products.inventory.statistics',
 
             // PRODUCT ATTRIBUTES
-            'attributes.index', 'attributes.store', 'attributes.update',
-            'attributes.destroy', 'attributes.bulk-update',
+            'attributes.index',
+            'attributes.store',
+            'attributes.update',
+            'attributes.destroy',
+            'attributes.bulk-update',
 
             // INVENTORY
-            'inventory.index', 'inventory.show', 'inventory.store', 'inventory.update',
-            'inventory.destroy', 'inventory.bulk-assign', 'inventory.statistics.global',
-            'inventory.alerts.low-stock', 'inventory.alerts.out-of-stock',
+            'inventory.index',
+            'inventory.show',
+            'inventory.store',
+            'inventory.update',
+            'inventory.destroy',
+            'inventory.bulk-assign',
+            'inventory.statistics.global',
+            'inventory.alerts.low-stock',
+            'inventory.alerts.out-of-stock',
 
             // STOCK
-            'stock.transfer', 'stock.adjustment.in', 'stock.adjustment.out',
-            'stock.batches', 'stock.movements',
+            'stock.transfer',
+            'stock.adjustment.in',
+            'stock.adjustment.out',
+            'stock.batches',
+            'stock.movements',
 
             // ENTITIES
-            'entities.index', 'entities.show', 'entities.store', 'entities.update',
-            'entities.destroy', 'entities.deactivate', 'entities.activate',
-            'entities.search', 'entities.find-by-document',
+            'entities.index',
+            'entities.show',
+            'entities.store',
+            'entities.update',
+            'entities.destroy',
+            'entities.deactivate',
+            'entities.activate',
+            'entities.search',
+            'entities.find-by-document',
 
             // ADDRESSES
-            'addresses.index', 'addresses.show', 'addresses.store',
-            'addresses.update', 'addresses.destroy', 'addresses.set-default',
+            'addresses.index',
+            'addresses.show',
+            'addresses.store',
+            'addresses.update',
+            'addresses.destroy',
+            'addresses.set-default',
 
             // SUNAT
             'sunat.validate-document',
 
             // GEMINI
-            'gemini.generate-product-info', 'gemini.generate-batch',
+            'gemini.generate-product-info',
+            'gemini.generate-batch',
 
             // USERS
-            'users.index', 'users.show', 'users.store',
-            'users.update', 'users.toggle-active',
+            'users.index',
+            'users.show',
+            'users.store',
+            'users.update',
+            'users.toggle-active',
 
             // ECOMMERCE
-            'ecommerce.products.index', 'ecommerce.products.show',
-            'ecommerce.categories.list', 'ecommerce.categories.tree',
+            'ecommerce.products.index',
+            'ecommerce.products.show',
+            'ecommerce.categories.list',
+            'ecommerce.categories.tree',
             'ecommerce.categories.show',
+
+            // 🔥 QUOTATIONS - Acceso completo
+            'quotations.view.all',
+            'quotations.manage.all',
+            'quotations.index',
+            'quotations.show',
+            'quotations.store',
+            'quotations.update',
+            'quotations.destroy',
+            'quotations.items.add',
+            'quotations.items.update',
+            'quotations.items.remove',
+            'quotations.items.update-quantity',
+            'quotations.send',
+            'quotations.resend',
+            'quotations.generate-pdf',
+            'quotations.download-pdf',
+            'quotations.change-status',
+            'quotations.accept',
+            'quotations.reject',
+            'quotations.expire',
+            'quotations.convert-to-sale',
+            'quotations.pay-commission',
+            'quotations.statistics',
+            'quotations.statistics.by-seller',
+            'quotations.reports.commissions',
+            'quotations.alerts.expiring',
+            'quotations.history',
+            'quotations.products.suppliers',
+            'quotations.check-stock',
+            'quotations.duplicate',
+            'quotations.calculate-totals',
+
+            // SUPPLIER PRODUCTS
+            'supplier-products.index',
+            'supplier-products.show',
+            'supplier-products.store',
+            'supplier-products.update',
+            'supplier-products.destroy',
+            'supplier-products.bulk-update-prices',
+            'supplier-products.by-product',
+            'supplier-products.by-supplier',
+            'supplier-products.compare-prices',
+
+            // SUPPLIER IMPORTS
+            'supplier-imports.index',
+            'supplier-imports.show',
+            'supplier-imports.reprocess',
+            'supplier-imports.statistics',
+
+            // SETTINGS
+            'settings.index',
+            'settings.show',
+            'settings.store',
+            'settings.destroy',
+            'settings.bulk-update',
+            'settings.restore-defaults',
         ];
     }
 
@@ -321,44 +502,101 @@ class RoleSeeder extends Seeder
             'stock.transfer.own',
 
             // CATEGORIES
-            'categories.index', 'categories.tree', 'categories.show', 'categories.store',
+            'categories.index',
+            'categories.tree',
+            'categories.show',
+            'categories.store',
 
             // WAREHOUSES (solo consulta)
-            'warehouses.show', 'warehouses.inventory', 'warehouses.inventory.statistics',
+            'warehouses.show',
+            'warehouses.inventory',
+            'warehouses.inventory.statistics',
 
             // PRODUCTS
-            'products.index', 'products.show', 'products.statistics',
-            'products.inventory', 'products.inventory.statistics',
+            'products.index',
+            'products.show',
+            'products.statistics',
+            'products.inventory',
+            'products.inventory.statistics',
 
             // PRODUCT ATTRIBUTES
             'attributes.index',
 
             // INVENTORY (de su almacén)
-            'inventory.index', 'inventory.show',
-            'inventory.alerts.low-stock', 'inventory.alerts.out-of-stock',
+            'inventory.index',
+            'inventory.show',
+            'inventory.alerts.low-stock',
+            'inventory.alerts.out-of-stock',
 
             // STOCK (de su almacén)
-            'stock.transfer', 'stock.adjustment.in', 'stock.adjustment.out',
-            'stock.batches', 'stock.movements',
+            'stock.transfer',
+            'stock.adjustment.in',
+            'stock.adjustment.out',
+            'stock.batches',
+            'stock.movements',
 
             // ENTITIES
-            'entities.index', 'entities.show', 'entities.store',
-            'entities.update', 'entities.search', 'entities.find-by-document',
+            'entities.index',
+            'entities.show',
+            'entities.store',
+            'entities.update',
+            'entities.search',
+            'entities.find-by-document',
 
             // ADDRESSES
-            'addresses.index', 'addresses.show', 'addresses.store',
-            'addresses.update', 'addresses.destroy', 'addresses.set-default',
+            'addresses.index',
+            'addresses.show',
+            'addresses.store',
+            'addresses.update',
+            'addresses.destroy',
+            'addresses.set-default',
 
             // SUNAT
             'sunat.validate-document',
 
             // USERS
-            'users.show', 'users.update',
+            'users.show',
+            'users.update',
 
             // ECOMMERCE
-            'ecommerce.products.index', 'ecommerce.products.show',
-            'ecommerce.categories.list', 'ecommerce.categories.tree',
+            'ecommerce.products.index',
+            'ecommerce.products.show',
+            'ecommerce.categories.list',
+            'ecommerce.categories.tree',
             'ecommerce.categories.show',
+
+            // 🔥 QUOTATIONS - Solo sus propias cotizaciones
+            'quotations.view.own',
+            'quotations.manage.own',
+            'quotations.index',
+            'quotations.show',
+            'quotations.store',
+            'quotations.update',
+            'quotations.destroy',
+            'quotations.items.add',
+            'quotations.items.update',
+            'quotations.items.remove',
+            'quotations.items.update-quantity',
+            'quotations.send',
+            'quotations.resend',
+            'quotations.generate-pdf',
+            'quotations.download-pdf',
+            'quotations.change-status',
+            'quotations.accept',
+            'quotations.reject',
+            'quotations.statistics', // Solo ve sus propias estadísticas
+            'quotations.history',
+            'quotations.products.suppliers',
+            'quotations.check-stock',
+            'quotations.duplicate',
+            'quotations.calculate-totals',
+
+            // SUPPLIER PRODUCTS (solo consulta)
+            'supplier-products.index',
+            'supplier-products.show',
+            'supplier-products.by-product',
+            'supplier-products.by-supplier',
+            'supplier-products.compare-prices',
         ];
     }
 
@@ -369,30 +607,41 @@ class RoleSeeder extends Seeder
     {
         return [
             // CATEGORIES
-            'categories.index', 'categories.tree', 'categories.show',
+            'categories.index',
+            'categories.tree',
+            'categories.show',
 
             // PRODUCTS
-            'products.index', 'products.show',
+            'products.index',
+            'products.show',
 
             // PRODUCT ATTRIBUTES
             'attributes.index',
 
             // ENTITIES (solo su información)
-            'entities.show', 'entities.update',
+            'entities.show',
+            'entities.update',
 
             // ADDRESSES
-            'addresses.index', 'addresses.show', 'addresses.store',
-            'addresses.update', 'addresses.destroy', 'addresses.set-default',
+            'addresses.index',
+            'addresses.show',
+            'addresses.store',
+            'addresses.update',
+            'addresses.destroy',
+            'addresses.set-default',
 
             // SUNAT
             'sunat.validate-document',
 
             // USERS
-            'users.show', 'users.update',
+            'users.show',
+            'users.update',
 
             // ECOMMERCE
-            'ecommerce.products.index', 'ecommerce.products.show',
-            'ecommerce.categories.list', 'ecommerce.categories.tree',
+            'ecommerce.products.index',
+            'ecommerce.products.show',
+            'ecommerce.categories.list',
+            'ecommerce.categories.tree',
             'ecommerce.categories.show',
         ];
     }
