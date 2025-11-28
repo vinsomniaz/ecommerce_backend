@@ -23,10 +23,28 @@ class CategoryResource extends JsonResource
             'parent_id' => $this->parent_id,
             'order' => $this->order,
             'is_active' => $this->is_active,
+
+            // ✅ MÁRGENES PROPIOS (siempre mostrar el valor real, incluso si es 0)
+            'min_margin_percentage' => (float) ($this->min_margin_percentage ?? 0),
+            'normal_margin_percentage' => (float) ($this->normal_margin_percentage ?? 0),
+
+            // ✅ MÁRGENES EFECTIVOS (heredados o propios)
+            'effective_min_margin' => $this->getEffectiveMinMargin(),
+            'effective_normal_margin' => $this->getEffectiveNormalMargin(),
+
+            // ✅ INDICA SI HEREDA MÁRGENES (ambos son 0)
+            'inherits_margins' => $this->inheritsMargins(),
+
+            // ✅ INDICA SI USA DEFAULT DEL SISTEMA (sin padre y sin valor)
+            'uses_system_default' => $this->usesSystemDefault(),
+
+            // ✅ CONTEO DE PRODUCTOS
             'products_count' => $this->when(
                 isset($this->products_count),
                 $this->products_count ?? 0
             ),
+            'total_products' => $this->getTotalProductsRecursive(),
+
             // Relación con padre (solo info básica)
             'parent' => $this->whenLoaded('parent', function () {
                 return [
@@ -50,5 +68,21 @@ class CategoryResource extends JsonResource
             'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
             'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
         ];
+    }
+
+    /**
+     * ✅ Cuenta productos propios + de todos los hijos recursivamente
+     */
+    private function getTotalProductsRecursive(): int
+    {
+        $count = $this->products_count ?? $this->products()->count();
+
+        if ($this->relationLoaded('children')) {
+            foreach ($this->children as $child) {
+                $count += (new self($child))->getTotalProductsRecursive();
+            }
+        }
+
+        return $count;
     }
 }

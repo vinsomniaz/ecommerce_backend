@@ -40,7 +40,6 @@ class UpdateCategoryRequest extends FormRequest
                 'integer',
                 'exists:categories,id',
                 function ($attribute, $value, $fail) use ($categoryId) {
-                    // No permitir cambiar padre si tiene hijos
                     $hasChildren = Category::where('parent_id', $categoryId)->exists();
                     if ($hasChildren) {
                         $fail('No se puede cambiar el padre de una categoría que tiene subcategorías.');
@@ -49,6 +48,27 @@ class UpdateCategoryRequest extends FormRequest
             ],
             'order' => 'nullable|integer|min:0',
             'is_active' => 'nullable|boolean',
+
+            // ✅ NUEVOS CAMPOS DE MARGEN
+            'min_margin_percentage' => [
+                'nullable',
+                'numeric',
+                'min:0',
+                'max:100',
+            ],
+            'normal_margin_percentage' => [
+                'nullable',
+                'numeric',
+                'min:0',
+                'max:100',
+                function ($attribute, $value, $fail) {
+                    // Validar que normal >= mínimo si ambos están presentes
+                    $minMargin = $this->input('min_margin_percentage');
+                    if ($minMargin !== null && $value < $minMargin) {
+                        $fail('El margen normal debe ser mayor o igual al margen mínimo');
+                    }
+                }
+            ],
         ];
     }
 
@@ -61,6 +81,12 @@ class UpdateCategoryRequest extends FormRequest
             'slug.regex' => 'El slug solo puede contener letras minúsculas, números y guiones',
             'slug.unique' => 'El slug ya está en uso',
             'parent_id.exists' => 'La categoría padre no existe',
+
+            // ✅ NUEVOS MENSAJES
+            'min_margin_percentage.min' => 'El margen mínimo debe ser mayor o igual a 0',
+            'min_margin_percentage.max' => 'El margen mínimo no puede superar 100%',
+            'normal_margin_percentage.min' => 'El margen normal debe ser mayor o igual a 0',
+            'normal_margin_percentage.max' => 'El margen normal no puede superar 100%',
         ];
     }
 }
