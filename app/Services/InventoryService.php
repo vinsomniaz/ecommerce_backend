@@ -431,13 +431,11 @@ class InventoryService
      */
     private function calculateInventoryValue(int $warehouseId): float
     {
+        // Se cambio distribution_price a la tabla products
         $value = DB::table('inventory')
-            ->join('purchase_batches', function ($join) {
-                $join->on('inventory.product_id', '=', 'purchase_batches.product_id')
-                    ->where('purchase_batches.status', 'active');
-            })
+            ->join('products', 'inventory.product_id', '=', 'products.id')
             ->where('inventory.warehouse_id', $warehouseId)
-            ->selectRaw('SUM(inventory.available_stock * purchase_batches.distribution_price) as total')
+            ->selectRaw('SUM(inventory.available_stock * products.distribution_price) as total')
             ->value('total');
 
         return round($value ?? 0, 2);
@@ -448,12 +446,10 @@ class InventoryService
      */
     private function calculateTotalInventoryValue(): float
     {
+        // Se cambio distribution_price a la tabla products
         $value = DB::table('inventory')
-            ->join('purchase_batches', function ($join) {
-                $join->on('inventory.product_id', '=', 'purchase_batches.product_id')
-                    ->where('purchase_batches.status', 'active');
-            })
-            ->selectRaw('SUM(inventory.available_stock * purchase_batches.distribution_price) as total')
+            ->join('products', 'inventory.product_id', '=', 'products.id')
+            ->selectRaw('SUM(inventory.available_stock * products.distribution_price) as total')
             ->value('total');
 
         return round($value ?? 0, 2);
