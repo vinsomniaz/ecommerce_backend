@@ -4,6 +4,7 @@
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ProductAttributeController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\SupplierProductController;
 use App\Http\Controllers\Api\WarehouseController;
 use App\Http\Controllers\Api\InventoryController; // NUEVO
 use Illuminate\Http\Request;
@@ -14,6 +15,9 @@ use App\Http\Controllers\Api\AddressController;
 use App\Http\Controllers\Api\StockManagementController;
 use App\Http\Controllers\Api\EcommerceController;
 use App\Http\Controllers\Api\GeminiController;
+use App\Http\Controllers\Api\QuotationController;
+use App\Http\Controllers\Api\SettingController;
+use App\Http\Controllers\Api\SupplierImportController;
 use App\Http\Controllers\Auth\PermissionController;
 use App\Http\Controllers\Api\UserController;
 
@@ -370,6 +374,272 @@ Route::middleware('auth:sanctum')->prefix('addresses')->group(function () {
 
     Route::delete('{address}', [AddressController::class, 'destroy'])
         ->middleware('permission:addresses.destroy');
+});
+
+/* ============================================
+   COTIZACIONES (QUOTATIONS)
+   ============================================ */
+Route::middleware('auth:sanctum')->prefix('quotations')->group(function () {
+
+    // ============================================================================
+    // CRUD BÁSICO
+    // ============================================================================
+
+    // Listar cotizaciones (con filtros)
+    Route::get('/', [QuotationController::class, 'index'])
+        ->middleware('permission:quotations.index');
+
+    // Crear nueva cotización
+    Route::post('/', [QuotationController::class, 'store'])
+        ->middleware('permission:quotations.store');
+
+    // Ver detalle de cotización
+    Route::get('/{quotation}', [QuotationController::class, 'show'])
+        ->middleware('permission:quotations.show');
+
+    // Actualizar cotización (solo draft)
+    Route::match(['put', 'patch'], '/{quotation}', [QuotationController::class, 'update'])
+        ->middleware('permission:quotations.update');
+
+    // Eliminar cotización (soft delete, solo draft)
+    Route::delete('/{quotation}', [QuotationController::class, 'destroy'])
+        ->middleware('permission:quotations.destroy');
+
+    // ============================================================================
+    // GESTIÓN DE ITEMS
+    // ============================================================================
+
+    // Agregar producto a cotización
+    Route::post('/{quotation}/items', [QuotationController::class, 'addItem'])
+        ->middleware('permission:quotations.items.add');
+
+    // Actualizar item existente
+    Route::patch('/{quotation}/items/{detailId}', [QuotationController::class, 'updateItem'])
+        ->middleware('permission:quotations.items.update');
+
+    // Eliminar producto de cotización
+    Route::delete('/{quotation}/items/{detailId}', [QuotationController::class, 'removeItem'])
+        ->middleware('permission:quotations.items.remove');
+
+    // Actualizar cantidad de un item
+    Route::patch('/{quotation}/items/{detailId}/quantity', [QuotationController::class, 'updateItemQuantity'])
+        ->middleware('permission:quotations.items.update-quantity');
+
+    // ============================================================================
+    // ACCIONES DE ENVÍO
+    // ============================================================================
+
+    // Enviar cotización por email/WhatsApp
+    Route::post('/{quotation}/send', [QuotationController::class, 'send'])
+        ->middleware('permission:quotations.send');
+
+    // Reenviar cotización
+    Route::post('/{quotation}/resend', [QuotationController::class, 'resend'])
+        ->middleware('permission:quotations.resend');
+
+    // Generar/regenerar PDF
+    Route::post('/{quotation}/generate-pdf', [QuotationController::class, 'generatePdf'])
+        ->middleware('permission:quotations.generate-pdf');
+
+    // Descargar PDF
+    Route::get('/{quotation}/download-pdf', [QuotationController::class, 'downloadPdf'])
+        ->middleware('permission:quotations.download-pdf');
+
+    // ============================================================================
+    // CAMBIOS DE ESTADO
+    // ============================================================================
+
+    // Cambiar estado de cotización
+    Route::post('/{quotation}/status', [QuotationController::class, 'changeStatus'])
+        ->middleware('permission:quotations.change-status');
+
+    // Marcar como aceptada
+    Route::post('/{quotation}/accept', [QuotationController::class, 'accept'])
+        ->middleware('permission:quotations.accept');
+
+    // Marcar como rechazada
+    Route::post('/{quotation}/reject', [QuotationController::class, 'reject'])
+        ->middleware('permission:quotations.reject');
+
+    // Marcar como expirada (automático o manual)
+    Route::post('/{quotation}/expire', [QuotationController::class, 'expire'])
+        ->middleware('permission:quotations.expire');
+
+    // ============================================================================
+    // CONVERSIÓN A VENTA
+    // ============================================================================
+
+    // Convertir cotización a venta
+    Route::post('/{quotation}/convert-to-sale', [QuotationController::class, 'convertToSale'])
+        ->middleware('permission:quotations.convert-to-sale');
+
+    // ============================================================================
+    // COMISIONES
+    // ============================================================================
+
+    // Marcar comisión como pagada
+    Route::post('/{quotation}/pay-commission', [QuotationController::class, 'payCommission'])
+        ->middleware('permission:quotations.pay-commission');
+
+    // ============================================================================
+    // CONSULTAS Y ESTADÍSTICAS
+    // ============================================================================
+
+    // Estadísticas generales de cotizaciones
+    Route::get('/statistics/general', [QuotationController::class, 'statistics'])
+        ->middleware('permission:quotations.statistics');
+
+    // Estadísticas por vendedor
+    Route::get('/statistics/by-seller', [QuotationController::class, 'statisticsBySeller'])
+        ->middleware('permission:quotations.statistics.by-seller');
+
+    // Reporte de comisiones pendientes
+    Route::get('/reports/pending-commissions', [QuotationController::class, 'pendingCommissions'])
+        ->middleware('permission:quotations.reports.commissions');
+
+    // Cotizaciones próximas a expirar
+    Route::get('/alerts/expiring-soon', [QuotationController::class, 'expiringSoon'])
+        ->middleware('permission:quotations.alerts.expiring');
+
+    // Historial de cambios de estado
+    Route::get('/{quotation}/history', [QuotationController::class, 'statusHistory'])
+        ->middleware('permission:quotations.history');
+
+    // ============================================================================
+    // UTILIDADES
+    // ============================================================================
+
+    // Obtener proveedores disponibles para un producto
+    Route::get('/products/{productId}/suppliers', [QuotationController::class, 'getProductSuppliers'])
+        ->middleware('permission:quotations.products.suppliers');
+
+    // Verificar stock disponible
+    Route::post('/check-stock', [QuotationController::class, 'checkStock'])
+        ->middleware('permission:quotations.check-stock');
+
+    // Duplicar cotización
+    Route::post('/{quotation}/duplicate', [QuotationController::class, 'duplicate'])
+        ->middleware('permission:quotations.duplicate');
+
+    // Calcular totales (preview sin guardar)
+    Route::post('/calculate-totals', [QuotationController::class, 'calculateTotals'])
+        ->middleware('permission:quotations.calculate-totals');
+
+    // Validar disponibilidad y precios actuales de una cotización
+    Route::get('/{quotation}/validate-availability', [QuotationController::class, 'validateAvailability'])
+        ->middleware('permission:quotations.validate-availability');
+
+    // Recalcular cotización con precios actuales (para cotizaciones vencidas)
+    Route::post('/{quotation}/recalculate-prices', [QuotationController::class, 'recalculateWithCurrentPrices'])
+        ->middleware('permission:quotations.recalculate-prices');
+
+    // Validar precio propuesto para un producto (útil en frontend antes de agregar)
+    Route::post('/validate-price', [QuotationController::class, 'validatePrice'])
+        ->middleware('permission:quotations.validate-price');
+
+    // Obtener precio sugerido según margen de categoría
+    Route::post('/suggest-price', [QuotationController::class, 'suggestPrice'])
+        ->middleware('permission:quotations.suggest-price');
+
+    Route::get('/{quotation}/margins-breakdown', [QuotationController::class, 'marginsBreakdown'])
+        ->middleware('permission:quotations.margins-breakdown');
+});
+
+/* ============================================
+   SUPPLIER PRODUCTS (Productos de Proveedores)
+   ============================================ */
+Route::middleware('auth:sanctum')->prefix('supplier-products')->group(function () {
+
+    // Listar productos de proveedores
+    Route::get('/', [SupplierProductController::class, 'index'])
+        ->middleware('permission:supplier-products.index');
+
+    // Crear relación producto-proveedor
+    Route::post('/', [SupplierProductController::class, 'store'])
+        ->middleware('permission:supplier-products.store');
+
+    // Ver detalle
+    Route::get('/{supplierProduct}', [SupplierProductController::class, 'show'])
+        ->middleware('permission:supplier-products.show');
+
+    // Actualizar precio/stock
+    Route::match(['put', 'patch'], '/{supplierProduct}', [SupplierProductController::class, 'update'])
+        ->middleware('permission:supplier-products.update');
+
+    // Eliminar
+    Route::delete('/{supplierProduct}', [SupplierProductController::class, 'destroy'])
+        ->middleware('permission:supplier-products.destroy');
+
+    // Actualización masiva de precios
+    Route::post('/bulk-update-prices', [SupplierProductController::class, 'bulkUpdatePrices'])
+        ->middleware('permission:supplier-products.bulk-update-prices');
+
+    // Por producto (todos los proveedores que lo tienen)
+    Route::get('/by-product/{productId}', [SupplierProductController::class, 'byProduct'])
+        ->middleware('permission:supplier-products.by-product');
+
+    // Por proveedor (todos sus productos)
+    Route::get('/by-supplier/{supplierId}', [SupplierProductController::class, 'bySupplier'])
+        ->middleware('permission:supplier-products.by-supplier');
+
+    // Comparar precios entre proveedores
+    Route::get('/compare-prices/{productId}', [SupplierProductController::class, 'comparePrices'])
+        ->middleware('permission:supplier-products.compare-prices');
+});
+
+/* ============================================
+   SUPPLIER IMPORTS (Importación desde Scrapers)
+   ============================================ */
+Route::middleware('auth:sanctum')->prefix('supplier-imports')->group(function () {
+
+    // Listar importaciones
+    Route::get('/', [SupplierImportController::class, 'index'])
+        ->middleware('permission:supplier-imports.index');
+
+    // Ver detalle de importación
+    Route::get('/{import}', [SupplierImportController::class, 'show'])
+        ->middleware('permission:supplier-imports.show');
+
+    // Reprocesar importación fallida
+    Route::post('/{import}/reprocess', [SupplierImportController::class, 'reprocess'])
+        ->middleware('permission:supplier-imports.reprocess');
+
+    // Estadísticas de importaciones
+    Route::get('/statistics/summary', [SupplierImportController::class, 'statistics'])
+        ->middleware('permission:supplier-imports.statistics');
+});
+
+// ============================================================================
+// ENDPOINT PÚBLICO PARA SCRAPERS (sin auth:sanctum)
+// ============================================================================
+Route::post('/suppliers/{slug}/import', [SupplierImportController::class, 'import'])
+    ->middleware('throttle:60,1'); // Rate limit: 60 requests por minuto
+
+/* ============================================
+   SETTINGS (Configuraciones del Sistema)
+   ============================================ */
+Route::middleware(['auth:sanctum', 'role:super-admin'])->prefix('settings')->group(function () {
+
+    // Listar todas las configuraciones
+    Route::get('/', [SettingController::class, 'index']);
+
+    // Obtener por grupo
+    Route::get('/group/{group}', [SettingController::class, 'getGroup']);
+
+    // Obtener configuración específica
+    Route::get('/{group}/{key}', [SettingController::class, 'get']);
+
+    // Crear/actualizar configuración
+    Route::post('/', [SettingController::class, 'set']);
+
+    // Actualizar múltiples configuraciones
+    Route::post('/bulk-update', [SettingController::class, 'bulkUpdate']);
+
+    // Eliminar configuración
+    Route::delete('/{group}/{key}', [SettingController::class, 'delete']);
+
+    // Restaurar configuraciones por defecto
+    Route::post('/restore-defaults', [SettingController::class, 'restoreDefaults']);
 });
 
 /* ============================================
