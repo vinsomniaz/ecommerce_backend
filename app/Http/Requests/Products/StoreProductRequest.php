@@ -31,6 +31,7 @@ class StoreProductRequest extends FormRequest
             'tax_type' => 'nullable|string|max:2',
             'weight' => 'nullable|numeric|min:0',
             'barcode' => 'nullable|string|max:50',
+            'distribution_price' => 'nullable|numeric|min:0',
 
             // ESTADOS
             'is_active' => 'boolean',

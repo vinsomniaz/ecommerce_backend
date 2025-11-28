@@ -49,6 +49,10 @@ Route::prefix('ecommerce')->name('ecommerce/')->group(function () {
 
     Route::get('categories/{id}', [EcommerceController::class, 'showCategory'])
         ->name('categories.show');
+
+    // Lista de Distribución (Sin paginación)
+    Route::get('distribution-list', [EcommerceController::class, 'distributionList'])
+        ->name('distribution-list');
 });
 
 /*
