@@ -23,6 +23,7 @@ class DatabaseSeeder extends Seeder
 
             CsvMigrationSeeder::class, // Primero crea los productos
             ProductImageSeeder::class,
+            DefaultSettingsSeeder::class,
         ]);
     }
 }
