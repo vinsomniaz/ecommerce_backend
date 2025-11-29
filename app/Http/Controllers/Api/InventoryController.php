@@ -29,34 +29,46 @@ class InventoryController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $filters = $request->only([
-            'product_id',
-            'warehouse_id',
-            'search',
-            'with_stock',
-            'low_stock',
-            'out_of_stock',
-            'min_price',
-            'max_price',
-            'sort_by',
-            'sort_order'
-        ]);
+        $filters = [
+            'warehouse_id' => $request->query('warehouse_id'),
+            'category_id' => $request->query('category_id'), // ✅ Nuevo filtro
+            'search' => $request->query('search'),
+            'with_stock' => $request->query('with_stock'),
+            'low_stock' => $request->query('low_stock'),
+            'out_of_stock' => $request->query('out_of_stock'),
+            'sort_by' => $request->query('sort_by', 'last_movement_at'),
+            'sort_order' => $request->query('sort_order', 'desc'),
+        ];
 
-        $perPage = $request->input('per_page', 15);
+        $perPage = (int) $request->query('per_page', 15);
         $inventory = $this->inventoryService->getFiltered($filters, $perPage);
 
         return response()->json([
             'success' => true,
+            'message' => 'Inventario obtenido correctamente',
             'data' => InventoryResource::collection($inventory->items()),
             'meta' => [
                 'current_page' => $inventory->currentPage(),
                 'per_page' => $inventory->perPage(),
                 'total' => $inventory->total(),
                 'last_page' => $inventory->lastPage(),
-            ],
-        ]);
+                'warehouse_id' => $filters['warehouse_id'],
+                'warehouse_name' => $this->getWarehouseName($filters['warehouse_id']), // Opcional
+            ]
+        ], 200);
     }
 
+    /**
+     * Obtener nombre del almacén (opcional, para metadata)
+     */
+    private function getWarehouseName(?int $warehouseId): ?string
+    {
+        if (!$warehouseId) {
+            return null;
+        }
+
+        return Warehouse::find($warehouseId)?->name;
+    }
     /**
      * Obtener inventario de un producto específico en todos los almacenes
      * GET /api/products/{product}/inventory
@@ -114,7 +126,6 @@ class InventoryController extends Controller
                 'success' => true,
                 'data' => new InventoryResource($inventory),
             ]);
-
         } catch (InventoryNotFoundException $e) {
             return response()->json([
                 'success' => false,
@@ -150,7 +161,6 @@ class InventoryController extends Controller
                 'message' => "Producto asignado a {$result['assigned']} almacén(es) exitosamente",
                 'data' => $result,
             ], 201);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -186,7 +196,6 @@ class InventoryController extends Controller
                 'message' => "Asignación masiva completada: {$result['total_assigned']} registros creados",
                 'data' => $result,
             ], 201);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -217,13 +226,11 @@ class InventoryController extends Controller
                 'message' => 'Inventario actualizado exitosamente',
                 'data' => new InventoryResource($inventory),
             ]);
-
         } catch (InventoryNotFoundException $e) {
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
             ], 404);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -246,19 +253,16 @@ class InventoryController extends Controller
                 'success' => true,
                 'message' => 'Producto desasignado del almacén exitosamente',
             ]);
-
         } catch (InventoryHasStockException $e) {
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
             ], 422);
-
         } catch (InventoryNotFoundException $e) {
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
             ], 404);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,

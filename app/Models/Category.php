@@ -227,6 +227,48 @@ class Category extends Model
         return $this->inheritsMargins() && !$this->parent_id;
     }
 
+
+    /**
+     * ✅ NUEVO: Obtiene todos los IDs de esta categoría y sus descendientes
+     * Útil para filtrar productos por categoría incluyendo subcategorías
+     */
+    public function getAllDescendantIds(): array
+    {
+        $ids = [$this->id];
+
+        foreach ($this->children as $child) {
+            $ids = array_merge($ids, $child->getAllDescendantIds());
+        }
+
+        return $ids;
+    }
+
+    /**
+     * ✅ NUEVO: Versión optimizada con caché
+     */
+    public function getAllDescendantIdsWithCache(): array
+    {
+        return Cache::remember("category_{$this->id}_descendant_ids", now()->addHours(24), function () {
+            return $this->getAllDescendantIds();
+        });
+    }
+
+    /**
+     * ✅ NUEVO: Scope para filtrar productos por categoría incluyendo subcategorías
+     */
+    public function scopeWithDescendants($query, int $categoryId)
+    {
+        $category = static::with('children.children')->find($categoryId);
+
+        if (!$category) {
+            return $query->whereNull('category_id'); // No matches
+        }
+
+        $categoryIds = $category->getAllDescendantIdsWithCache();
+
+        return $query->whereIn('category_id', $categoryIds);
+    }
+
     /**
      * Obtiene información completa de márgenes (para debugging/admin)
      */

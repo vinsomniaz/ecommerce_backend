@@ -9,9 +9,12 @@ use App\Models\Warehouse;
 use App\Exceptions\Inventory\InventoryAlreadyExistsException;
 use App\Exceptions\Inventory\InventoryNotFoundException;
 use App\Exceptions\Inventory\InventoryHasStockException;
+use App\Models\Category;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class InventoryService
 {
@@ -31,6 +34,33 @@ class InventoryService
         // Filtro por almacén específico
         if (!empty($filters['warehouse_id'])) {
             $query->where('warehouse_id', $filters['warehouse_id']);
+        }
+
+        // ✅ NUEVO: Filtro por categoría (incluyendo subcategorías)
+        if (!empty($filters['category_id'])) {
+            $categoryId = $filters['category_id'];
+
+            // Cargar la categoría con sus hijos
+            $category = Category::with('children.children')->find($categoryId);
+
+            if ($category) {
+                // Obtener todos los IDs de categorías (padre + hijos + nietos)
+                $categoryIds = $category->getAllDescendantIdsWithCache();
+
+                // Filtrar productos que pertenezcan a cualquiera de esas categorías
+                $query->whereHas('product', function ($q) use ($categoryIds) {
+                    $q->whereIn('category_id', $categoryIds);
+                });
+
+                Log::info('Filtro de categoría aplicado', [
+                    'category_id' => $categoryId,
+                    'category_name' => $category->name,
+                    'included_category_ids' => $categoryIds,
+                    'total_categories' => count($categoryIds)
+                ]);
+            } else {
+                Log::warning('Categoría no encontrada para filtro', ['category_id' => $categoryId]);
+            }
         }
 
         // Búsqueda en productos
@@ -205,7 +235,7 @@ class InventoryService
                 // Log
                 activity()
                     ->performedOn($product)
-                    ->causedBy(auth()->user())
+                    ->causedBy(Auth::user())
                     ->withProperties([
                         'warehouse_id' => $warehouseId,
                         'warehouse_name' => $warehouse->name,
@@ -280,7 +310,7 @@ class InventoryService
             // Log
             activity()
                 ->performedOn($inventory->product)
-                ->causedBy(auth()->user())
+                ->causedBy(Auth::user())
                 ->withProperties([
                     'warehouse_id' => $warehouseId,
                     'warehouse_name' => $inventory->warehouse->name,
@@ -305,8 +335,8 @@ class InventoryService
             if ($inventory->available_stock > 0 || $inventory->reserved_stock > 0) {
                 throw new InventoryHasStockException(
                     "No se puede eliminar el inventario mientras tenga stock. " .
-                    "Stock disponible: {$inventory->available_stock}, " .
-                    "Stock reservado: {$inventory->reserved_stock}"
+                        "Stock disponible: {$inventory->available_stock}, " .
+                        "Stock reservado: {$inventory->reserved_stock}"
                 );
             }
 
@@ -316,7 +346,7 @@ class InventoryService
             // Log
             activity()
                 ->performedOn($inventory->product)
-                ->causedBy(auth()->user())
+                ->causedBy(Auth::user())
                 ->withProperties([
                     'warehouse_id' => $warehouseId,
                     'warehouse_name' => $warehouseName,
