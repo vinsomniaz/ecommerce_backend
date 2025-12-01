@@ -270,7 +270,7 @@ Route::middleware('auth:sanctum')->prefix('inventory')->group(function () {
         ->middleware('permission:inventory.index');
 
     Route::post('/', [InventoryController::class, 'store'])
-        ->middleware('permission:inventory.store');
+        ->middleware('permission:inventory.store'); // Sirve para asignar producto a tienda pero ya lo hacen automaticamente
 
     Route::post('bulk-assign', [InventoryController::class, 'bulkAssign'])
         ->middleware('permission:inventory.bulk-assign');
@@ -282,7 +282,7 @@ Route::middleware('auth:sanctum')->prefix('inventory')->group(function () {
 
     Route::match(['put', 'patch'], '{product}/{warehouse}', [InventoryController::class, 'update'])
         ->whereNumber('product')->whereNumber('warehouse')
-        ->middleware('permission:inventory.update');
+        ->middleware('permission:inventory.update'); // Actualizar atributos de inventario con producto
 
     Route::delete('{product}/{warehouse}', [InventoryController::class, 'destroy'])
         ->whereNumber('product')->whereNumber('warehouse')

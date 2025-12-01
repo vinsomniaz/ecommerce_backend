@@ -26,8 +26,11 @@ class CategoryService
         $parentId = $request->query('parent_id');
         $isActive = $request->query('is_active');
 
-        // Crear cache key basado en los filtros
-        $cacheKey = "categories_" . md5(serialize([
+        // 🔥 Obtener versión actual del caché
+        $version = Cache::remember('categories_version', now()->addDay(), fn() => 1);
+
+        // Crear cache key con versión
+        $cacheKey = "categories_v{$version}_" . md5(serialize([
             $perPage,
             $search,
             $level,
@@ -36,7 +39,6 @@ class CategoryService
             $request->query('page', 1)
         ]));
 
-        // Laravel 12: Cache asíncrono para mejor performance
         return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($perPage, $search, $level, $parentId, $isActive) {
             $query = Category::query();
 
@@ -72,17 +74,16 @@ class CategoryService
             return $query->with([
                 'parent',
                 'children' => function ($q) {
-                    $q->withCount('products'); // 🔥 Contar productos en hijos también
+                    $q->withCount('products');
                 }
             ])
                 ->withCount('children')
-                ->withCount('products') // 🔥 NUEVO: Contar productos de la categoría
+                ->withCount('products')
                 ->orderBy('order')
                 ->orderBy('name')
                 ->paginate($perPage);
         });
     }
-
     /**
      * Obtiene una categoría por ID con caché
      */
@@ -137,8 +138,8 @@ class CategoryService
             // Validar nombre único en mismo nivel/padre
             if (
                 Category::where('name', $data['name'])
-                    ->where('parent_id', $data['parent_id'])
-                    ->exists()
+                ->where('parent_id', $data['parent_id'])
+                ->exists()
             ) {
                 throw new CategoryValidationException(
                     'Ya existe una categoría con ese nombre en el mismo nivel',
@@ -190,9 +191,9 @@ class CategoryService
             if (isset($data['name']) && $data['name'] !== $category->name) {
                 if (
                     Category::where('name', $data['name'])
-                        ->where('parent_id', $category->parent_id)
-                        ->where('id', '!=', $id)
-                        ->exists()
+                    ->where('parent_id', $category->parent_id)
+                    ->where('id', '!=', $id)
+                    ->exists()
                 ) {
                     throw new CategoryValidationException(
                         'Ya existe una categoría con ese nombre',
@@ -205,8 +206,8 @@ class CategoryService
             if (isset($data['slug']) && $data['slug'] !== $category->slug) {
                 if (
                     Category::where('slug', $data['slug'])
-                        ->where('id', '!=', $id)
-                        ->exists()
+                    ->where('id', '!=', $id)
+                    ->exists()
                 ) {
                     throw new CategoryValidationException(
                         'El slug ya está en uso',
@@ -255,19 +256,39 @@ class CategoryService
      * Limpia el caché relacionado con la categoría
      * Laravel 12: Gestión eficiente de caché
      */
+    /**
+     * Limpia el caché relacionado con la categoría
+     * Usa versioning para invalidar todo el caché de consultas
+     */
     private function clearCategoryCache(?Category $category = null): void
     {
-        // Limpiar caché general de listados
-        Cache::flush(); // En producción, usa tags o keys específicos
-
-        // Si tienes categoría específica
         if ($category) {
+            // Limpiar caché específico de la categoría
             Cache::forget("category_{$category->id}");
+            Cache::forget("category_{$category->id}_total_products");
+
+            // Limpiar caché del padre
             if ($category->parent_id) {
                 Cache::forget("category_{$category->parent_id}");
+                Cache::forget("category_{$category->parent_id}_total_products");
+            }
+
+            // Limpiar caché de los hijos
+            if ($category->relationLoaded('children')) {
+                foreach ($category->children as $child) {
+                    Cache::forget("category_{$child->id}");
+                    Cache::forget("category_{$child->id}_total_products");
+                }
             }
         }
+
+        // Limpiar caché del árbol completo
+        Cache::forget('categories_tree');
+
+        // 🔥 Incrementar versión para invalidar todas las consultas paginadas
+        Cache::increment('categories_version');
     }
+
 
     /**
      * Obtiene árbol completo de categorías (con caché)

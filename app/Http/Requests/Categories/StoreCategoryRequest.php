@@ -10,7 +10,7 @@ class StoreCategoryRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true; // o auth()->check() si necesitas validar
+        return true;
     }
 
     public function rules(): array
@@ -27,7 +27,7 @@ class StoreCategoryRequest extends FormRequest
                 'nullable',
                 'string',
                 'max:100',
-                'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', // Solo minúsculas y guiones
+                'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/',
                 'unique:categories,slug'
             ],
             'description' => 'nullable|string|max:500',
@@ -50,12 +50,10 @@ class StoreCategoryRequest extends FormRequest
                 'min:1',
                 'max:3',
                 function ($attribute, $value, $fail) {
-                    // Si no hay parent_id, level debe ser 1
                     if (!$this->input('parent_id') && $value != 1) {
                         $fail('Una categoría sin padre debe ser de nivel 1.');
                     }
 
-                    // Si hay parent_id, validar coherencia
                     if ($this->input('parent_id')) {
                         $parent = Category::find($this->input('parent_id'));
                         if ($parent && $value != $parent->level + 1) {
@@ -66,6 +64,21 @@ class StoreCategoryRequest extends FormRequest
             ],
             'order' => 'nullable|integer|min:0',
             'is_active' => 'nullable|boolean',
+
+            // ✅ NUEVOS CAMPOS DE MARGEN
+            'min_margin_percentage' => [
+                'nullable',
+                'numeric',
+                'min:0',
+                'max:100',
+            ],
+            'normal_margin_percentage' => [
+                'nullable',
+                'numeric',
+                'min:0',
+                'max:100',
+                'gte:min_margin_percentage' // 👈 Normal debe ser >= Mínimo
+            ],
         ];
     }
 
@@ -80,6 +93,13 @@ class StoreCategoryRequest extends FormRequest
             'parent_id.exists' => 'La categoría padre no existe',
             'level.min' => 'El nivel mínimo es 1',
             'level.max' => 'El nivel máximo es 3',
+
+            // ✅ NUEVOS MENSAJES
+            'min_margin_percentage.min' => 'El margen mínimo debe ser mayor o igual a 0',
+            'min_margin_percentage.max' => 'El margen mínimo no puede superar 100%',
+            'normal_margin_percentage.min' => 'El margen normal debe ser mayor o igual a 0',
+            'normal_margin_percentage.max' => 'El margen normal no puede superar 100%',
+            'normal_margin_percentage.gte' => 'El margen normal debe ser mayor o igual al margen mínimo',
         ];
     }
 }

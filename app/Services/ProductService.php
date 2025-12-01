@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Exceptions\Products\ProductNotFoundException;
 use App\Exceptions\Products\ProductAlreadyExistsException;
 use App\Exceptions\Products\ProductInUseException;
+use App\Models\Category;
 use App\Models\Inventory;
 use App\Models\Warehouse;
 use Illuminate\Support\Facades\DB;
@@ -502,15 +503,36 @@ class ProductService
             });
         }
 
+        // ✅ NUEVO: Filtro por categoría (incluyendo subcategorías)
         if (!empty($filters['category_id'])) {
-            $query->where('category_id', $filters['category_id']);
+            $categoryId = $filters['category_id'];
+
+            // Cargar la categoría con sus hijos
+            $category = Category::with('children.children')->find($categoryId);
+
+            if ($category) {
+                // Obtener todos los IDs de categorías (padre + hijos + nietos)
+                $categoryIds = $category->getAllDescendantIdsWithCache();
+
+                // Filtrar productos que pertenezcan a cualquiera de esas categorías
+                $query->whereIn('category_id', $categoryIds);
+
+                Log::info('Filtro de categoría aplicado en productos', [
+                    'category_id' => $categoryId,
+                    'category_name' => $category->name,
+                    'included_category_ids' => $categoryIds,
+                    'total_categories' => count($categoryIds)
+                ]);
+            } else {
+                Log::warning('Categoría no encontrada para filtro de productos', ['category_id' => $categoryId]);
+            }
         }
 
         if (!empty($filters['brand'])) {
             $query->where('brand', $filters['brand']);
         }
 
-        // ✅ CORRECCIÓN: Convertir strings a booleanos antes de filtrar
+        // Convertir strings a booleanos antes de filtrar
         if (array_key_exists('is_active', $filters)) {
             $query->where('is_active', filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN));
         }
@@ -797,7 +819,7 @@ class ProductService
             'is_active' => true,
             'is_featured' => false,
             'visible_online' => true,
-            'is_new' => false, 
+            'is_new' => false,
         ];
 
         foreach ($defaults as $key => $value) {

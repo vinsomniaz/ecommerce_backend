@@ -30,12 +30,12 @@ class ProductController extends Controller
     {
         $filters = $request->only([
             'search',
-            'category_id',
+            'category_id', // ✅ Ya lo tienes
             'brand',
             'is_active',
             'is_featured',
             'visible_online',
-            'is_new', // ✅ AGREGAR ESTA LÍNEA
+            'is_new',
             'warehouse_id',
             'with_stock',
             'low_stock',
@@ -49,7 +49,6 @@ class ProductController extends Controller
 
         return ProductResource::collection($products);
     }
-
     /**
      * Crear un nuevo producto (SIN precios - se asignarán con compras)
      */

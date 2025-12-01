@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Spatie\Activitylog\Traits\LogsActivity;
 use Spatie\Activitylog\LogOptions;
 
@@ -46,7 +48,7 @@ class Category extends Model
     // ========================================
     // RELACIONES
     // ========================================
-    
+
     public function parent(): BelongsTo
     {
         return $this->belongsTo(Category::class, 'parent_id');
@@ -65,7 +67,7 @@ class Category extends Model
     // ========================================
     // SCOPES
     // ========================================
-    
+
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
@@ -94,7 +96,7 @@ class Category extends Model
     // ========================================
     // MÉTODOS DE CATEGORÍA
     // ========================================
-    
+
     public function isRoot(): bool
     {
         return $this->level === 1 && is_null($this->parent_id);
@@ -138,19 +140,30 @@ class Category extends Model
 
     public function getTotalProductsAttribute(): int
     {
+        return Cache::remember("category_{$this->id}_total_products", now()->addMinutes(10), function () {
+            return $this->getTotalProductsRecursive();
+        });
+    }
+
+    /**
+     * ✅ NUEVO: Método recursivo para contar productos
+     */
+    public function getTotalProductsRecursive(): int
+    {
+        // Contar productos propios
         $count = $this->products()->count();
 
+        // Sumar productos de cada hijo recursivamente
         foreach ($this->children as $child) {
-            $count += $child->total_products;
+            $count += $child->getTotalProductsRecursive();
         }
 
         return $count;
     }
-
     // ========================================
     // ✅ NUEVOS MÉTODOS DE MARGEN
     // ========================================
-    
+
     /**
      * Obtiene el margen mínimo efectivo (heredado o propio)
      * Busca hacia arriba en la jerarquía hasta encontrar un valor > 0
@@ -161,16 +174,21 @@ class Category extends Model
         if ($this->min_margin_percentage > 0) {
             return (float) $this->min_margin_percentage;
         }
-        
+
         // Si tiene padre, buscar en el padre recursivamente
         if ($this->parent) {
             return $this->parent->getEffectiveMinMargin();
         }
-        
-        // Si no tiene valor ni padre, usar default del sistema
-        return 10.00; // Default fallback
+
+        // ✅ Si no tiene valor ni padre, usar el de settings
+        $defaultMargin = DB::table('settings')
+            ->where('group', 'margins')
+            ->where('key', 'min_margin_percentage')
+            ->value('value');
+
+        return $defaultMargin ? (float) $defaultMargin : 1.00; // 👈 Fallback temporal a 1%
     }
-    
+
     /**
      * Obtiene el margen normal efectivo (heredado o propio)
      */
@@ -179,14 +197,20 @@ class Category extends Model
         if ($this->normal_margin_percentage > 0) {
             return (float) $this->normal_margin_percentage;
         }
-        
+
         if ($this->parent) {
             return $this->parent->getEffectiveNormalMargin();
         }
-        
-        return 20.00; // Default fallback
+
+        // ✅ Si no tiene valor ni padre, usar el de settings
+        $defaultMargin = DB::table('settings')
+            ->where('group', 'margins')
+            ->where('key', 'default_margin_percentage')
+            ->value('value');
+
+        return $defaultMargin ? (float) $defaultMargin : 1.00; // 👈 Fallback temporal a 1%
     }
-    
+
     /**
      * Verifica si hereda márgenes del padre
      */
@@ -194,7 +218,57 @@ class Category extends Model
     {
         return $this->min_margin_percentage == 0 && $this->normal_margin_percentage == 0;
     }
-    
+
+    /**
+     * ✅ NUEVO: Verifica si usa el default del sistema (sin padre y sin valor propio)
+     */
+    public function usesSystemDefault(): bool
+    {
+        return $this->inheritsMargins() && !$this->parent_id;
+    }
+
+
+    /**
+     * ✅ NUEVO: Obtiene todos los IDs de esta categoría y sus descendientes
+     * Útil para filtrar productos por categoría incluyendo subcategorías
+     */
+    public function getAllDescendantIds(): array
+    {
+        $ids = [$this->id];
+
+        foreach ($this->children as $child) {
+            $ids = array_merge($ids, $child->getAllDescendantIds());
+        }
+
+        return $ids;
+    }
+
+    /**
+     * ✅ NUEVO: Versión optimizada con caché
+     */
+    public function getAllDescendantIdsWithCache(): array
+    {
+        return Cache::remember("category_{$this->id}_descendant_ids", now()->addHours(24), function () {
+            return $this->getAllDescendantIds();
+        });
+    }
+
+    /**
+     * ✅ NUEVO: Scope para filtrar productos por categoría incluyendo subcategorías
+     */
+    public function scopeWithDescendants($query, int $categoryId)
+    {
+        $category = static::with('children.children')->find($categoryId);
+
+        if (!$category) {
+            return $query->whereNull('category_id'); // No matches
+        }
+
+        $categoryIds = $category->getAllDescendantIdsWithCache();
+
+        return $query->whereIn('category_id', $categoryIds);
+    }
+
     /**
      * Obtiene información completa de márgenes (para debugging/admin)
      */
