@@ -7,7 +7,6 @@ use App\Models\Purchase;
 use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-
 class PurchaseBatch extends Model
 {
     use HasFactory;
@@ -20,7 +19,6 @@ class PurchaseBatch extends Model
         'quantity_purchased',
         'quantity_available',
         'purchase_price',
-        'distribution_price',
         'purchase_date',
         'status',
         'notes',
@@ -30,7 +28,6 @@ class PurchaseBatch extends Model
         'quantity_purchased' => 'integer',
         'quantity_available' => 'integer',
         'purchase_price' => 'decimal:2',
-        'distribution_price' => 'decimal:2',
         'purchase_date' => 'date',
     ];
 
@@ -59,14 +56,14 @@ class PurchaseBatch extends Model
     public function scopeActive($query)
     {
         return $query->where('status', 'active')
-                    ->where('quantity_available', '>', 0);
+            ->where('quantity_available', '>', 0);
     }
 
     public function scopeExpiringSoon($query, int $days = 30)
     {
         return $query->where('status', 'active')
-                    ->whereNotNull('expiry_date')
-                    ->whereBetween('expiry_date', [now(), now()->addDays($days)]);
+            ->whereNotNull('expiry_date')
+            ->whereBetween('expiry_date', [now(), now()->addDays($days)]);
     }
 
     // Métodos
@@ -85,8 +82,11 @@ class PurchaseBatch extends Model
         return $this->save();
     }
 
+    /**
+     * ✅ Costo total del lote (cantidad × precio de compra)
+     */
     public function getTotalCostAttribute(): float
     {
-        return $this->quantity_available * $this->distribution_price;
+        return $this->quantity_available * $this->purchase_price;
     }
 }

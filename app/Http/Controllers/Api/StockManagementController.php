@@ -18,15 +18,6 @@ class StockManagementController extends Controller
     /**
      * Traslado de stock entre almacenes
      * POST /api/stock/transfer
-     *
-     * Body:
-     * {
-     *   "product_id": 1,
-     *   "from_warehouse_id": 1,
-     *   "to_warehouse_id": 2,
-     *   "quantity": 50,
-     *   "notes": "Traslado por restock"
-     * }
      */
     public function transfer(Request $request): JsonResponse
     {
@@ -66,16 +57,7 @@ class StockManagementController extends Controller
      * Ajuste de entrada de stock (incrementar)
      * POST /api/stock/adjustment/in
      *
-     * Body:
-     * {
-     *   "product_id": 1,
-     *   "warehouse_id": 1,
-     *   "quantity": 100,
-     *   "unit_cost": 15.50,
-     *   "distribution_price": 18.00,  // OPCIONAL - si no se envía, usa unit_cost
-     *   "reason": "manual_entry",
-     *   "notes": "Corrección de inventario"
-     * }
+     * ✅ SOLO unit_cost - el precio de venta se calcula automáticamente
      */
     public function adjustmentIn(Request $request): JsonResponse
     {
@@ -83,8 +65,7 @@ class StockManagementController extends Controller
             'product_id' => 'required|exists:products,id',
             'warehouse_id' => 'required|exists:warehouses,id',
             'quantity' => 'required|integer|min:1',
-            'unit_cost' => 'required|numeric|min:0',
-            'distribution_price' => 'nullable|numeric|min:0',
+            'unit_cost' => 'required|numeric|min:0', // ✅ SOLO costo de compra
             'reason' => ['required', Rule::in(['purchase','manual_entry', 'found_stock', 'correction', 'return', 'other'])],
             'notes' => 'nullable|string|max:500',
         ]);
@@ -96,8 +77,7 @@ class StockManagementController extends Controller
                 $validated['quantity'],
                 $validated['unit_cost'],
                 $validated['reason'],
-                $validated['notes'] ?? null,
-                $validated['distribution_price'] ?? null
+                $validated['notes'] ?? null
             );
 
             return response()->json([
@@ -118,15 +98,6 @@ class StockManagementController extends Controller
     /**
      * Ajuste de salida de stock (decrementar)
      * POST /api/stock/adjustment/out
-     *
-     * Body:
-     * {
-     *   "product_id": 1,
-     *   "warehouse_id": 1,
-     *   "quantity": 10,
-     *   "reason": "damaged",
-     *   "notes": "Productos dañados por humedad"
-     * }
      */
     public function adjustmentOut(Request $request): JsonResponse
     {
