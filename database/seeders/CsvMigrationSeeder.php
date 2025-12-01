@@ -31,10 +31,16 @@ class CsvMigrationSeeder extends Seeder
     private $dummyPurchaseId;
 
     /**
-     * Almacena los precios de costo/distribución por ID de producto nuevo
-     * Formato: [nuevo_product_id => ['purchase' => X, 'distribution' => Y]]
+     * Almacena los precios de costo por ID de producto nuevo
+     * Formato: [nuevo_product_id => precio_compra]
      */
     private $mapProductCosts = [];
+
+    /**
+     * Almacena la categoría de cada producto
+     * Formato: [nuevo_product_id => category_id]
+     */
+    private $mapProductCategories = [];
 
     /**
      * Función helper para leer un CSV y devolverlo como un array asociativo
@@ -143,12 +149,23 @@ class CsvMigrationSeeder extends Seeder
         $data = $this->readCsv('categorias.csv');
 
         foreach ($data as $row) {
+            // Leer márgenes del CSV si existen
+            $normalMargin = isset($row['normal_margin_percentage']) && $row['normal_margin_percentage'] !== ''
+                ? (float) $row['normal_margin_percentage']
+                : 0.00;
+
+            $minMargin = isset($row['min_margin_percentage']) && $row['min_margin_percentage'] !== ''
+                ? (float) $row['min_margin_percentage']
+                : 0.00;
+
             $nueva = Category::create([
                 'name' => $row['nombre'],
                 'slug' => $this->generateUniqueSlug($row['nombre']),
                 'level' => 1,
                 'is_active' => 1,
-                'parent_id' => null
+                'parent_id' => null,
+                'normal_margin_percentage' => $normalMargin,
+                'min_margin_percentage' => $minMargin,
             ]);
 
             $this->mapCategorias[$row['idcategoria']] = $nueva->id;
@@ -161,12 +178,22 @@ class CsvMigrationSeeder extends Seeder
         $data = $this->readCsv('familias.csv');
 
         foreach ($data as $row) {
+            $normalMargin = isset($row['normal_margin_percentage']) && $row['normal_margin_percentage'] !== ''
+                ? (float) $row['normal_margin_percentage']
+                : 0.00;
+
+            $minMargin = isset($row['min_margin_percentage']) && $row['min_margin_percentage'] !== ''
+                ? (float) $row['min_margin_percentage']
+                : 0.00;
+
             $nueva = Category::create([
                 'name' => $row['nombre'],
                 'slug' => $this->generateUniqueSlug($row['nombre']),
                 'level' => 2,
                 'is_active' => 1,
-                'parent_id' => $this->mapCategorias[$row['categoria_id']] ?? null
+                'parent_id' => $this->mapCategorias[$row['categoria_id']] ?? null,
+                'normal_margin_percentage' => $normalMargin,
+                'min_margin_percentage' => $minMargin,
             ]);
 
             $this->mapFamilias[$row['idfamilia']] = $nueva->id;
@@ -179,12 +206,22 @@ class CsvMigrationSeeder extends Seeder
         $data = $this->readCsv('subfamilias.csv');
 
         foreach ($data as $row) {
+            $normalMargin = isset($row['normal_margin_percentage']) && $row['normal_margin_percentage'] !== ''
+                ? (float) $row['normal_margin_percentage']
+                : 0.00;
+
+            $minMargin = isset($row['min_margin_percentage']) && $row['min_margin_percentage'] !== ''
+                ? (float) $row['min_margin_percentage']
+                : 0.00;
+
             $nueva = Category::create([
                 'name' => $row['nombre'],
                 'slug' => $this->generateUniqueSlug($row['nombre']),
                 'level' => 3,
                 'is_active' => 1,
-                'parent_id' => $this->mapFamilias[$row['familia_id']] ?? null
+                'parent_id' => $this->mapFamilias[$row['familia_id']] ?? null,
+                'normal_margin_percentage' => $normalMargin,
+                'min_margin_percentage' => $minMargin,
             ]);
 
             $this->mapSubfamilias[$row['idsubfamilia']] = $nueva->id;
@@ -229,10 +266,8 @@ class CsvMigrationSeeder extends Seeder
                     continue;
             }
 
-            // ⭐ CAMBIO PRINCIPAL: Agregamos distribution_price al crear el producto
             $precioDistribucion = $row['precio_distribucion'] ?? 0.00;
-            
-            // Validar que no sea NULL o string vacío
+
             if ($precioDistribucion === '' || strcasecmp($precioDistribucion, 'NULL') === 0) {
                 $precioDistribucion = 0.00;
             }
@@ -247,15 +282,14 @@ class CsvMigrationSeeder extends Seeder
                 'unit_measure' => 'NIU',
                 'tax_type' => '10',
                 'min_stock' => 0,
-                'distribution_price' => (float) $precioDistribucion, // ⭐ AQUÍ SE SETEA
+                'distribution_price' => (float) $precioDistribucion,
             ]);
 
             $this->mapProductos[$row['idproducto']] = $nueva->id;
 
-            // Guardamos solo el precio de COMPRA para los lotes
-            $this->mapProductCosts[$nueva->id] = [
-                'purchase' => $row['precio_compra'] ?? 0.00,
-            ];
+            // Guardamos el precio de compra y la categoría
+            $this->mapProductCosts[$nueva->id] = $row['precio_compra'] ?? 0.00;
+            $this->mapProductCategories[$nueva->id] = $categoryId;
         }
 
         $this->command->info(count($this->mapProductos) . ' productos creados con precio de distribución.');
@@ -264,65 +298,175 @@ class CsvMigrationSeeder extends Seeder
     private function importInventario()
     {
         $this->command->info('Importando Inventario (stock) y Lotes de Compra (batches)...');
+
+        // Leer datos existentes del CSV
         $data = $this->readCsv('producto_tienda.csv');
 
-        $inventarioParaInsertar = [];
-        $lotesParaInsertar = [];
-        $now = now();
+        // Crear estructura para almacenar datos de stock por producto-almacén
+        $stockData = [];
 
         foreach ($data as $row) {
             if (isset($this->mapProductos[$row['producto_id']]) && isset($this->mapAlmacenes[$row['tienda_id']])) {
-
                 $newProductId = $this->mapProductos[$row['producto_id']];
                 $newWarehouseId = $this->mapAlmacenes[$row['tienda_id']];
+
                 $stock = (int) $row['stock'];
 
-                // Precio de VENTA desde producto_tienda.csv
-                $precioCsv = $row['precio'] ?? null;
-                $salePrice = null;
-                if ($precioCsv !== null && $precioCsv !== '' && strcasecmp($precioCsv, 'NULL') !== 0) {
-                    $salePrice = (float) $precioCsv;
-                }
+                // Almacenar en matriz
+                $stockData[$newProductId][$newWarehouseId] = $stock;
+            }
+        }
 
-                // 1. INVENTORY (con precio de venta)
+        // 🔥 PASO 1: Crear LOTES (solo con stock > 0)
+        $this->command->info('Creando lotes de compra...');
+        $lotesParaInsertar = [];
+        $now = now();
+
+        foreach ($this->mapProductos as $oldProductId => $newProductId) {
+            foreach ($this->mapAlmacenes as $oldWarehouseId => $newWarehouseId) {
+                $stock = $stockData[$newProductId][$newWarehouseId] ?? 0;
+
+                if ($stock > 0) {
+                    $purchasePrice = (float) ($this->mapProductCosts[$newProductId] ?? 0.00);
+
+                    $lotesParaInsertar[] = [
+                        'purchase_id' => $this->dummyPurchaseId,
+                        'product_id' => $newProductId,
+                        'warehouse_id' => $newWarehouseId,
+                        'batch_code' => 'MIG-' . $newProductId . '-' . $newWarehouseId,
+                        'quantity_purchased' => $stock,
+                        'quantity_available' => $stock,
+                        'purchase_price' => $purchasePrice,
+                        'purchase_date' => $now,
+                        'status' => 'active',
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                }
+            }
+        }
+
+        if (!empty($lotesParaInsertar)) {
+            $chunks = array_chunk($lotesParaInsertar, 500);
+            foreach ($chunks as $chunk) {
+                DB::table('purchase_batches')->insert($chunk);
+            }
+            $this->command->info(count($lotesParaInsertar) . ' lotes de compra creados.');
+        }
+
+        // 🔥 PASO 2: Calcular COSTO PROMEDIO PONDERADO por producto
+        $this->command->info('Calculando costos promedio ponderados...');
+        $productAverageCosts = $this->calculateAverageCosts();
+
+        // 🔥 PASO 3: Obtener MÁRGENES de categorías
+        $categoryMargins = $this->getCategoryMargins();
+
+        // 🔥 PASO 4: Crear INVENTARIOS con precios calculados
+        $this->command->info('Creando inventarios con precios calculados...');
+        $inventarioParaInsertar = [];
+
+        foreach ($this->mapProductos as $oldProductId => $newProductId) {
+            $averageCost = $productAverageCosts[$newProductId] ?? 0.00;
+            $categoryId = $this->mapProductCategories[$newProductId] ?? null;
+
+            // Obtener márgenes de la categoría
+            $marginRetail = $categoryMargins[$categoryId]['normal_margin_percentage'] ?? 0.00;
+            $marginRetailMin = $categoryMargins[$categoryId]['min_margin_percentage'] ?? 0.00;
+
+            // Calcular precios de venta
+            $salePrice = null;
+            $minSalePrice = null;
+            $profitMargin = null;
+
+            if ($averageCost > 0) {
+                // sale_price = average_cost * (1 + margin_retail / 100) - redondeo comercial
+                $salePrice = round($averageCost * (1 + $marginRetail / 100));
+
+                // min_sale_price = average_cost * (1 + margin_retail_min / 100) - redondeo comercial
+                $minSalePrice = round($averageCost * (1 + $marginRetailMin / 100));
+
+                // profit_margin = margin_retail (para registro)
+                $profitMargin = $marginRetail;
+            }
+
+            foreach ($this->mapAlmacenes as $oldWarehouseId => $newWarehouseId) {
+                $stock = $stockData[$newProductId][$newWarehouseId] ?? 0;
+
                 $inventarioParaInsertar[] = [
                     'product_id' => $newProductId,
                     'warehouse_id' => $newWarehouseId,
                     'available_stock' => $stock,
-                    'sale_price' => $salePrice,
                     'reserved_stock' => 0,
+                    'average_cost' => $averageCost,
+                    'sale_price' => $salePrice,
+                    'profit_margin' => $profitMargin,
+                    'min_sale_price' => $minSalePrice,
                     'last_movement_at' => $now,
                     'price_updated_at' => $salePrice ? $now : null,
-                ];
-
-                // 2. PURCHASE_BATCHES (con precio de compra)
-                $costs = $this->mapProductCosts[$newProductId] ?? ['purchase' => 0.00];
-
-                $lotesParaInsertar[] = [
-                    'purchase_id' => $this->dummyPurchaseId,
-                    'product_id' => $newProductId,
-                    'warehouse_id' => $newWarehouseId,
-                    'batch_code' => 'MIG-' . $newProductId . '-' . $newWarehouseId,
-                    'quantity_purchased' => $stock,
-                    'quantity_available' => $stock,
-                    'purchase_price' => (float) $costs['purchase'], // Precio de COMPRA
-                    'purchase_date' => $now,
-                    'status' => 'active',
-                    'created_at' => $now,
-                    'updated_at' => $now,
                 ];
             }
         }
 
         if (!empty($inventarioParaInsertar)) {
-            DB::table('inventory')->insert($inventarioParaInsertar);
-            $this->command->info(count($inventarioParaInsertar) . ' registros de inventario creados.');
+            $chunks = array_chunk($inventarioParaInsertar, 500);
+            foreach ($chunks as $chunk) {
+                DB::table('inventory')->insert($chunk);
+            }
+            $this->command->info(count($inventarioParaInsertar) . ' registros de inventario creados con precios calculados.');
+        }
+    }
+
+    /**
+     * Calcula el costo promedio ponderado por producto
+     * basado en todos sus lotes
+     */
+    private function calculateAverageCosts(): array
+    {
+        $averageCosts = [];
+
+        $batches = DB::table('purchase_batches')
+            ->select('product_id', 'purchase_price', 'quantity_purchased')
+            ->get()
+            ->groupBy('product_id');
+
+        foreach ($batches as $productId => $productBatches) {
+            $totalCost = 0;
+            $totalQuantity = 0;
+
+            foreach ($productBatches as $batch) {
+                $totalCost += $batch->purchase_price * $batch->quantity_purchased;
+                $totalQuantity += $batch->quantity_purchased;
+            }
+
+            if ($totalQuantity > 0) {
+                $averageCosts[$productId] = round($totalCost / $totalQuantity, 4);
+            } else {
+                $averageCosts[$productId] = 0.00;
+            }
         }
 
-        if (!empty($lotesParaInsertar)) {
-            DB::table('purchase_batches')->insert($lotesParaInsertar);
-            $this->command->info(count($lotesParaInsertar) . ' lotes de compra (batches) creados.');
+        return $averageCosts;
+    }
+
+    /**
+     * Obtiene los márgenes de todas las categorías
+     */
+    private function getCategoryMargins(): array
+    {
+        $margins = [];
+
+        $categories = DB::table('categories')
+            ->select('id', 'normal_margin_percentage', 'min_margin_percentage')
+            ->get();
+
+        foreach ($categories as $category) {
+            $margins[$category->id] = [
+                'normal_margin_percentage' => (float) $category->normal_margin_percentage,
+                'min_margin_percentage' => (float) $category->min_margin_percentage,
+            ];
         }
+
+        return $margins;
     }
 
     private function generateUniqueSlug(string $name): string
