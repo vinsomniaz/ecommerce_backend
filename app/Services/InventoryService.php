@@ -1,5 +1,4 @@
 <?php
-// app/Services/InventoryService.php
 
 namespace App\Services;
 
@@ -26,28 +25,22 @@ class InventoryService
         $query = Inventory::query()
             ->with(['product.category', 'product.media', 'warehouse']);
 
-        // Filtro por producto específico
         if (!empty($filters['product_id'])) {
             $query->where('product_id', $filters['product_id']);
         }
 
-        // Filtro por almacén específico
         if (!empty($filters['warehouse_id'])) {
             $query->where('warehouse_id', $filters['warehouse_id']);
         }
 
-        // ✅ NUEVO: Filtro por categoría (incluyendo subcategorías)
+        // Filtro por categoría (incluyendo subcategorías)
         if (!empty($filters['category_id'])) {
             $categoryId = $filters['category_id'];
-
-            // Cargar la categoría con sus hijos
             $category = Category::with('children.children')->find($categoryId);
 
             if ($category) {
-                // Obtener todos los IDs de categorías (padre + hijos + nietos)
                 $categoryIds = $category->getAllDescendantIdsWithCache();
 
-                // Filtrar productos que pertenezcan a cualquiera de esas categorías
                 $query->whereHas('product', function ($q) use ($categoryIds) {
                     $q->whereIn('category_id', $categoryIds);
                 });
@@ -74,24 +67,20 @@ class InventoryService
             });
         }
 
-        // Solo con stock disponible
         if (!empty($filters['with_stock'])) {
             $query->where('available_stock', '>', 0);
         }
 
-        // Stock bajo (menor o igual al mínimo del producto)
         if (!empty($filters['low_stock'])) {
             $query->whereHas('product', function ($q) {
                 $q->whereColumn('inventory.available_stock', '<=', 'products.min_stock');
             });
         }
 
-        // Sin stock
         if (!empty($filters['out_of_stock'])) {
             $query->where('available_stock', 0);
         }
 
-        // Rango de precios
         if (!empty($filters['min_price'])) {
             $query->where('sale_price', '>=', $filters['min_price']);
         }
@@ -100,7 +89,6 @@ class InventoryService
             $query->where('sale_price', '<=', $filters['max_price']);
         }
 
-        // Ordenamiento
         $sortBy = $filters['sort_by'] ?? 'last_movement_at';
         $sortOrder = $filters['sort_order'] ?? 'desc';
 
@@ -130,7 +118,6 @@ class InventoryService
         $query = Inventory::where('warehouse_id', $warehouseId)
             ->with(['product.category', 'product.media']);
 
-        // Búsqueda
         if (!empty($filters['search'])) {
             $search = $filters['search'];
             $query->whereHas('product', function ($q) use ($search) {
@@ -140,19 +127,16 @@ class InventoryService
             });
         }
 
-        // Filtro por categoría
         if (!empty($filters['category_id'])) {
             $query->whereHas('product', function ($q) use ($filters) {
                 $q->where('category_id', $filters['category_id']);
             });
         }
 
-        // Solo con stock
         if (!empty($filters['with_stock'])) {
             $query->where('available_stock', '>', 0);
         }
 
-        // Stock bajo
         if (!empty($filters['low_stock'])) {
             $query->whereHas('product', function ($q) {
                 $q->whereColumn('inventory.available_stock', '<=', 'products.min_stock');
@@ -195,7 +179,6 @@ class InventoryService
             foreach ($warehouseIds as $warehouseId) {
                 $warehouse = Warehouse::findOrFail($warehouseId);
 
-                // Verificar si ya existe
                 $exists = Inventory::where('product_id', $productId)
                     ->where('warehouse_id', $warehouseId)
                     ->exists();
@@ -211,12 +194,12 @@ class InventoryService
                     continue;
                 }
 
-                // Crear inventario
                 Inventory::create([
                     'product_id' => $productId,
                     'warehouse_id' => $warehouseId,
                     'available_stock' => 0,
                     'reserved_stock' => 0,
+                    'average_cost' => 0,
                     'sale_price' => $priceData['sale_price'] ?? null,
                     'profit_margin' => $priceData['profit_margin'] ?? null,
                     'min_sale_price' => $priceData['min_sale_price'] ?? null,
@@ -232,7 +215,6 @@ class InventoryService
                     'message' => 'Asignado exitosamente',
                 ];
 
-                // Log
                 activity()
                     ->performedOn($product)
                     ->causedBy(Auth::user())
@@ -300,14 +282,12 @@ class InventoryService
             $inventory = $this->getSpecific($productId, $warehouseId);
             $oldData = $inventory->toArray();
 
-            // Actualizar precio si cambió
             if (isset($data['sale_price']) && $data['sale_price'] !== $inventory->sale_price) {
                 $data['price_updated_at'] = now();
             }
 
             $inventory->update($data);
 
-            // Log
             activity()
                 ->performedOn($inventory->product)
                 ->causedBy(Auth::user())
@@ -331,7 +311,6 @@ class InventoryService
         return DB::transaction(function () use ($productId, $warehouseId) {
             $inventory = $this->getSpecific($productId, $warehouseId);
 
-            // Verificar que no haya stock
             if ($inventory->available_stock > 0 || $inventory->reserved_stock > 0) {
                 throw new InventoryHasStockException(
                     "No se puede eliminar el inventario mientras tenga stock. " .
@@ -343,7 +322,6 @@ class InventoryService
             $warehouseName = $inventory->warehouse->name;
             $inventory->delete();
 
-            // Log
             activity()
                 ->performedOn($inventory->product)
                 ->causedBy(Auth::user())
@@ -458,14 +436,12 @@ class InventoryService
 
     /**
      * Calcular valor total del inventario en un almacén
+     * ✅ Ahora usa average_cost de inventory (calculado por PricingService)
      */
     private function calculateInventoryValue(int $warehouseId): float
     {
-        // Se cambio distribution_price a la tabla products
-        $value = DB::table('inventory')
-            ->join('products', 'inventory.product_id', '=', 'products.id')
-            ->where('inventory.warehouse_id', $warehouseId)
-            ->selectRaw('SUM(inventory.available_stock * products.distribution_price) as total')
+        $value = Inventory::where('warehouse_id', $warehouseId)
+            ->selectRaw('SUM(available_stock * average_cost) as total')
             ->value('total');
 
         return round($value ?? 0, 2);
@@ -473,13 +449,11 @@ class InventoryService
 
     /**
      * Calcular valor total de todo el inventario
+     * ✅ Ahora usa average_cost de inventory
      */
     private function calculateTotalInventoryValue(): float
     {
-        // Se cambio distribution_price a la tabla products
-        $value = DB::table('inventory')
-            ->join('products', 'inventory.product_id', '=', 'products.id')
-            ->selectRaw('SUM(inventory.available_stock * products.distribution_price) as total')
+        $value = Inventory::selectRaw('SUM(available_stock * average_cost) as total')
             ->value('total');
 
         return round($value ?? 0, 2);
