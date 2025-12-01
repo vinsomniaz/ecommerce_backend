@@ -103,7 +103,7 @@ class Product extends Model implements HasMedia
             ->background('rgba(0, 0, 0, 0)')
             ->nonQueued() // ⚠️ IMPORTANTE: Genera inmediatamente
             ->performOnCollections('images');
-            
+
         $this->addMediaConversion('webp')
             ->width(800)
             ->height(800)
@@ -190,13 +190,12 @@ class Product extends Model implements HasMedia
         $totalQuantity = 0;
 
         foreach ($batches as $batch) {
-            $totalCost += $batch->distribution_price * $batch->quantity_available;
+            $totalCost += $batch->purchase_price * $batch->quantity_available; // ✅ purchase_price
             $totalQuantity += $batch->quantity_available;
         }
 
-        return $totalQuantity > 0 ? round($totalCost / $totalQuantity, 2) : 0.0;
+        return $totalQuantity > 0 ? round($totalCost / $totalQuantity, 4) : 0.0;
     }
-
     /**
      * Stock total disponible en todos los almacenes
      */
