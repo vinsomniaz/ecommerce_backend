@@ -95,16 +95,16 @@ class RegisteredUserController extends Controller
             'phone'      => ['nullable', 'string', 'min:9', 'max:20'],
 
             // Validación de documento
-            'document_type_id' => ['required', 'in:1,2'], // 1=DNI, 2=CE
+            'document_type_id' => ['required', 'in:01,04'], // 1=DNI, 2=CE
             'document_number' => [
                 'required',
                 'string',
                 Rule::unique('entities', 'numero_documento'),
                 function ($attribute, $value, $fail) use ($request) {
-                    if ($request->document_type_id == 1 && !preg_match('/^\d{8}$/', $value)) {
+                    if ($request->document_type_id == 01 && !preg_match('/^\d{8}$/', $value)) {
                         $fail('El DNI debe tener 8 dígitos numéricos.');
                     }
-                    if ($request->document_type_id == 2 && !preg_match('/^[a-zA-Z0-9]{9,12}$/', $value)) {
+                    if ($request->document_type_id == 04 && !preg_match('/^[a-zA-Z0-9]{9,12}$/', $value)) {
                         $fail('El Carnet de Extranjería no tiene un formato válido.');
                     }
                 },
@@ -122,7 +122,6 @@ class RegisteredUserController extends Controller
                 'cellphone'  => $request->phone,
                 'password'   => Hash::make($request->password),
                 'is_active'  => true,
-                // 'entity_id' => ... ELIMINADO (Seguimos tu indicación de no vincular aquí)
             ]);
 
             $user->assignRole('customer');
@@ -137,7 +136,7 @@ class RegisteredUserController extends Controller
                 'first_name'       => $request->first_name,
                 'last_name'        => $request->last_name,
                 'email'            => $request->email,
-                'phone'  => $request->phone,
+                'phone'            => $request->phone,
                 'is_active'        => true,
                 'country_code'     => 'PE'
             ]);
