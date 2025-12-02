@@ -144,13 +144,15 @@ class RegisteredUserController extends Controller
             return $user;
         });
 
+        event(new Registered($user));
+
         // 3. Login y Token
         Auth::login($user);
         $token = $user->createToken('ecommerce_auth')->plainTextToken;
 
         return response()->json([
             'message' => 'Cuenta creada correctamente.',
-            'user' => $user->load('entity'), // Esto funcionará si tu modelo User tiene la relación 'entity' definida
+            'user' => $user->load('entity'), 
             'token' => $token
         ]);
     }

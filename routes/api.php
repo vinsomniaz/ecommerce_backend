@@ -22,6 +22,10 @@ use App\Http\Controllers\Auth\PermissionController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\Auth\VerifyEmailController;
+use App\Http\Controllers\Auth\EmailVerificationNotificationController;
+use App\Http\Controllers\Auth\PasswordResetLinkController;
+use App\Http\Controllers\Auth\NewPasswordController;
 
 /*
 |--------------------------------------------------------------------------
@@ -31,6 +35,7 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 | Rutas de lectura (GET) que no requieren autenticación.
 |
 */
+
 Route::prefix('ecommerce')->name('ecommerce/')->group(function () {
 
     // Ruta para la lista de productos: /api/ecommerce/products
@@ -59,6 +64,36 @@ Route::prefix('ecommerce')->name('ecommerce/')->group(function () {
     Route::post('register', [RegisteredUserController::class, 'storeCustomer']);
     Route::post('login', [AuthenticatedSessionController::class, 'store']);
 });
+
+
+/*
+|--------------------------------------------------------------------------
+|AUTENTICACIÓN
+|--------------------------------------------------------------------------
+|
+*/
+Route::prefix('auth')->group(function () {
+    // --- VERIFICACIÓN DE CORREO ---
+    // Link que llega al correo (Debe estar firmado)
+    Route::get('/verify-email/{id}/{hash}', [VerifyEmailController::class, '__invoke'])
+        ->middleware(['throttle:6,1'])
+        ->name('verification.verify');
+
+    // Reenviar correo de verificación
+    Route::post('/email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
+        ->middleware(['auth:sanctum', 'throttle:6,1'])
+        ->name('verification.send');
+
+    // --- RECUPERACIÓN DE CONTRASEÑA ---
+    // 1. Solicitar link (Forgot Password)
+    Route::post('/forgot-password', [PasswordResetLinkController::class, 'store'])
+        ->name('password.email');
+
+    // 2. Resetear contraseña (usando el token)
+    Route::post('/reset-password', [NewPasswordController::class, 'store'])
+        ->name('password.store');
+});
+
 
 /*
 |--------------------------------------------------------------------------
