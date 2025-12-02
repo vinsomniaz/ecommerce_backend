@@ -20,6 +20,8 @@ use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SupplierImportController;
 use App\Http\Controllers\Auth\PermissionController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Auth\RegisteredUserController;
+use App\Http\Controllers\Auth\AuthenticatedSessionController;
 
 /*
 |--------------------------------------------------------------------------
@@ -29,7 +31,6 @@ use App\Http\Controllers\Api\UserController;
 | Rutas de lectura (GET) que no requieren autenticación.
 |
 */
-// --- AÑADE ESTE GRUPO DE RUTAS PARA LA TIENDA ---
 Route::prefix('ecommerce')->name('ecommerce/')->group(function () {
 
     // Ruta para la lista de productos: /api/ecommerce/products
@@ -53,6 +54,10 @@ Route::prefix('ecommerce')->name('ecommerce/')->group(function () {
     // Lista de Distribución (Sin paginación)
     Route::get('distribution-list', [EcommerceController::class, 'distributionList'])
         ->name('distribution-list');
+
+    //Cuentas
+    Route::post('register', [RegisteredUserController::class, 'storeCustomer']);
+    Route::post('login', [AuthenticatedSessionController::class, 'store']);
 });
 
 /*
