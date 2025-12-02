@@ -490,7 +490,15 @@ class ProductService
      */
     public function getFiltered(array $filters, int $perPage = 15): LengthAwarePaginator
     {
-        $query = Product::query()->with(['category', 'media', 'attributes']);
+        $query = Product::query()->with([
+            'category',
+            'media',
+            'attributes',
+            'inventory' => function ($q) {
+                $q->with('warehouse:id,name,is_main')
+                    ->orderBy('warehouse_id');
+            }
+        ]);
 
         if (!empty($filters['search'])) {
             $search = $filters['search'];

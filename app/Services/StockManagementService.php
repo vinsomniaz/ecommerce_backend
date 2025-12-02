@@ -1,5 +1,4 @@
 <?php
-// app/Services/StockManagementService.php
 
 namespace App\Services;
 
@@ -11,11 +10,17 @@ use App\Models\Supports\StockMovement;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class StockManagementService
 {
+    public function __construct(
+        private PricingService $pricingService
+    ) {}
+
     /**
      * Traslado de stock entre almacenes (con FIFO)
+     * 🔥 Ahora recalcula costos en ambos almacenes
      */
     public function transferStock(
         int $productId,
@@ -26,30 +31,20 @@ class StockManagementService
     ): array {
         return DB::transaction(function () use ($productId, $fromWarehouseId, $toWarehouseId, $quantity, $notes) {
 
-            // Validar almacenes y producto
             $fromWarehouse = Warehouse::findOrFail($fromWarehouseId);
             $toWarehouse = Warehouse::findOrFail($toWarehouseId);
             $product = Product::findOrFail($productId);
 
-            // Sincronizar inventario con lotes antes de validar
             $totalAvailableInBatches = PurchaseBatch::where('product_id', $productId)
                 ->where('warehouse_id', $fromWarehouseId)
                 ->where('status', 'active')
                 ->sum('quantity_available');
 
-            // Verificar stock disponible en origen
             $inventoryFrom = Inventory::firstOrCreate(
-                [
-                    'product_id' => $productId,
-                    'warehouse_id' => $fromWarehouseId,
-                ],
-                [
-                    'available_stock' => $totalAvailableInBatches,
-                    'reserved_stock' => 0,
-                ]
+                ['product_id' => $productId, 'warehouse_id' => $fromWarehouseId],
+                ['available_stock' => $totalAvailableInBatches, 'reserved_stock' => 0]
             );
 
-            // Auto-sincronizar si hay diferencia
             if ($inventoryFrom->available_stock != $totalAvailableInBatches) {
                 $inventoryFrom->available_stock = $totalAvailableInBatches;
                 $inventoryFrom->save();
@@ -58,15 +53,14 @@ class StockManagementService
             if ($inventoryFrom->available_stock < $quantity) {
                 throw new \Exception(
                     "Stock insuficiente en {$fromWarehouse->name}. " .
-                    "Disponible: {$inventoryFrom->available_stock}, " .
-                    "Requerido: {$quantity}"
+                        "Disponible: {$inventoryFrom->available_stock}, " .
+                        "Requerido: {$quantity}"
                 );
             }
 
             $remainingQty = $quantity;
             $transferredBatches = [];
 
-            // Obtener lotes disponibles del almacén origen (FIFO)
             $batches = PurchaseBatch::where('product_id', $productId)
                 ->where('warehouse_id', $fromWarehouseId)
                 ->where('status', 'active')
@@ -83,8 +77,6 @@ class StockManagementService
                 if ($remainingQty <= 0) break;
 
                 $qtyToTransfer = min($remainingQty, $batch->quantity_available);
-
-                // Guardar estado anterior del lote origen
                 $batchBeforeState = [
                     'batch_id' => $batch->id,
                     'batch_code' => $batch->batch_code,
@@ -101,7 +93,7 @@ class StockManagementService
 
                 // 2. Crear nuevo lote en destino
                 $newBatchCode = 'TRF-' . now()->format('YmdHis') . '-' . $batch->id;
-                
+
                 $newBatch = PurchaseBatch::create([
                     'purchase_id' => $batch->purchase_id,
                     'product_id' => $productId,
@@ -109,8 +101,7 @@ class StockManagementService
                     'batch_code' => $newBatchCode,
                     'quantity_purchased' => $qtyToTransfer,
                     'quantity_available' => $qtyToTransfer,
-                    'purchase_price' => $batch->purchase_price,
-                    'distribution_price' => $batch->distribution_price,
+                    'purchase_price' => $batch->purchase_price, // ✅ Usar purchase_price
                     'purchase_date' => now()->toDateString(),
                     'status' => 'active',
                     'notes' => "Traslado desde {$fromWarehouse->name} - Lote origen: {$batch->batch_code}",
@@ -123,7 +114,7 @@ class StockManagementService
                     'purchase_batch_id' => $batch->id,
                     'type' => 'transfer',
                     'quantity' => -$qtyToTransfer,
-                    'unit_cost' => $batch->distribution_price,
+                    'unit_cost' => $batch->purchase_price, // ✅ Usar purchase_price
                     'reference_type' => 'transfer_out',
                     'reference_id' => $toWarehouseId,
                     'user_id' => Auth::id(),
@@ -138,7 +129,7 @@ class StockManagementService
                     'purchase_batch_id' => $newBatch->id,
                     'type' => 'transfer',
                     'quantity' => $qtyToTransfer,
-                    'unit_cost' => $batch->distribution_price,
+                    'unit_cost' => $batch->purchase_price, // ✅ Usar purchase_price
                     'reference_type' => 'transfer_in',
                     'reference_id' => $fromWarehouseId,
                     'user_id' => Auth::id(),
@@ -147,8 +138,7 @@ class StockManagementService
                 ]);
 
                 $remainingQty -= $qtyToTransfer;
-                
-                // Información detallada del traslado
+
                 $transferredBatches[] = [
                     'origin_batch' => [
                         'id' => $batch->id,
@@ -165,35 +155,38 @@ class StockManagementService
                         'quantity_purchased' => $qtyToTransfer,
                         'quantity_available' => $qtyToTransfer,
                         'purchase_price' => $newBatch->purchase_price,
-                        'distribution_price' => $newBatch->distribution_price,
                         'status' => $newBatch->status,
                     ],
                 ];
             }
 
-            // 5. Actualizar inventario origen
             $inventoryFromBefore = $inventoryFrom->available_stock;
             $inventoryFrom->available_stock -= $quantity;
             $inventoryFrom->last_movement_at = now();
             $inventoryFrom->save();
 
-            // 6. Actualizar/crear inventario destino
             $inventoryTo = Inventory::firstOrCreate(
-                [
-                    'product_id' => $productId,
-                    'warehouse_id' => $toWarehouseId,
-                ],
-                [
-                    'available_stock' => 0,
-                    'reserved_stock' => 0,
-                ]
+                ['product_id' => $productId, 'warehouse_id' => $toWarehouseId],
+                ['available_stock' => 0, 'reserved_stock' => 0]
             );
             $inventoryToBefore = $inventoryTo->available_stock;
             $inventoryTo->available_stock += $quantity;
             $inventoryTo->last_movement_at = now();
             $inventoryTo->save();
 
-            // Log de actividad
+            // 🔥 RECALCULAR COSTOS Y PRECIOS EN TODOS LOS ALMACENES
+            try {
+                Log::info('Recalculando precios en todos los almacenes después de traslado');
+
+                $result = $this->pricingService->recalculateProductAllWarehouses($productId);
+
+                Log::info('Precios actualizados en todos los almacenes', $result);
+            } catch (\Exception $e) {
+                Log::error('Error al recalcular costos en traslado', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             activity()
                 ->performedOn($product)
                 ->causedBy(Auth::user())
@@ -237,6 +230,7 @@ class StockManagementService
 
     /**
      * Ajuste de entrada de stock (incrementar)
+     * 🔥 Ahora recalcula costos y precios automáticamente
      */
     public function adjustmentIn(
         int $productId,
@@ -244,27 +238,16 @@ class StockManagementService
         int $quantity,
         float $unitCost,
         string $reason,
-        ?string $notes = null,
-        ?float $distributionPrice = null
+        ?string $notes = null
     ): array {
-        return DB::transaction(function () use ($productId, $warehouseId, $quantity, $unitCost, $reason, $notes, $distributionPrice) {
+        return DB::transaction(function () use ($productId, $warehouseId, $quantity, $unitCost, $reason, $notes) {
 
             $product = Product::findOrFail($productId);
             $warehouse = Warehouse::findOrFail($warehouseId);
 
-            // Si no se proporciona precio de distribución, usar el costo unitario
-            $finalDistributionPrice = $distributionPrice ?? $unitCost;
-
-            // Obtener stock antes
             $inventory = Inventory::firstOrCreate(
-                [
-                    'product_id' => $productId,
-                    'warehouse_id' => $warehouseId,
-                ],
-                [
-                    'available_stock' => 0,
-                    'reserved_stock' => 0,
-                ]
+                ['product_id' => $productId, 'warehouse_id' => $warehouseId],
+                ['available_stock' => 0, 'reserved_stock' => 0]
             );
             $stockBefore = $inventory->available_stock;
 
@@ -278,8 +261,7 @@ class StockManagementService
                 'batch_code' => $batchCode,
                 'quantity_purchased' => $quantity,
                 'quantity_available' => $quantity,
-                'purchase_price' => $unitCost,
-                'distribution_price' => $finalDistributionPrice,
+                'purchase_price' => $unitCost, // ✅ Solo purchase_price
                 'purchase_date' => now()->toDateString(),
                 'status' => 'active',
                 'notes' => "Ajuste manual: {$reason}",
@@ -305,7 +287,19 @@ class StockManagementService
             $inventory->last_movement_at = now();
             $inventory->save();
 
-            // Log
+            // 🔥 RECALCULAR COSTO PROMEDIO Y PRECIOS EN TODOS LOS ALMACENES
+            try {
+                Log::info('Recalculando precios en todos los almacenes después de ajuste de entrada');
+
+                $pricingResult = $this->pricingService->recalculateProductAllWarehouses($productId);
+
+                Log::info('Precios actualizados en todos los almacenes', $pricingResult);
+            } catch (\Exception $e) {
+                Log::error('Error al recalcular costos en ajuste de entrada', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             activity()
                 ->performedOn($product)
                 ->causedBy(Auth::user())
@@ -315,7 +309,6 @@ class StockManagementService
                     'reason' => $reason,
                     'batch_code' => $batchCode,
                     'unit_cost' => $unitCost,
-                    'distribution_price' => $finalDistributionPrice,
                 ])
                 ->log('Ajuste de entrada de stock');
 
@@ -335,7 +328,6 @@ class StockManagementService
                     'quantity_purchased' => $quantity,
                     'quantity_available' => $quantity,
                     'purchase_price' => $unitCost,
-                    'distribution_price' => $finalDistributionPrice,
                     'status' => 'active',
                 ],
                 'inventory_movement' => [
@@ -352,6 +344,7 @@ class StockManagementService
 
     /**
      * Ajuste de salida de stock (decrementar) con FIFO
+     * 🔥 Ahora recalcula costos después de consumir lotes
      */
     public function adjustmentOut(
         int $productId,
@@ -365,25 +358,16 @@ class StockManagementService
             $product = Product::findOrFail($productId);
             $warehouse = Warehouse::findOrFail($warehouseId);
 
-            // Sincronizar inventario con lotes antes de validar
             $totalAvailableInBatches = PurchaseBatch::where('product_id', $productId)
                 ->where('warehouse_id', $warehouseId)
                 ->where('status', 'active')
                 ->sum('quantity_available');
 
-            // Verificar stock disponible
             $inventory = Inventory::firstOrCreate(
-                [
-                    'product_id' => $productId,
-                    'warehouse_id' => $warehouseId,
-                ],
-                [
-                    'available_stock' => $totalAvailableInBatches,
-                    'reserved_stock' => 0,
-                ]
+                ['product_id' => $productId, 'warehouse_id' => $warehouseId],
+                ['available_stock' => $totalAvailableInBatches, 'reserved_stock' => 0]
             );
 
-            // Sincronizar si es necesario
             if ($inventory->available_stock != $totalAvailableInBatches) {
                 $inventory->available_stock = $totalAvailableInBatches;
                 $inventory->save();
@@ -394,14 +378,13 @@ class StockManagementService
             if ($inventory->available_stock < $quantity) {
                 throw new \Exception(
                     "Stock insuficiente. Disponible: {$inventory->available_stock}, " .
-                    "Requerido: {$quantity}"
+                        "Requerido: {$quantity}"
                 );
             }
 
             $remainingQty = $quantity;
             $processedBatches = [];
 
-            // Obtener lotes disponibles (FIFO)
             $batches = PurchaseBatch::where('product_id', $productId)
                 ->where('warehouse_id', $warehouseId)
                 ->where('status', 'active')
@@ -417,21 +400,19 @@ class StockManagementService
                 $quantityBefore = $batch->quantity_available;
                 $statusBefore = $batch->status;
 
-                // 1. Descontar del lote
                 $batch->quantity_available -= $qtyToDeduct;
                 if ($batch->quantity_available == 0) {
                     $batch->status = 'depleted';
                 }
                 $batch->save();
 
-                // 2. Registrar movimiento
                 StockMovement::create([
                     'product_id' => $productId,
                     'warehouse_id' => $warehouseId,
                     'purchase_batch_id' => $batch->id,
                     'type' => 'adjustment',
                     'quantity' => -$qtyToDeduct,
-                    'unit_cost' => $batch->distribution_price,
+                    'unit_cost' => $batch->purchase_price, // ✅ Usar purchase_price
                     'reference_type' => 'adjustment_out',
                     'reference_id' => null,
                     'user_id' => Auth::id(),
@@ -451,12 +432,23 @@ class StockManagementService
                 ];
             }
 
-            // 3. Actualizar inventario
             $inventory->available_stock -= $quantity;
             $inventory->last_movement_at = now();
             $inventory->save();
 
-            // Log
+            // 🔥 RECALCULAR COSTO PROMEDIO Y PRECIOS EN TODOS LOS ALMACENES
+            try {
+                Log::info('Recalculando precios en todos los almacenes después de ajuste de salida');
+
+                $pricingResult = $this->pricingService->recalculateProductAllWarehouses($productId);
+
+                Log::info('Precios actualizados en todos los almacenes', $pricingResult);
+            } catch (\Exception $e) {
+                Log::error('Error al recalcular costos en ajuste de salida', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             activity()
                 ->performedOn($product)
                 ->causedBy(Auth::user())
@@ -510,9 +502,8 @@ class StockManagementService
                     'batch_code' => $batch->batch_code,
                     'quantity_available' => $batch->quantity_available,
                     'purchase_price' => $batch->purchase_price,
-                    'distribution_price' => $batch->distribution_price,
                     'purchase_date' => $batch->purchase_date->format('Y-m-d'),
-                    'total_value' => $batch->quantity_available * $batch->distribution_price,
+                    'total_value' => $batch->quantity_available * $batch->purchase_price,
                 ];
             });
     }

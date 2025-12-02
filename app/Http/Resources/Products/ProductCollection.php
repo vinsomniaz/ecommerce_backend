@@ -1,5 +1,5 @@
 <?php
-// app/Http/Resources/ProductCollection.php
+// app/Http/Resources/Products/ProductCollection.php
 
 namespace App\Http\Resources\Products;
 
@@ -16,8 +16,8 @@ class ProductCollection extends ResourceCollection
                 'total' => $this->collection->count(),
                 'active_products' => $this->collection->where('is_active', true)->count(),
                 'featured_products' => $this->collection->where('is_featured', true)->count(),
-                'total_value' => $this->collection->sum(fn($p) => $p->unit_price),
-                'total_cost' => $this->collection->sum(fn($p) => $p->cost_price),
+                'total_stock' => $this->collection->sum('total_stock'),
+                'average_cost_total' => $this->collection->sum('average_cost'),
             ],
         ];
     }

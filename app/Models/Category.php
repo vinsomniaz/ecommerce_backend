@@ -160,22 +160,23 @@ class Category extends Model
 
         return $count;
     }
+
     // ========================================
-    // ✅ NUEVOS MÉTODOS DE MARGEN
+    // ✅ MÉTODOS DE MARGEN CORREGIDOS
     // ========================================
 
     /**
      * Obtiene el margen mínimo efectivo (heredado o propio)
-     * Busca hacia arriba en la jerarquía hasta encontrar un valor > 0
+     * Busca hacia arriba en la jerarquía hasta encontrar un valor configurado (no null y no 0)
      */
     public function getEffectiveMinMargin(): float
     {
-        // Si tiene valor propio y es > 0, usarlo
-        if ($this->min_margin_percentage > 0) {
+        // ✅ Si tiene valor propio configurado (no es null y no es 0), usarlo
+        if (!is_null($this->min_margin_percentage) && $this->min_margin_percentage != 0) {
             return (float) $this->min_margin_percentage;
         }
 
-        // Si tiene padre, buscar en el padre recursivamente
+        // ✅ Si tiene padre, buscar recursivamente en la jerarquía
         if ($this->parent) {
             return $this->parent->getEffectiveMinMargin();
         }
@@ -186,7 +187,7 @@ class Category extends Model
             ->where('key', 'min_margin_percentage')
             ->value('value');
 
-        return $defaultMargin ? (float) $defaultMargin : 1.00; // 👈 Fallback temporal a 1%
+        return $defaultMargin ? (float) $defaultMargin : 1.00;
     }
 
     /**
@@ -194,10 +195,12 @@ class Category extends Model
      */
     public function getEffectiveNormalMargin(): float
     {
-        if ($this->normal_margin_percentage > 0) {
+        // ✅ Si tiene valor propio configurado (no es null y no es 0), usarlo
+        if (!is_null($this->normal_margin_percentage) && $this->normal_margin_percentage != 0) {
             return (float) $this->normal_margin_percentage;
         }
 
+        // ✅ Si tiene padre, buscar recursivamente en la jerarquía
         if ($this->parent) {
             return $this->parent->getEffectiveNormalMargin();
         }
@@ -208,7 +211,7 @@ class Category extends Model
             ->where('key', 'default_margin_percentage')
             ->value('value');
 
-        return $defaultMargin ? (float) $defaultMargin : 1.00; // 👈 Fallback temporal a 1%
+        return $defaultMargin ? (float) $defaultMargin : 1.00;
     }
 
     /**
@@ -216,7 +219,8 @@ class Category extends Model
      */
     public function inheritsMargins(): bool
     {
-        return $this->min_margin_percentage == 0 && $this->normal_margin_percentage == 0;
+        return (is_null($this->min_margin_percentage) || $this->min_margin_percentage == 0)
+            && (is_null($this->normal_margin_percentage) || $this->normal_margin_percentage == 0);
     }
 
     /**
@@ -227,6 +231,27 @@ class Category extends Model
         return $this->inheritsMargins() && !$this->parent_id;
     }
 
+    /**
+     * ✅ NUEVO: Obtiene de qué categoría está heredando el margen
+     */
+    public function getMarginSource(): ?Category
+    {
+        // Si tiene margen propio, retorna null (no hereda)
+        if (!is_null($this->normal_margin_percentage) && $this->normal_margin_percentage != 0) {
+            return null;
+        }
+
+        // Buscar el primer padre con margen configurado
+        $parent = $this->parent;
+        while ($parent) {
+            if (!is_null($parent->normal_margin_percentage) && $parent->normal_margin_percentage != 0) {
+                return $parent;
+            }
+            $parent = $parent->parent;
+        }
+
+        return null; // Usa defaults del sistema
+    }
 
     /**
      * ✅ NUEVO: Obtiene todos los IDs de esta categoría y sus descendientes
@@ -274,15 +299,22 @@ class Category extends Model
      */
     public function getMarginInfo(): array
     {
+        $marginSource = $this->getMarginSource();
+
         return [
+            'category_id' => $this->id,
             'category_name' => $this->name,
             'level' => $this->level,
-            'own_min_margin' => (float) $this->min_margin_percentage,
-            'own_normal_margin' => (float) $this->normal_margin_percentage,
+            'parent_id' => $this->parent_id,
+            'parent_name' => $this->parent?->name,
+            'own_min_margin' => $this->min_margin_percentage,
+            'own_normal_margin' => $this->normal_margin_percentage,
             'effective_min_margin' => $this->getEffectiveMinMargin(),
             'effective_normal_margin' => $this->getEffectiveNormalMargin(),
             'inherits_from_parent' => $this->inheritsMargins(),
-            'parent_category' => $this->parent?->name,
+            'margin_source_id' => $marginSource?->id,
+            'margin_source_name' => $marginSource?->name,
+            'uses_system_default' => is_null($marginSource),
         ];
     }
 }

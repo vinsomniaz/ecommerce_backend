@@ -16,6 +16,7 @@ class Inventory extends Model
         'warehouse_id',
         'available_stock',
         'reserved_stock',
+        'average_cost', // ✅ Agregado para consistencia
         'sale_price',
         'profit_margin',
         'min_sale_price',
@@ -26,9 +27,10 @@ class Inventory extends Model
     protected $casts = [
         'available_stock' => 'integer',
         'reserved_stock' => 'integer',
+        'average_cost' => 'float', // ✅ Agregado
         'sale_price' => 'float',
         'profit_margin' => 'float',
-        'min_sale_price' => 'float',
+        'min_sale_price' => 'decimal:2',
         'last_movement_at' => 'datetime',
         'price_updated_at' => 'datetime',
     ];
@@ -50,6 +52,9 @@ class Inventory extends Model
         return $this->available_stock + $this->reserved_stock;
     }
 
+    /**
+     * ✅ Actualiza precio y margen
+     */
     public function updateSalePrice(float $newPrice, ?float $profitMargin = null): void
     {
         $this->sale_price = $newPrice;
