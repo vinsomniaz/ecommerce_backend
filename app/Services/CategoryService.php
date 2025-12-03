@@ -231,48 +231,13 @@ class CategoryService
             // Actualizar categoría
             $category->update($data);
 
-            // 🔥 SI CAMBIÓ EL MARGEN, RECALCULAR PRECIOS (OBLIGATORIO)
-            if ($marginChanged) {
-                try {
-                    Log::info('Iniciando recálculo de precios obligatorio');
-
-                    $pricingResult = $this->pricingService->recalculateCategoryPricing(
-                        $category->fresh(), // Asegurar datos actualizados
-                        $oldMarginRetail
-                    );
-
-                    // 🔥 VALIDAR QUE SE HAYA EJECUTADO CORRECTAMENTE
-                    if (!$pricingResult['success']) {
-                        throw new \Exception(
-                            "Error al recalcular precios: " . ($pricingResult['message'] ?? 'Desconocido')
-                        );
-                    }
-
-                    Log::info('Precios recalculados exitosamente', $pricingResult);
-
-                } catch (\Exception $e) {
-                    // 🔥 SI FALLA EL PRICING, REVERTIR TODO
-                    Log::error('ERROR CRÍTICO: Fallo al recalcular precios, revirtiendo transacción', [
-                        'category_id' => $category->id,
-                        'category_name' => $category->name,
-                        'error' => $e->getMessage(),
-                        'trace' => $e->getTraceAsString(),
-                    ]);
-
-                    // Lanzar excepción para revertir la transacción
-                    throw new CategoryValidationException(
-                        'No se pudo actualizar la categoría porque falló el recálculo de precios: ' . $e->getMessage(),
-                        ['pricing' => [$e->getMessage()]]
-                    );
-                }
-            }
-
             // Limpiar caché
             $this->clearCategoryCache($category);
 
             Log::info('Categoría actualizada exitosamente', [
                 'id' => $category->id,
-                'margin_changed' => $marginChanged,
+                'name' => $category->name,
+                'note' => 'Los precios ahora se calculan dinámicamente al consultar',
             ]);
 
             return $category->fresh(['parent', 'children']);
