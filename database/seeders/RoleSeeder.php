@@ -133,6 +133,7 @@ class RoleSeeder extends Seeder
                 ['name' => 'inventory.view.own-warehouse', 'display_name' => 'Ver inventario de su almacén', 'description' => 'Solo puede consultar inventario de su warehouse_id asignado.'],
                 ['name' => 'inventory.manage.all-warehouses', 'display_name' => 'Gestionar inventario de todos los almacenes', 'description' => 'Puede modificar inventario de cualquier almacén.'],
                 ['name' => 'inventory.manage.own-warehouse', 'display_name' => 'Gestionar inventario de su almacén', 'description' => 'Solo puede modificar inventario de su warehouse_id.'],
+                ['name' => 'pricing.update-prices', 'display_name' => 'Actualizar precios de venta productos', 'description' => 'Puede actualizar precios de venta productos.'],
             ],
 
             'Stock Management' => [

@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\AddressController;
 use App\Http\Controllers\Api\StockManagementController;
 use App\Http\Controllers\Api\EcommerceController;
 use App\Http\Controllers\Api\GeminiController;
+use App\Http\Controllers\Api\PricingController;
 use App\Http\Controllers\Api\QuotationController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SupplierImportController;
@@ -264,7 +265,6 @@ Route::middleware('auth:sanctum')->prefix('inventory')->group(function () {
     Route::get('alerts/out-of-stock', [InventoryController::class, 'outOfStockAlert'])
         ->middleware('permission:inventory.alerts.out-of-stock');
 
-
     // Listado y alta
     Route::get('/', [InventoryController::class, 'index'])
         ->middleware('permission:inventory.index');
@@ -287,6 +287,13 @@ Route::middleware('auth:sanctum')->prefix('inventory')->group(function () {
     Route::delete('{product}/{warehouse}', [InventoryController::class, 'destroy'])
         ->whereNumber('product')->whereNumber('warehouse')
         ->middleware('permission:inventory.destroy');
+
+
+    //Precios
+    Route::prefix('{product}/prices')->group(function () {
+        Route::patch('update', [PricingController::class, 'updatePrices'])
+            ->middleware('permission:pricing.update-prices');
+    });
 });
 
 /* ============================================
