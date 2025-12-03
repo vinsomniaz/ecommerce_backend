@@ -29,6 +29,7 @@ class InventoryResource extends JsonResource
                     return [
                         'id' => $this->product->category->id ?? null,
                         'name' => $this->product->category->name ?? null,
+                        'normal_margin_percentage' => $this->product->category->getEffectiveNormalMargin() ?? null,
                     ];
                 }),
                 'images' => $this->when($this->product->relationLoaded('media'), function () {
@@ -67,6 +68,7 @@ class InventoryResource extends JsonResource
             'sale_price' => $this->sale_price ? number_format($this->sale_price, 2, '.', '') : null,
             'profit_margin' => $this->profit_margin ? number_format($this->profit_margin, 2, '.', '') : null,
             'min_sale_price' => $this->min_sale_price ? number_format($this->min_sale_price, 2, '.', '') : null,
+            'average_cost' => $this->average_cost ? number_format($this->average_cost, 2, '.', '') : null,
 
             // Fechas
             'price_updated_at' => $this->price_updated_at?->toIso8601String(),
