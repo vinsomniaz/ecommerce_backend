@@ -15,7 +15,9 @@ use App\Http\Controllers\Api\AddressController;
 use App\Http\Controllers\Api\StockManagementController;
 use App\Http\Controllers\Api\EcommerceController;
 use App\Http\Controllers\Api\GeminiController;
+use App\Http\Controllers\Api\PriceListController;
 use App\Http\Controllers\Api\PricingController;
+use App\Http\Controllers\Api\ProductPriceController;
 use App\Http\Controllers\Api\QuotationController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SupplierImportController;
@@ -249,6 +251,118 @@ Route::middleware('auth:sanctum')->prefix('products')->group(function () {
         Route::delete('{attribute}', [ProductAttributeController::class, 'destroy'])
             ->middleware('permission:attributes.destroy');
     });
+});
+
+// ============================================================================
+// RUTAS DE LISTAS DE PRECIOS
+// ============================================================================
+
+Route::middleware('auth:sanctum')->prefix('price-lists')->group(function () {
+
+    // ============================================================================
+    // RUTAS ESPECIALES (DEBEN IR PRIMERO)
+    // ============================================================================
+
+    // Obtener listas activas (para selects)
+    Route::get('active', [PriceListController::class, 'active']);
+
+    // Estadísticas de listas de precios
+    Route::get('statistics', [PriceListController::class, 'statistics'])
+        ->middleware('permission:price-lists.statistics');
+
+    // Productos de una lista específica
+    Route::get('{id}/products', [PriceListController::class, 'products'])
+        ->middleware('permission:price-lists.view');
+
+    // Activar/Desactivar lista
+    Route::patch('{id}/toggle-status', [PriceListController::class, 'toggleStatus'])
+        ->middleware('permission:price-lists.update');
+
+    // ============================================================================
+    // RUTAS CRUD ESTÁNDAR
+    // ============================================================================
+
+    // Listar todas las listas de precios
+    Route::get('/', [PriceListController::class, 'index'])
+        ->middleware('permission:price-lists.view');
+
+    // Crear nueva lista de precios
+    Route::post('/', [PriceListController::class, 'store'])
+        ->middleware('permission:price-lists.create');
+
+    // Ver una lista específica
+    Route::get('{id}', [PriceListController::class, 'show'])
+        ->middleware('permission:price-lists.view');
+
+    // Actualizar lista de precios
+    Route::match(['put', 'patch'], '{id}', [PriceListController::class, 'update'])
+        ->middleware('permission:price-lists.update');
+
+    // Eliminar lista de precios
+    Route::delete('{id}', [PriceListController::class, 'destroy'])
+        ->middleware('permission:price-lists.delete');
+});
+
+/* ============================================
+   PRODUCT PRICES (Gestión de Precios de Productos)
+   ============================================ */
+Route::middleware('auth:sanctum')->prefix('product-prices')->group(function () {
+
+    // ============================================================================
+    // RUTAS ESPECIALES (DEBEN IR PRIMERO)
+    // ============================================================================
+
+    // Estadísticas de precios
+    Route::get('statistics', [ProductPriceController::class, 'statistics'])
+        ->middleware('permission:product-prices.statistics');
+
+    // Actualización masiva de precios
+    Route::post('bulk-update', [ProductPriceController::class, 'bulkUpdate'])
+        ->middleware('permission:product-prices.bulk-update');
+
+    // Copiar precios entre listas
+    Route::post('copy', [ProductPriceController::class, 'copy'])
+        ->middleware('permission:product-prices.copy');
+
+    // Calcular precio sugerido
+    Route::post('calculate', [ProductPriceController::class, 'calculate'])
+        ->middleware('permission:product-prices.calculate');
+
+    // Desactivar precios expirados
+    Route::post('deactivate-expired', [ProductPriceController::class, 'deactivateExpired'])
+        ->middleware('permission:product-prices.deactivate-expired');
+
+    // Obtener precios por producto
+    Route::get('by-product/{productId}', [ProductPriceController::class, 'byProduct'])
+        ->middleware('permission:product-prices.by-product');
+
+    // ============================================================================
+    // CRUD BÁSICO
+    // ============================================================================
+
+    // Listar precios (con filtros)
+    Route::get('/', [ProductPriceController::class, 'index'])
+        ->middleware('permission:product-prices.index');
+
+    // Crear nuevo precio
+    Route::post('/', [ProductPriceController::class, 'store'])
+        ->middleware('permission:product-prices.store');
+
+    // Ver detalle de precio
+    Route::get('{productPrice}', [ProductPriceController::class, 'show'])
+        ->middleware('permission:product-prices.show');
+
+    // Actualizar precio
+    Route::match(['put', 'patch'], '{productPrice}', [ProductPriceController::class, 'update'])
+        ->middleware('permission:product-prices.update');
+
+    // Eliminar precio
+    Route::delete('{productPrice}', [ProductPriceController::class, 'destroy'])
+        ->middleware('permission:product-prices.destroy');
+
+    // Activar/desactivar precio
+    Route::patch('{productPrice}/toggle-active', [ProductPriceController::class, 'toggleActive'])
+        ->middleware('permission:product-prices.toggle-active');
 });
 
 /* ============================================
