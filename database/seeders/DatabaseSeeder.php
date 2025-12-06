@@ -17,13 +17,13 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             RoleSeeder::class,
+            DefaultSettingsSeeder::class,
             UserSeeder::class,
             CountrySeeder::class, // Debe ir antes de UbigeoSeeder
             UbigeoSeeder::class,
-
+            PriceListSeeder::class,
             CsvMigrationSeeder::class, // Primero crea los productos
             ProductImageSeeder::class,
-            DefaultSettingsSeeder::class,
         ]);
     }
 }
