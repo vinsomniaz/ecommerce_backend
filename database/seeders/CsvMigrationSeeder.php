@@ -43,6 +43,18 @@ class CsvMigrationSeeder extends Seeder
     private $mapProductCategories = [];
 
     /**
+     * Almacena el precio de distribución (mayorista) por producto
+     * Formato: [nuevo_product_id => precio_distribucion]
+     */
+    private $mapProductDistributionPrices = [];
+
+    /**
+     * Almacena los precios minoristas por producto y almacén
+     * Formato: [nuevo_product_id][nuevo_warehouse_id] => precio_venta
+     */
+    private $mapRetailPrices = [];
+
+    /**
      * Función helper para leer un CSV y devolverlo como un array asociativo
      */
     private function readCsv(string $filename): array
@@ -86,6 +98,7 @@ class CsvMigrationSeeder extends Seeder
         DB::table('purchase_details')->truncate();
         DB::table('purchase_batches')->truncate();
         DB::table('inventory')->truncate();
+        DB::table('product_prices')->truncate();
 
         $this->importCategorias();
         $this->importFamilias();
@@ -94,7 +107,7 @@ class CsvMigrationSeeder extends Seeder
 
         $this->createDummyPurchase();
         $this->importProductos('productos.csv');
-        $this->importInventario();
+        $this->importInventarioYPrecios(); // ← Renombrado para mayor claridad
 
         DB::statement('SET FOREIGN_KEY_CHECKS=1;');
     }
@@ -149,7 +162,6 @@ class CsvMigrationSeeder extends Seeder
         $data = $this->readCsv('categorias.csv');
 
         foreach ($data as $row) {
-            // Leer márgenes del CSV si existen
             $normalMargin = isset($row['normal_margin_percentage']) && $row['normal_margin_percentage'] !== ''
                 ? (float) $row['normal_margin_percentage']
                 : 0.00;
@@ -251,7 +263,7 @@ class CsvMigrationSeeder extends Seeder
 
     private function importProductos(string $filename)
     {
-        $this->command->info('Importando Productos con precio de distribución...');
+        $this->command->info('Importando Productos...');
         $data = $this->readCsv($filename);
 
         foreach ($data as $row) {
@@ -262,12 +274,10 @@ class CsvMigrationSeeder extends Seeder
 
             if (is_null($categoryId)) {
                 $categoryId = Arr::first($this->mapCategorias);
-                if (!$categoryId)
-                    continue;
+                if (!$categoryId) continue;
             }
 
             $precioDistribucion = $row['precio_distribucion'] ?? 0.00;
-
             if ($precioDistribucion === '' || strcasecmp($precioDistribucion, 'NULL') === 0) {
                 $precioDistribucion = 0.00;
             }
@@ -282,27 +292,27 @@ class CsvMigrationSeeder extends Seeder
                 'unit_measure' => 'NIU',
                 'tax_type' => '10',
                 'min_stock' => 0,
-                'distribution_price' => (float) $precioDistribucion,
             ]);
 
             $this->mapProductos[$row['idproducto']] = $nueva->id;
 
-            // Guardamos el precio de compra y la categoría
+            // Guardar precio de compra (para lotes), categoría y precio mayorista
             $this->mapProductCosts[$nueva->id] = $row['precio_compra'] ?? 0.00;
             $this->mapProductCategories[$nueva->id] = $categoryId;
+            $this->mapProductDistributionPrices[$nueva->id] = (float) $precioDistribucion;
         }
 
-        $this->command->info(count($this->mapProductos) . ' productos creados con precio de distribución.');
+        $this->command->info(count($this->mapProductos) . ' productos creados.');
     }
 
-    private function importInventario()
+    private function importInventarioYPrecios()
     {
-        $this->command->info('Importando Inventario (stock) y Lotes de Compra (batches)...');
+        $this->command->info('Importando Inventario, Lotes y Precios desde producto_tienda.csv...');
 
-        // Leer datos existentes del CSV
+        // Leer datos de producto_tienda.csv (contiene: stock, precio minorista por almacén)
         $data = $this->readCsv('producto_tienda.csv');
 
-        // Crear estructura para almacenar datos de stock por producto-almacén
+        // Estructuras para almacenar datos
         $stockData = [];
 
         foreach ($data as $row) {
@@ -310,14 +320,20 @@ class CsvMigrationSeeder extends Seeder
                 $newProductId = $this->mapProductos[$row['producto_id']];
                 $newWarehouseId = $this->mapAlmacenes[$row['tienda_id']];
 
-                $stock = (int) $row['stock'];
+                $stock = (int) ($row['stock'] ?? 0);
+                $precioVenta = (float) ($row['precio'] ?? 0.00); // ← Precio MINORISTA del CSV
 
-                // Almacenar en matriz
+                // Almacenar stock
                 $stockData[$newProductId][$newWarehouseId] = $stock;
+
+                // Almacenar precio minorista (por almacén)
+                if ($precioVenta > 0) {
+                    $this->mapRetailPrices[$newProductId][$newWarehouseId] = $precioVenta;
+                }
             }
         }
 
-        // 🔥 PASO 1: Crear LOTES (solo con stock > 0)
+        // PASO 1: Crear LOTES (solo con stock > 0)
         $this->command->info('Creando lotes de compra...');
         $lotesParaInsertar = [];
         $now = now();
@@ -354,66 +370,144 @@ class CsvMigrationSeeder extends Seeder
             $this->command->info(count($lotesParaInsertar) . ' lotes de compra creados.');
         }
 
-        // 🔥 PASO 2: Calcular COSTO PROMEDIO PONDERADO por producto
+        // PASO 2: Calcular COSTO PROMEDIO PONDERADO por producto
         $this->command->info('Calculando costos promedio ponderados...');
         $productAverageCosts = $this->calculateAverageCosts();
 
-        // 🔥 PASO 3: Obtener MÁRGENES de categorías
-        $categoryMargins = $this->getCategoryMargins();
+        // PASO 3: Obtener IDs de listas de precios
+        $retailListId = DB::table('price_lists')->where('code', 'RETAIL')->value('id');
+        $wholesaleListId = DB::table('price_lists')->where('code', 'WHOLESALE')->value('id');
 
-        // 🔥 PASO 4: Crear INVENTARIOS con precios calculados
-        $this->command->info('Creando inventarios con precios calculados...');
-        $inventarioParaInsertar = [];
+        if (!$retailListId || !$wholesaleListId) {
+            $this->command->error('No se encontraron listas de precios. Ejecuta PriceListSeeder primero.');
+            throw new \Exception('Listas de precios no encontradas.');
+        }
+
+        // PASO 4: Crear PRECIOS y REGISTROS DE INVENTARIO
+        $this->command->info('Creando precios e inventario...');
+        $pricesToInsert = [];
+        $inventoryToInsert = [];
+
+        // Contadores para estadísticas
+        $generalPriceCount = 0;
+        $specificPriceCount = 0;
 
         foreach ($this->mapProductos as $oldProductId => $newProductId) {
             $averageCost = $productAverageCosts[$newProductId] ?? 0.00;
-            $categoryId = $this->mapProductCategories[$newProductId] ?? null;
 
-            // Obtener márgenes de la categoría
-            $marginRetail = $categoryMargins[$categoryId]['normal_margin_percentage'] ?? 0.00;
-            $marginRetailMin = $categoryMargins[$categoryId]['min_margin_percentage'] ?? 0.00;
+            // ============================================
+            // PRECIOS MINORISTAS (desde producto_tienda.csv)
+            // ============================================
+            if (isset($this->mapRetailPrices[$newProductId])) {
+                $pricesForProduct = $this->mapRetailPrices[$newProductId];
 
-            // Calcular precios de venta
-            $salePrice = null;
-            $minSalePrice = null;
-            $profitMargin = null;
+                // Detectar si todos los precios son iguales
+                $uniquePrices = array_unique(array_values($pricesForProduct));
 
-            if ($averageCost > 0) {
-                // sale_price = average_cost * (1 + margin_retail / 100) - redondeo comercial
-                $salePrice = round($averageCost * (1 + $marginRetail / 100));
+                if (count($uniquePrices) === 1) {
+                    // TODOS los almacenes tienen el MISMO precio → Crear UN precio general
+                    $generalPrice = reset($uniquePrices);
 
-                // min_sale_price = average_cost * (1 + margin_retail_min / 100) - redondeo comercial
-                $minSalePrice = round($averageCost * (1 + $marginRetailMin / 100));
+                    $pricesToInsert[] = [
+                        'product_id' => $newProductId,
+                        'price_list_id' => $retailListId,
+                        'warehouse_id' => null, // ← General para todos los almacenes
+                        'price' => $generalPrice,
+                        'min_price' => null,
+                        'currency' => 'PEN',
+                        'min_quantity' => 1,
+                        'valid_from' => $now,
+                        'valid_to' => null,
+                        'is_active' => true,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
 
-                // profit_margin = margin_retail (para registro)
-                $profitMargin = $marginRetail;
+                    $generalPriceCount++;
+                } else {
+                    // Hay PRECIOS DIFERENTES → Crear precio específico por almacén
+                    foreach ($pricesForProduct as $warehouseId => $retailPrice) {
+                        $pricesToInsert[] = [
+                            'product_id' => $newProductId,
+                            'price_list_id' => $retailListId,
+                            'warehouse_id' => $warehouseId, // ← Específico por almacén
+                            'price' => $retailPrice,
+                            'min_price' => null,
+                            'currency' => 'PEN',
+                            'min_quantity' => 1,
+                            'valid_from' => $now,
+                            'valid_to' => null,
+                            'is_active' => true,
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ];
+
+                        $specificPriceCount++;
+                    }
+                }
             }
 
+            // ============================================
+            // PRECIO MAYORISTA (desde productos.csv)
+            // ============================================
+            $distributionPrice = $this->mapProductDistributionPrices[$newProductId] ?? null;
+
+            if ($distributionPrice && $distributionPrice > 0) {
+                // UN SOLO precio mayorista (sin escalones)
+                $pricesToInsert[] = [
+                    'product_id' => $newProductId,
+                    'price_list_id' => $wholesaleListId,
+                    'warehouse_id' => null, // ← Aplica a todos los almacenes
+                    'price' => $distributionPrice,
+                    'min_price' => null,
+                    'currency' => 'PEN',
+                    'min_quantity' => 1, // Puedes ajustar esto según tus reglas de negocio
+                    'valid_from' => $now,
+                    'valid_to' => null,
+                    'is_active' => true,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+
+            // ============================================
+            // INVENTARIO (stock y costo promedio por almacén)
+            // ============================================
             foreach ($this->mapAlmacenes as $oldWarehouseId => $newWarehouseId) {
                 $stock = $stockData[$newProductId][$newWarehouseId] ?? 0;
 
-                $inventarioParaInsertar[] = [
+                $inventoryToInsert[] = [
                     'product_id' => $newProductId,
                     'warehouse_id' => $newWarehouseId,
                     'available_stock' => $stock,
                     'reserved_stock' => 0,
                     'average_cost' => $averageCost,
-                    'sale_price' => $salePrice,
-                    'profit_margin' => $profitMargin,
-                    'min_sale_price' => $minSalePrice,
-                    'last_movement_at' => $now,
-                    'price_updated_at' => $salePrice ? $now : null,
+                    'last_movement_at' => $stock > 0 ? $now : null,
                 ];
             }
         }
 
-        if (!empty($inventarioParaInsertar)) {
-            $chunks = array_chunk($inventarioParaInsertar, 500);
+        // Insertar PRECIOS en lotes
+        if (!empty($pricesToInsert)) {
+            $chunks = array_chunk($pricesToInsert, 500);
+            foreach ($chunks as $chunk) {
+                DB::table('product_prices')->insert($chunk);
+            }
+            $this->command->info(count($pricesToInsert) . ' precios creados en total.');
+            $this->command->info("  → {$generalPriceCount} productos con precio general (mismo en todos los almacenes)");
+            $this->command->info("  → {$specificPriceCount} precios específicos por almacén (precios diferentes)");
+        }
+
+        // Insertar INVENTARIOS en lotes
+        if (!empty($inventoryToInsert)) {
+            $chunks = array_chunk($inventoryToInsert, 500);
             foreach ($chunks as $chunk) {
                 DB::table('inventory')->insert($chunk);
             }
-            $this->command->info(count($inventarioParaInsertar) . ' registros de inventario creados con precios calculados.');
+            $this->command->info(count($inventoryToInsert) . ' registros de inventario creados.');
         }
+
+        $this->command->info('✅ Importación completada: Lotes, Precios (minorista + mayorista) e Inventario.');
     }
 
     /**
@@ -446,27 +540,6 @@ class CsvMigrationSeeder extends Seeder
         }
 
         return $averageCosts;
-    }
-
-    /**
-     * Obtiene los márgenes de todas las categorías
-     */
-    private function getCategoryMargins(): array
-    {
-        $margins = [];
-
-        $categories = DB::table('categories')
-            ->select('id', 'normal_margin_percentage', 'min_margin_percentage')
-            ->get();
-
-        foreach ($categories as $category) {
-            $margins[$category->id] = [
-                'normal_margin_percentage' => (float) $category->normal_margin_percentage,
-                'min_margin_percentage' => (float) $category->min_margin_percentage,
-            ];
-        }
-
-        return $margins;
     }
 
     private function generateUniqueSlug(string $name): string
