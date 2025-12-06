@@ -16,10 +16,7 @@ class Inventory extends Model
         'warehouse_id',
         'available_stock',
         'reserved_stock',
-        'average_cost', // ✅ Agregado para consistencia
-        'sale_price',
-        'profit_margin',
-        'min_sale_price',
+        'average_cost',
         'price_updated_at',
         'last_movement_at',
     ];
@@ -27,15 +24,13 @@ class Inventory extends Model
     protected $casts = [
         'available_stock' => 'integer',
         'reserved_stock' => 'integer',
-        'average_cost' => 'float', // ✅ Agregado
-        'sale_price' => 'float',
-        'profit_margin' => 'float',
-        'min_sale_price' => 'decimal:2',
+        'average_cost' => 'decimal:4',
         'last_movement_at' => 'datetime',
         'price_updated_at' => 'datetime',
     ];
 
-    // Relaciones
+    // ==================== RELACIONES ====================
+
     public function product()
     {
         return $this->belongsTo(Product::class);
@@ -46,24 +41,163 @@ class Inventory extends Model
         return $this->belongsTo(Warehouse::class);
     }
 
-    // Métodos
+    /**
+     * ✅ NUEVA: Relación con precios por lista de precios
+     */
+    public function productPrices()
+    {
+        return $this->hasMany(ProductPrice::class, 'product_id', 'product_id')
+            ->where('warehouse_id', $this->warehouse_id);
+    }
+
+    // ==================== ATRIBUTOS CALCULADOS ====================
+
     public function getTotalStockAttribute(): int
     {
         return $this->available_stock + $this->reserved_stock;
     }
 
     /**
-     * ✅ Actualiza precio y margen
+     * ✅ NUEVO: Obtener precio de venta según lista de precios activa
+     *
+     * @param int|null $priceListId ID de lista de precios (null = lista por defecto)
+     * @return float|null
      */
-    public function updateSalePrice(float $newPrice, ?float $profitMargin = null): void
+    public function getSalePrice(?int $priceListId = null): ?float
     {
-        $this->sale_price = $newPrice;
-
-        if ($profitMargin !== null) {
-            $this->profit_margin = $profitMargin;
+        // Si no se especifica lista, usar la lista por defecto del sistema
+        if ($priceListId === null) {
+            $priceListId = $this->getDefaultPriceListId();
         }
 
-        $this->price_updated_at = now();
-        $this->save();
+        $productPrice = ProductPrice::where('product_id', $this->product_id)
+            ->where('price_list_id', $priceListId)
+            ->where(function ($q) {
+                $q->whereNull('warehouse_id')
+                  ->orWhere('warehouse_id', $this->warehouse_id);
+            })
+            ->where('is_active', true)
+            ->where('valid_from', '<=', now())
+            ->where(function ($q) {
+                $q->whereNull('valid_to')
+                  ->orWhere('valid_to', '>=', now());
+            })
+            ->orderBy('warehouse_id', 'desc') // Priorizar precio específico de almacén
+            ->first();
+
+        return $productPrice?->price;
+    }
+
+    /**
+     * ✅ NUEVO: Obtener precio mínimo según lista de precios
+     */
+    public function getMinSalePrice(?int $priceListId = null): ?float
+    {
+        if ($priceListId === null) {
+            $priceListId = $this->getDefaultPriceListId();
+        }
+
+        $productPrice = ProductPrice::where('product_id', $this->product_id)
+            ->where('price_list_id', $priceListId)
+            ->where(function ($q) {
+                $q->whereNull('warehouse_id')
+                  ->orWhere('warehouse_id', $this->warehouse_id);
+            })
+            ->where('is_active', true)
+            ->where('valid_from', '<=', now())
+            ->where(function ($q) {
+                $q->whereNull('valid_to')
+                  ->orWhere('valid_to', '>=', now());
+            })
+            ->orderBy('warehouse_id', 'desc')
+            ->first();
+
+        return $productPrice?->min_price;
+    }
+
+    /**
+     * ✅ NUEVO: Obtener margen de ganancia según lista de precios
+     */
+    public function getProfitMargin(?int $priceListId = null): ?float
+    {
+        if ($priceListId === null) {
+            $priceListId = $this->getDefaultPriceListId();
+        }
+
+        $productPrice = ProductPrice::where('product_id', $this->product_id)
+            ->where('price_list_id', $priceListId)
+            ->where(function ($q) {
+                $q->whereNull('warehouse_id')
+                  ->orWhere('warehouse_id', $this->warehouse_id);
+            })
+            ->where('is_active', true)
+            ->where('valid_from', '<=', now())
+            ->where(function ($q) {
+                $q->whereNull('valid_to')
+                  ->orWhere('valid_to', '>=', now());
+            })
+            ->orderBy('warehouse_id', 'desc')
+            ->first();
+
+        return $productPrice?->profit_margin;
+    }
+
+    /**
+     * ✅ NUEVO: Obtener ID de lista de precios por defecto
+     */
+    private function getDefaultPriceListId(): int
+    {
+        // Puedes cachear esto para mejor rendimiento
+        return \App\Models\PriceList::where('is_active', true)
+            ->orderBy('id')
+            ->value('id') ?? 1;
+    }
+
+    /**
+     * ✅ ACTUALIZADO: Verificar si hay precio configurado
+     */
+    public function hasPriceConfigured(?int $priceListId = null): bool
+    {
+        return $this->getSalePrice($priceListId) !== null;
+    }
+
+    /**
+     * ✅ NUEVO: Obtener todos los precios disponibles para este inventario
+     */
+    public function getAllPrices(): array
+    {
+        $prices = ProductPrice::where('product_id', $this->product_id)
+            ->where(function ($q) {
+                $q->whereNull('warehouse_id')
+                  ->orWhere('warehouse_id', $this->warehouse_id);
+            })
+            ->where('is_active', true)
+            ->with('priceList:id,code,name')
+            ->get();
+
+        return $prices->map(function ($price) {
+            return [
+                'price_list_id' => $price->price_list_id,
+                'price_list_name' => $price->priceList->name,
+                'price' => $price->price,
+                'min_price' => $price->min_price,
+                'profit_margin' => $price->profit_margin,
+                'is_warehouse_specific' => $price->warehouse_id !== null,
+            ];
+        })->toArray();
+    }
+
+    // ==================== SCOPES ====================
+
+    public function scopeWithStock($query)
+    {
+        return $query->where('available_stock', '>', 0);
+    }
+
+    public function scopeLowStock($query)
+    {
+        return $query->whereHas('product', function ($q) {
+            $q->whereColumn('inventory.available_stock', '<=', 'products.min_stock');
+        });
     }
 }

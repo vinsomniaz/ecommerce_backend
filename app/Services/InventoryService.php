@@ -168,9 +168,9 @@ class InventoryService
     /**
      * Asignar producto a uno o múltiples almacenes
      */
-    public function assignToWarehouses(int $productId, array $warehouseIds, array $priceData = []): array
+    public function assignToWarehouses(int $productId, array $warehouseIds): array
     {
-        return DB::transaction(function () use ($productId, $warehouseIds, $priceData) {
+        return DB::transaction(function () use ($productId, $warehouseIds) {
             $product = Product::findOrFail($productId);
             $assigned = 0;
             $skipped = 0;
@@ -200,10 +200,7 @@ class InventoryService
                     'available_stock' => 0,
                     'reserved_stock' => 0,
                     'average_cost' => 0,
-                    'sale_price' => $priceData['sale_price'] ?? null,
-                    'profit_margin' => $priceData['profit_margin'] ?? null,
-                    'min_sale_price' => $priceData['min_sale_price'] ?? null,
-                    'price_updated_at' => isset($priceData['sale_price']) ? now() : null,
+                    'price_updated_at' => null,
                     'last_movement_at' => now(),
                 ]);
 
@@ -221,7 +218,6 @@ class InventoryService
                     ->withProperties([
                         'warehouse_id' => $warehouseId,
                         'warehouse_name' => $warehouse->name,
-                        'price_data' => $priceData,
                     ])
                     ->log("Producto asignado al almacén: {$warehouse->name}");
             }
@@ -234,13 +230,12 @@ class InventoryService
             ];
         });
     }
-
     /**
      * Asignación masiva: múltiples productos a múltiples almacenes
      */
-    public function bulkAssign(array $productIds, array $warehouseIds, array $priceData = []): array
+    public function bulkAssign(array $productIds, array $warehouseIds): array
     {
-        return DB::transaction(function () use ($productIds, $warehouseIds, $priceData) {
+        return DB::transaction(function () use ($productIds, $warehouseIds) {
             $totalAssigned = 0;
             $totalSkipped = 0;
             $results = [];
@@ -251,7 +246,7 @@ class InventoryService
                     continue;
                 }
 
-                $productResult = $this->assignToWarehouses($productId, $warehouseIds, $priceData);
+                $productResult = $this->assignToWarehouses($productId, $warehouseIds);
                 $totalAssigned += $productResult['assigned'];
                 $totalSkipped += $productResult['skipped'];
 
@@ -282,11 +277,22 @@ class InventoryService
             $inventory = $this->getSpecific($productId, $warehouseId);
             $oldData = $inventory->toArray();
 
-            if (isset($data['sale_price']) && $data['sale_price'] !== $inventory->sale_price) {
-                $data['price_updated_at'] = now();
+            // ✅ Solo permitir actualizar campos de inventario, NO precios
+            $allowedFields = ['average_cost'];
+            $updateData = array_intersect_key($data, array_flip($allowedFields));
+
+            if (empty($updateData)) {
+                throw new \InvalidArgumentException(
+                    'No hay campos válidos para actualizar. ' .
+                        'Los precios se gestionan en product_prices.'
+                );
             }
 
-            $inventory->update($data);
+            if (isset($updateData['average_cost'])) {
+                $updateData['price_updated_at'] = now();
+            }
+
+            $inventory->update($updateData);
 
             activity()
                 ->performedOn($inventory->product)
@@ -302,7 +308,6 @@ class InventoryService
             return $inventory->fresh(['product', 'warehouse']);
         });
     }
-
     /**
      * Eliminar inventario (desasignar)
      */
@@ -440,11 +445,28 @@ class InventoryService
      */
     private function calculateInventoryValue(int $warehouseId): float
     {
-        $value = Inventory::where('warehouse_id', $warehouseId)
-            ->selectRaw('SUM(available_stock * average_cost) as total')
-            ->value('total');
+        $defaultPriceList = \App\Models\PriceList::where('is_active', true)
+            ->orderBy('id')
+            ->first();
 
-        return round($value ?? 0, 2);
+        if (!$defaultPriceList) {
+            return 0;
+        }
+
+        $inventories = Inventory::where('warehouse_id', $warehouseId)
+            ->where('available_stock', '>', 0)
+            ->get();
+
+        $totalValue = 0;
+
+        foreach ($inventories as $inventory) {
+            $price = $inventory->getSalePrice($defaultPriceList->id);
+            if ($price) {
+                $totalValue += $inventory->available_stock * $price;
+            }
+        }
+
+        return round($totalValue, 2);
     }
 
     /**
@@ -453,9 +475,25 @@ class InventoryService
      */
     private function calculateTotalInventoryValue(): float
     {
-        $value = Inventory::selectRaw('SUM(available_stock * average_cost) as total')
-            ->value('total');
+        $defaultPriceList = \App\Models\PriceList::where('is_active', true)
+            ->orderBy('id')
+            ->first();
 
-        return round($value ?? 0, 2);
+        if (!$defaultPriceList) {
+            return 0;
+        }
+
+        $inventories = Inventory::where('available_stock', '>', 0)->get();
+
+        $totalValue = 0;
+
+        foreach ($inventories as $inventory) {
+            $price = $inventory->getSalePrice($defaultPriceList->id);
+            if ($price) {
+                $totalValue += $inventory->available_stock * $price;
+            }
+        }
+
+        return round($totalValue, 2);
     }
 }

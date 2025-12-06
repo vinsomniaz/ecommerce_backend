@@ -32,7 +32,6 @@ class Product extends Model implements HasMedia
         'tax_type',
         'weight',
         'barcode',
-        'distribution_price',
         'is_active',
         'is_featured',
         'visible_online',
@@ -129,6 +128,11 @@ class Product extends Model implements HasMedia
         return $this->belongsTo(Category::class);
     }
 
+    public function productPrices(): HasMany
+    {
+        return $this->hasMany(ProductPrice::class);
+    }
+
     public function stockMovements()
     {
         return $this->hasMany(StockMovement::class);
@@ -177,77 +181,234 @@ class Product extends Model implements HasMedia
      */
     public function getAverageCostAttribute(): float
     {
-        $batches = $this->purchaseBatches()
-            ->where('status', 'active')
-            ->where('quantity_available', '>', 0)
-            ->get();
+        $inv = $this->inventory()->orderBy('warehouse_id')->first();
 
-        if ($batches->isEmpty()) {
-            return 0.0;
-        }
-
-        $totalCost = 0;
-        $totalQuantity = 0;
-
-        foreach ($batches as $batch) {
-            $totalCost += $batch->purchase_price * $batch->quantity_available; // ✅ purchase_price
-            $totalQuantity += $batch->quantity_available;
-        }
-
-        return $totalQuantity > 0 ? round($totalCost / $totalQuantity, 4) : 0.0;
+        return $inv ? (float) $inv->average_cost : 0.0;
     }
+
+    /**
+     * Retorna el precio del producto global si tiene
+     */
+
+    public function getSalePrice(?int $priceListId = null, ?int $warehouseId = null): ?float
+    {
+        // Si no se especifica lista, usar RETAIL por defecto
+        if (!$priceListId) {
+            $priceListId = PriceList::where('code', 'RETAIL')
+                ->where('is_active', true)
+                ->value('id');
+        }
+
+        if (!$priceListId) {
+            return null;
+        }
+
+        $query = $this->productPrices()
+            ->where('price_list_id', $priceListId)
+            ->where('is_active', true)
+            ->where('valid_from', '<=', now())
+            ->where(function ($q) {
+                $q->whereNull('valid_to')
+                    ->orWhere('valid_to', '>=', now());
+            });
+
+        // Prioridad: específico del almacén > general
+        if ($warehouseId) {
+            // Buscar primero precio específico del almacén
+            $specificPrice = (clone $query)
+                ->where('warehouse_id', $warehouseId)
+                ->orderBy('valid_from', 'desc')
+                ->value('price');
+
+            if ($specificPrice !== null) {
+                return $specificPrice;
+            }
+        }
+
+        // Si no hay específico, buscar precio general
+        return $query->whereNull('warehouse_id')
+            ->orderBy('valid_from', 'desc')
+            ->value('price');
+    }
+
+    public function getMinSalePrice(?int $priceListId = null, ?int $warehouseId = null): ?float
+    {
+        if (!$priceListId) {
+            $priceListId = PriceList::where('code', 'RETAIL')
+                ->where('is_active', true)
+                ->value('id');
+        }
+
+        if (!$priceListId) {
+            return null;
+        }
+
+        $query = $this->productPrices()
+            ->where('price_list_id', $priceListId)
+            ->where('is_active', true)
+            ->where('valid_from', '<=', now())
+            ->where(function ($q) {
+                $q->whereNull('valid_to')
+                    ->orWhere('valid_to', '>=', now());
+            });
+
+        if ($warehouseId) {
+            $specificPrice = (clone $query)
+                ->where('warehouse_id', $warehouseId)
+                ->orderBy('valid_from', 'desc')
+                ->value('min_price');
+
+            if ($specificPrice !== null) {
+                return $specificPrice;
+            }
+        }
+
+        return $query->whereNull('warehouse_id')
+            ->orderBy('valid_from', 'desc')
+            ->value('min_price');
+    }
+
+
+    public function getProfitMargin(?int $priceListId = null, ?int $warehouseId = null): ?float
+    {
+        $salePrice = $this->getSalePrice($priceListId, $warehouseId);
+        $averageCost = $this->average_cost;
+
+        if (!$salePrice || !$averageCost || $averageCost <= 0) {
+            return null;
+        }
+
+        return round((($salePrice - $averageCost) / $averageCost) * 100, 2);
+    }
+
+    /**
+     * ✅ Obtener todos los precios del producto agrupados por lista
+     *
+     * @param int|null $warehouseId Filtrar por almacén específico
+     * @return array
+     */
+    public function getAllPrices(?int $warehouseId = null): array
+    {
+        $query = $this->productPrices()
+            ->with('priceList:id,code,name')
+            ->where('is_active', true)
+            ->where('valid_from', '<=', now())
+            ->where(function ($q) {
+                $q->whereNull('valid_to')
+                    ->orWhere('valid_to', '>=', now());
+            });
+
+        if ($warehouseId) {
+            $query->where(function ($q) use ($warehouseId) {
+                $q->whereNull('warehouse_id')
+                    ->orWhere('warehouse_id', $warehouseId);
+            });
+        } else {
+            $query->whereNull('warehouse_id');
+        }
+
+        return $query->orderBy('price_list_id')
+            ->orderBy('min_quantity')
+            ->get()
+            ->map(function ($price) {
+                return [
+                    'price_list_id' => $price->price_list_id,
+                    'price_list_code' => $price->priceList->code,
+                    'price_list_name' => $price->priceList->name,
+                    'price' => $price->price,
+                    'min_price' => $price->min_price,
+                    'min_quantity' => $price->min_quantity,
+                    'warehouse_id' => $price->warehouse_id,
+                    'is_warehouse_specific' => $price->warehouse_id !== null,
+                    'currency' => $price->currency,
+                ];
+            })
+            ->toArray();
+    }
+
+    /**
+     * ✅ Obtener precios por almacén (para gestión de inventario)
+     *
+     * @param int|null $priceListId
+     * @return array
+     */
+    public function getPricesByWarehouse(?int $priceListId = null): array
+    {
+        if (!$priceListId) {
+            $priceListId = PriceList::where('code', 'RETAIL')
+                ->where('is_active', true)
+                ->value('id');
+        }
+
+        return $this->inventory()
+            ->with('warehouse:id,name')
+            ->get()
+            ->map(function ($inv) use ($priceListId) {
+                $salePrice = $this->getSalePrice($priceListId, $inv->warehouse_id);
+                $minPrice = $this->getMinSalePrice($priceListId, $inv->warehouse_id);
+
+                return [
+                    'warehouse_id' => $inv->warehouse_id,
+                    'warehouse_name' => $inv->warehouse->name,
+                    'available_stock' => $inv->available_stock,
+                    'reserved_stock' => $inv->reserved_stock,
+                    'average_cost' => $inv->average_cost,
+                    'sale_price' => $salePrice,
+                    'min_sale_price' => $minPrice,
+                    'profit_margin' => $salePrice && $inv->average_cost > 0
+                        ? round((($salePrice - $inv->average_cost) / $inv->average_cost) * 100, 2)
+                        : null,
+                ];
+            })
+            ->toArray();
+    }
+    /**
+     * ✅ Verificar si el producto tiene precio configurado
+     *
+     * @param int|null $priceListId
+     * @param int|null $warehouseId
+     * @return bool
+     */
+    public function hasPrice(?int $priceListId = null, ?int $warehouseId = null): bool
+    {
+        return $this->getSalePrice($priceListId, $warehouseId) !== null;
+    }
+
+    /**
+     * ✅ Obtener el mejor precio disponible (menor precio activo)
+     * Útil para mostrar ofertas o precio competitivo
+     *
+     * @param int|null $warehouseId
+     * @return float|null
+     */
+    public function getBestPrice(?int $warehouseId = null): ?float
+    {
+        $query = $this->productPrices()
+            ->where('is_active', true)
+            ->where('valid_from', '<=', now())
+            ->where(function ($q) {
+                $q->whereNull('valid_to')
+                    ->orWhere('valid_to', '>=', now());
+            });
+
+        if ($warehouseId) {
+            $query->where(function ($q) use ($warehouseId) {
+                $q->whereNull('warehouse_id')
+                    ->orWhere('warehouse_id', $warehouseId);
+            });
+        } else {
+            $query->whereNull('warehouse_id');
+        }
+
+        return $query->min('price');
+    }
+
     /**
      * Stock total disponible en todos los almacenes
      */
     public function getTotalStockAttribute(): int
     {
         return $this->inventory()->sum('available_stock');
-    }
-
-    /**
-     * ✅ Obtener precio de venta para un almacén específico
-     */
-    public function getSalePriceForWarehouse(int $warehouseId): ?float
-    {
-        $inventory = $this->inventory()
-            ->where('warehouse_id', $warehouseId)
-            ->first();
-
-        return $inventory?->sale_price;
-    }
-
-    /**
-     * ✅ Obtener inventario de todos los almacenes con precios (usado en Resource)
-     */
-    public function getWarehousePrices(): array
-    {
-        return $this->inventory()
-            ->with('warehouse:id,name')
-            ->get()
-            ->map(fn($inv) => [
-                'warehouse_id' => $inv->warehouse_id,
-                'warehouse_name' => $inv->warehouse->name,
-                'available_stock' => $inv->available_stock,
-                'reserved_stock' => $inv->reserved_stock,
-                'sale_price' => $inv->sale_price,
-                'profit_margin' => $inv->profit_margin,
-            ])
-            ->toArray();
-    }
-
-    /**
-     * Calcular margen de ganancia para un almacén
-     */
-    public function calculateProfitMargin(int $warehouseId): ?float
-    {
-        $salePrice = $this->getSalePriceForWarehouse($warehouseId);
-        $averageCost = $this->average_cost;
-
-        if (!$salePrice || !$averageCost) {
-            return null;
-        }
-
-        return round((($salePrice - $averageCost) / $averageCost) * 100, 2);
     }
 
     // ==================== SCOPES ====================
