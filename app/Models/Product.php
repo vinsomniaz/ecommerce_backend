@@ -32,6 +32,7 @@ class Product extends Model implements HasMedia
         'tax_type',
         'weight',
         'barcode',
+        'initial_cost',
         'is_active',
         'is_featured',
         'visible_online',
@@ -41,7 +42,7 @@ class Product extends Model implements HasMedia
     protected $casts = [
         'min_stock' => 'integer',
         'weight' => 'decimal:2',
-        'distribution_price' => 'decimal:2',
+        'initial_cost' => 'decimal:2',
         'is_active' => 'boolean',
         'is_featured' => 'boolean',
         'visible_online' => 'boolean',

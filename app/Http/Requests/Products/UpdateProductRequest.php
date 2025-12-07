@@ -42,6 +42,7 @@ class UpdateProductRequest extends FormRequest
             'tax_type' => ['sometimes', 'nullable', 'string', 'in:10,20,30'],
             'weight' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'barcode' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'initial_cost' => ['sometimes', 'numeric', 'min:0.0001'],
 
             // Estados
             'is_active' => ['sometimes', 'nullable', 'boolean'],
@@ -75,6 +76,9 @@ class UpdateProductRequest extends FormRequest
             'primary_name.required' => 'El nombre del producto es obligatorio',
             'primary_name.min' => 'El nombre debe tener al menos 3 caracteres',
             'primary_name.max' => 'El nombre no puede exceder 200 caracteres',
+
+            'initial_cost.numeric'  => 'El costo inicial debe ser numérico',
+            'initial_cost.min'      => 'El costo inicial debe ser mayor a 0',
 
             'category_id.required' => 'La categoría es obligatoria',
             'category_id.exists' => 'La categoría seleccionada no existe',

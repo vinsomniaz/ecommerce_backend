@@ -63,6 +63,7 @@ class ProductResource extends JsonResource
 
             // ==================== PRECIOS ====================
             // ✅ Precio principal (según lista y almacén solicitados)
+            'initial_cost' => $this->initial_cost,
             'sale_price' => $this->getSalePrice($priceListId, $warehouseId),
             'min_sale_price' => $this->getMinSalePrice($priceListId, $warehouseId),
             // Se puede calcular por el frontend y es mejor para no causar respuestas lentas
