@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -9,22 +10,22 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Notifications\Notifiable;
-use Spatie\Permission\Traits\HasRoles; // ⭐ AGREGADO
+use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class User extends Authenticatable
+class User extends Authenticatable implements MustVerifyEmail
 {
-    use HasApiTokens, HasFactory, Notifiable, HasRoles, SoftDeletes; // ⭐ AGREGADO
+    use HasApiTokens, HasFactory, Notifiable, HasRoles, SoftDeletes; 
 
     protected $guard_name = 'sanctum';
 
     protected $fillable = [
         'first_name',
         'last_name',
-        'cellphone', // ⭐ AGREGADO
+        'cellphone', 
         'email',
         'password',
-        'is_active', // ⭐ AGREGADO
+        'is_active', 
         'warehouse_id',
     ];
 

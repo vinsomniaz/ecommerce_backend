@@ -31,6 +31,7 @@ class StoreProductRequest extends FormRequest
             'tax_type' => 'nullable|string|in:10,20,30',
             'weight' => 'nullable|numeric|min:0',
             'barcode' => 'nullable|string|max:50',
+            'initial_cost' => 'required|numeric|min:0.0001',
 
             // ESTADOS
             'is_active' => 'boolean',
@@ -63,6 +64,10 @@ class StoreProductRequest extends FormRequest
             'primary_name.required' => 'El nombre del producto es obligatorio',
             'primary_name.min' => 'El nombre debe tener al menos 3 caracteres',
             'primary_name.max' => 'El nombre no puede exceder 200 caracteres',
+
+            'initial_cost.required' => 'El costo inicial es obligatorio',
+            'initial_cost.numeric'  => 'El costo inicial debe ser numérico',
+            'initial_cost.min'      => 'El costo inicial debe ser mayor a 0',
 
             'category_id.required' => 'La categoría es obligatoria',
             'category_id.exists' => 'La categoría seleccionada no existe',

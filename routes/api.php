@@ -23,6 +23,14 @@ use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SupplierImportController;
 use App\Http\Controllers\Auth\PermissionController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Auth\RegisteredUserController;
+use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\Auth\VerifyEmailController;
+use App\Http\Controllers\Auth\EmailVerificationNotificationController;
+use App\Http\Controllers\Auth\PasswordResetLinkController;
+use App\Http\Controllers\Auth\NewPasswordController;
+use App\Http\Controllers\Api\CartController;
+use App\Http\Controllers\Api\ExchangeRateController;
 
 /*
 |--------------------------------------------------------------------------
@@ -32,7 +40,11 @@ use App\Http\Controllers\Api\UserController;
 | Rutas de lectura (GET) que no requieren autenticación.
 |
 */
-// --- AÑADE ESTE GRUPO DE RUTAS PARA LA TIENDA ---
+
+Route::get('/rates/fetch-and-show', [ExchangeRateController::class, 'fetchAndShow']);
+Route::get('/rates/current', [ExchangeRateController::class, 'showCurrentRates']);
+
+
 Route::prefix('ecommerce')->name('ecommerce/')->group(function () {
 
     // Ruta para la lista de productos: /api/ecommerce/products
@@ -56,7 +68,65 @@ Route::prefix('ecommerce')->name('ecommerce/')->group(function () {
     // Lista de Distribución (Sin paginación)
     Route::get('distribution-list', [EcommerceController::class, 'distributionList'])
         ->name('distribution-list');
+
+    //Cuentas
+    Route::post('register', [RegisteredUserController::class, 'storeCustomer']);
+    Route::post('login', [AuthenticatedSessionController::class, 'store']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | CARRITO DE COMPRAS (Cart) Y CHECKOUT (R1, R2, R3)
+    |--------------------------------------------------------------------------
+    */
+    Route::middleware('auth:sanctum')->group(function () {
+
+        Route::prefix('cart')->group(function () {
+            // R1.1, R2.2: Obtener carrito
+            Route::get('/', [CartController::class, 'show'])->name('cart.show');
+
+            // R1.2: Agregar/Actualizar item
+            Route::post('items', [CartController::class, 'addItem'])->name('cart.items.add');
+            Route::patch('items/{productId}', [CartController::class, 'updateItem'])->name('cart.items.update');
+
+            // Eliminar item
+            Route::delete('items/{productId}', [CartController::class, 'removeItem'])->name('cart.items.remove');
+
+
+            // R3: Proceso de Checkout
+            Route::post('checkout', [CartController::class, 'checkout'])->name('checkout.process');
+        });
+    });
 });
+
+
+/*
+|--------------------------------------------------------------------------
+|AUTENTICACIÓN
+|--------------------------------------------------------------------------
+|
+*/
+Route::prefix('auth')->group(function () {
+    // --- VERIFICACIÓN DE CORREO ---
+    // Link que llega al correo (Debe estar firmado)
+    Route::get('/verify-email/{id}/{hash}', [VerifyEmailController::class, '__invoke'])
+        ->middleware(['throttle:6,1'])
+        ->name('verification.verify');
+
+    // Reenviar correo de verificación
+    Route::post('/email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
+        ->middleware(['auth:sanctum', 'throttle:6,1'])
+        ->name('verification.send');
+
+    // --- RECUPERACIÓN DE CONTRASEÑA ---
+    // 1. Solicitar link (Forgot Password)
+    Route::post('/forgot-password', [PasswordResetLinkController::class, 'store'])
+        ->name('password.email');
+
+    // 2. Resetear contraseña (usando el token)
+    Route::post('/reset-password', [NewPasswordController::class, 'store'])
+        ->name('password.store');
+});
+
 
 /*
 |--------------------------------------------------------------------------

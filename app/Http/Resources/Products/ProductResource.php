@@ -13,6 +13,7 @@ class ProductResource extends JsonResource
         // ✅ Obtener parámetros del request
         $warehouseId = $request->input('warehouse_id');
         $priceListId = $request->input('price_list_id'); // Si no se envía, usa RETAIL por defecto
+        $exchangeRateFactor = $request->get('exchange_rate_factor');
 
         return [
             'id' => $this->id,
@@ -63,8 +64,9 @@ class ProductResource extends JsonResource
 
             // ==================== PRECIOS ====================
             // ✅ Precio principal (según lista y almacén solicitados)
-            'sale_price' => $this->getSalePrice($priceListId, $warehouseId),
-            'min_sale_price' => $this->getMinSalePrice($priceListId, $warehouseId),
+            'initial_cost' => $this->initial_cost,
+            'sale_price' => $this->getSalePrice($priceListId, $warehouseId, $exchangeRateFactor),
+            'min_sale_price' => $this->getMinSalePrice($priceListId, $warehouseId, $exchangeRateFactor),
             // Se puede calcular por el frontend y es mejor para no causar respuestas lentas
             // 'profit_margin' => $this->getProfitMargin($priceListId, $warehouseId),
             'has_price' => $this->hasPrice($priceListId, $warehouseId),

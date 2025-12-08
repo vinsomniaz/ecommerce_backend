@@ -45,6 +45,14 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+        $user = Auth::user();
+        if (!$user->is_active) {
+            Auth::logout();
+            throw ValidationException::withMessages([
+                'email' => ['Tu cuenta está desactivada. Contacte soporte.'],
+            ]);
+        }
+
         RateLimiter::clear($this->throttleKey());
     }
 

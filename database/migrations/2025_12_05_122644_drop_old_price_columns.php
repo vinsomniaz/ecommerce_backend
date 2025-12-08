@@ -14,6 +14,10 @@ return new class extends Migration
         // database/migrations/xxxx_xx_xx_drop_old_price_columns.php
         Schema::table('products', function (Blueprint $table) {
             $table->dropColumn('distribution_price');
+            //Agregar costo inicial a producto
+            $table->decimal('initial_cost', 12, 4)
+                ->nullable()
+                ->after('barcode');
         });
 
         Schema::table('inventory', function (Blueprint $table) {

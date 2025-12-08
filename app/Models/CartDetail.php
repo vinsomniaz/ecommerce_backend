@@ -34,12 +34,11 @@ class CartDetail extends Model
     // Accessors
     public function getUnitPriceAttribute(): float
     {
-        // Obtener precio del inventario principal
         $inventory = $this->product->inventory()
-            ->whereHas('warehouse', fn($q) => $q->where('is_main', true))
+            ->whereHas('warehouse', fn($q) => $q->main()->visibleOnline())
             ->first();
 
-        return $inventory ? (float) $inventory->sale_price : 0;
+        return $inventory ? (float) $inventory->sale_price : 0; // R1.3
     }
 
     public function getSubtotalAttribute(): float
@@ -60,12 +59,17 @@ class CartDetail extends Model
     // Methods
     public function hasStock(): bool
     {
-        $totalStock = $this->product->inventory->sum('available_stock');
+        $totalStock = $this->product->inventory()
+            ->whereHas('warehouse', fn($q) => $q->main()->visibleOnline())
+            ->sum('available_stock');
+
         return $totalStock >= $this->quantity;
     }
 
     public function getAvailableStock(): int
     {
-        return $this->product->inventory->sum('available_stock');
+        return $this->product->inventory()
+            ->whereHas('warehouse', fn($q) => $q->main()->visibleOnline())
+            ->sum('available_stock');
     }
 }

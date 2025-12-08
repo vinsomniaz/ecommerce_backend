@@ -12,6 +12,7 @@ use Illuminate\Http\JsonResponse;
 use App\Services\CategoryService;
 use App\Http\Resources\CategoryResource;
 use App\Models\Category;
+use App\Models\ExchangeRate;
 
 class EcommerceController extends Controller
 {
@@ -25,6 +26,14 @@ class EcommerceController extends Controller
      */
     public function index(Request $request)
     {
+        $currency = $request->query('currency');
+        $exchangeRateFactor = $this->getExchangeRateFactor($currency);
+
+        if ($exchangeRateFactor !== null && $exchangeRateFactor !== 1.0) {
+            // Inyectar el factor al Request para que ProductResource lo use
+            $request->merge(['exchange_rate_factor' => $exchangeRateFactor]);
+        }
+
         $filters = $request->only([
             'search',
             'category_id',
@@ -184,5 +193,17 @@ class EcommerceController extends Controller
             'message' => 'Árbol de categorías obtenido correctamente',
             'data' => CategoryResource::collection($categories)
         ], 200);
+    }
+
+    /**
+     * NUEVO: Obtiene el factor de tipo de cambio de la BD
+     */
+    private function getExchangeRateFactor(?string $currency): ?float
+    {
+        if (empty($currency) || strtoupper($currency) === 'PEN') {
+            return 1.0;
+        }
+
+        return ExchangeRate::getRate($currency);
     }
 }
