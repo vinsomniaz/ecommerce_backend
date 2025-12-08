@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class StockManagementService
 {
@@ -579,5 +580,55 @@ class StockManagementService
             'errors_count' => count($errors),
             'errors' => $errors,
         ];
+    }
+
+    /**
+     * Bloqueo de Stock (Soft Reserve) para un checkout (R3.3)
+     * Mueve stock de available_stock a reserved_stock.
+     * @param int $warehouseId El almacén de la orden (principal en este caso).
+     * @param array $items Array de ['product_id' => int, 'quantity' => int]
+     */
+    public function softReserve(int $warehouseId, array $items): void
+    {
+        DB::transaction(function () use ($warehouseId, $items) {
+            foreach ($items as $item) {
+                $productId = $item['product_id'];
+                $quantity = $item['quantity'];
+
+                $inventory = Inventory::where('product_id', $productId)
+                    ->where('warehouse_id', $warehouseId)
+                    ->first();
+
+                if (!$inventory || $inventory->available_stock < $quantity) {
+                    // Esto no debería pasar si validateAllStock se ejecutó, pero es un seguro
+                    throw new \Exception("Fallo en reserva: stock insuficiente para producto #{$productId} en almacén #{$warehouseId}.");
+                }
+
+                $inventory->available_stock -= $quantity;
+                $inventory->reserved_stock += $quantity;
+                $inventory->last_movement_at = now();
+                $inventory->save();
+
+                // Registrar movimiento de stock (reservado)
+                StockMovement::create([
+                    'product_id' => $productId,
+                    'warehouse_id' => $warehouseId,
+                    'purchase_batch_id' => null,
+                    'type' => 'adjustment',
+                    'quantity' => $quantity,
+                    'unit_cost' => $inventory->average_cost,
+                    'reference_type' => 'order_reserve',
+                    'reference_id' => null, // El ID de la orden se puede asignar más tarde
+                    'user_id' => Auth::id(),
+                    'notes' => 'Reserva por checkout de ecommerce',
+                    'moved_at' => now(),
+                ]);
+            }
+
+            Log::info('Soft reserve completada', [
+                'warehouse_id' => $warehouseId,
+                'items_count' => count($items),
+            ]);
+        });
     }
 }

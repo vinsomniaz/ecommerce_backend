@@ -26,6 +26,7 @@ use App\Http\Controllers\Auth\VerifyEmailController;
 use App\Http\Controllers\Auth\EmailVerificationNotificationController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\NewPasswordController;
+use App\Http\Controllers\Api\CartController;
 
 /*
 |--------------------------------------------------------------------------
@@ -63,6 +64,30 @@ Route::prefix('ecommerce')->name('ecommerce/')->group(function () {
     //Cuentas
     Route::post('register', [RegisteredUserController::class, 'storeCustomer']);
     Route::post('login', [AuthenticatedSessionController::class, 'store']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | CARRITO DE COMPRAS (Cart) Y CHECKOUT (R1, R2, R3)
+    |--------------------------------------------------------------------------
+    */
+    Route::middleware('auth:sanctum')->group(function () {
+
+        Route::prefix('cart')->group(function () {
+            // R1.1, R2.2: Obtener carrito
+            Route::get('/', [CartController::class, 'show'])->name('cart.show');
+
+            // R1.2: Agregar/Actualizar item
+            Route::post('items', [CartController::class, 'addItem'])->name('cart.items.add');
+            Route::patch('items/{productId}', [CartController::class, 'updateItem'])->name('cart.items.update');
+
+            // Eliminar item
+            Route::delete('items/{productId}', [CartController::class, 'removeItem'])->name('cart.items.remove');
+
+
+            // R3: Proceso de Checkout
+            Route::post('checkout', [CartController::class, 'checkout'])->name('checkout.process');
+        });
+    });
 });
 
 

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\Activitylog\Traits\LogsActivity;
 use Spatie\Activitylog\LogOptions;
+use App\Models\OrderDetail;
 
 class Order extends Model
 {
@@ -71,6 +72,11 @@ class Order extends Model
         return $this->hasMany(Payment::class);
     }
 
+    public function details(): HasMany
+    {
+        return $this->hasMany(OrderDetail::class);
+    }
+
     public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class);
@@ -130,7 +136,7 @@ class Order extends Model
     // Accessors
     public function getStatusNameAttribute(): string
     {
-        return match($this->status) {
+        return match ($this->status) {
             'pendiente' => 'Pendiente',
             'confirmado' => 'Confirmado',
             'preparando' => 'Preparando',
@@ -143,7 +149,7 @@ class Order extends Model
 
     public function getStatusColorAttribute(): string
     {
-        return match($this->status) {
+        return match ($this->status) {
             'pendiente' => 'warning',
             'confirmado' => 'info',
             'preparando' => 'processing',

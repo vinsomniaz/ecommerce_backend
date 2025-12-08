@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class OrderStatusHistory extends Model
 {
     use HasFactory;
-
+    protected $table = 'order_status_history';
     const UPDATED_AT = null; // No tiene updated_at
 
     protected $fillable = [
@@ -38,7 +38,7 @@ class OrderStatusHistory extends Model
     // Accessors
     public function getStatusNameAttribute(): string
     {
-        return match($this->status) {
+        return match ($this->status) {
             'pendiente' => 'Pendiente',
             'confirmado' => 'Confirmado',
             'preparando' => 'Preparando',
@@ -51,7 +51,7 @@ class OrderStatusHistory extends Model
 
     public function getStatusColorAttribute(): string
     {
-        return match($this->status) {
+        return match ($this->status) {
             'pendiente' => 'warning',
             'confirmado' => 'info',
             'preparando' => 'processing',
@@ -64,7 +64,7 @@ class OrderStatusHistory extends Model
 
     public function getStatusIconAttribute(): string
     {
-        return match($this->status) {
+        return match ($this->status) {
             'pendiente' => 'clock',
             'confirmado' => 'check-circle',
             'preparando' => 'package',
