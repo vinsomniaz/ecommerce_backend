@@ -191,7 +191,7 @@ class Product extends Model implements HasMedia
      * Retorna el precio del producto global si tiene
      */
 
-    public function getSalePrice(?int $priceListId = null, ?int $warehouseId = null): ?float
+    public function getSalePrice(?int $priceListId = null, ?int $warehouseId = null, ?float $exchangeRateFactor = null): ?float
     {
         // Si no se especifica lista, usar RETAIL por defecto
         if (!$priceListId) {
@@ -213,24 +213,29 @@ class Product extends Model implements HasMedia
                     ->orWhere('valid_to', '>=', now());
             });
 
-        // Prioridad: específico del almacén > general
+        $productPrice = null;
         if ($warehouseId) {
             // Buscar primero precio específico del almacén
-            $specificPrice = (clone $query)
+            $productPrice = (clone $query)
                 ->where('warehouse_id', $warehouseId)
                 ->orderBy('valid_from', 'desc')
-                ->value('price');
+                ->first();
 
-            if ($specificPrice !== null) {
-                return $specificPrice;
+            if ($productPrice) {
+                // MODIFICADO: Aplicar tipo de cambio al precio específico
+                return $this->applyExchangeRate($productPrice->price, $productPrice->currency, $exchangeRateFactor);
             }
         }
 
         // Si no hay específico, buscar precio general
-        return $query->whereNull('warehouse_id')
+        $productPrice = $query->whereNull('warehouse_id')
             ->orderBy('valid_from', 'desc')
-            ->value('price');
+            ->first();
+
+        // MODIFICADO: Aplicar tipo de cambio al precio general
+        return $this->applyExchangeRate($productPrice?->price, $productPrice?->currency, $exchangeRateFactor);
     }
+
 
     public function getMinSalePrice(?int $priceListId = null, ?int $warehouseId = null): ?float
     {
@@ -402,6 +407,33 @@ class Product extends Model implements HasMedia
         }
 
         return $query->min('price');
+    }
+
+    /**
+     * ✅ NUEVO: Aplica el factor de tipo de cambio.
+     * @param float|null $price Precio base.
+     * @param string|null $priceCurrency Moneda del precio base (generalmente PEN).
+     * @param float|null $exchangeRateFactor Tasa de conversión (Ej: 3.75 PEN/USD).
+     * @return float|null Precio convertido.
+     */
+    private function applyExchangeRate(?float $price, ?string $priceCurrency, ?float $exchangeRateFactor): ?float
+    {
+        // 1. Si no hay precio, o no se necesita conversión, retorna el precio original.
+        if ($price === null || $exchangeRateFactor === null || $exchangeRateFactor <= 1.0) {
+            return $price;
+        }
+
+        $priceCurrency = strtoupper($priceCurrency ?? 'PEN');
+
+        // 2. Si el precio ya está en una moneda extranjera, no lo convertimos (asumimos que la BD lo maneja).
+        // En este contexto, solo convertimos precios que son PEN o no tienen moneda definida (PEN por defecto).
+        if ($priceCurrency !== 'PEN') {
+            return $price;
+        }
+
+        // 3. Convertir de PEN a la moneda de destino
+        // Formula: Price_in_Target_Currency = Price_in_PEN / Rate_Target_to_PEN
+        return round($price / $exchangeRateFactor, 2);
     }
 
     /**
