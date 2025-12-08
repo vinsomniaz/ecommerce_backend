@@ -30,6 +30,7 @@ use App\Http\Controllers\Auth\EmailVerificationNotificationController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Api\CartController;
+use App\Http\Controllers\Api\ExchangeRateController;
 
 /*
 |--------------------------------------------------------------------------
@@ -39,6 +40,10 @@ use App\Http\Controllers\Api\CartController;
 | Rutas de lectura (GET) que no requieren autenticación.
 |
 */
+
+Route::get('/rates/fetch-and-show', [ExchangeRateController::class, 'fetchAndShow']);
+Route::get('/rates/current', [ExchangeRateController::class, 'showCurrentRates']);
+
 
 Route::prefix('ecommerce')->name('ecommerce/')->group(function () {
 

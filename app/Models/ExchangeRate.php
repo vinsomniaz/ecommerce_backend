@@ -7,8 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Representa la tabla 'exchange_rates' o 'tipo_cambio'.
- * La tasa es la cantidad de PEN por 1 unidad de la moneda extranjera.
+ * Nota: Asume que ya ejecutaste la migración para crear la tabla exchange_rates.
  */
 class ExchangeRate extends Model
 {
@@ -20,21 +19,18 @@ class ExchangeRate extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
-        'currency', // 'moneda'
-        'exchange_rate', // 'cambio'
+        'currency', 
+        'exchange_rate', 
     ];
 
     protected $casts = [
         'exchange_rate' => 'decimal:4',
-        'updated_at' => 'datetime',
-        'created_at' => 'datetime',
     ];
+    
+    // Usamos updated_at y created_at de la migración
+    public $timestamps = true;
 
-    /**
-     * Obtiene la tasa de cambio desde la base de datos (con caché).
-     * @param string $currency Código de la moneda destino (USD, EUR).
-     * @return float|null La tasa (X PEN por 1 unidad de $currency), o 1.0 si es PEN.
-     */
+
     public static function getRate(string $currency): ?float
     {
         if (empty($currency) || strtoupper($currency) === 'PEN') {
@@ -44,11 +40,9 @@ class ExchangeRate extends Model
         $currency = strtoupper($currency);
         $cacheKey = "exchange_rate:{$currency}";
 
-        // Cachea la tasa por 30 minutos
+        // Lee la tasa de la BD, cacheada por 30 minutos
         return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($currency) {
             $rate = self::where('currency', $currency)->value('exchange_rate');
-            
-            // Retorna la tasa como float, o null si no existe
             return $rate ? (float) $rate : null;
         });
     }
