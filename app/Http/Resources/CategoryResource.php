@@ -24,13 +24,13 @@ class CategoryResource extends JsonResource
             'order' => $this->order,
             'is_active' => $this->is_active,
 
-            // ✅ MÁRGENES PROPIOS (siempre mostrar el valor real, incluso si es 0)
-            'min_margin_percentage' => (float) ($this->min_margin_percentage ?? 0),
-            'normal_margin_percentage' => (float) ($this->normal_margin_percentage ?? 0),
+            // ✅ MÁRGENES PROPIOS O HEREDADOS (Propios o heredados)
+            'min_margin_percentage' => $this->getEffectiveMinMargin(),
+            'normal_margin_percentage' => $this->getEffectiveNormalMargin(),
 
-            // ✅ MÁRGENES EFECTIVOS (heredados o propios)
-            'effective_min_margin' => $this->getEffectiveMinMargin(),
-            'effective_normal_margin' => $this->getEffectiveNormalMargin(),
+            // ✅ MÁRGENES EFECTIVOS (Propios)
+            'effective_min_margin' => (float) ($this->min_margin_percentage ?? 0),
+            'effective_normal_margin' => (float) ($this->normal_margin_percentage ?? 0),
 
             // ✅ INDICA SI HEREDA MÁRGENES (ambos son 0)
             'inherits_margins' => $this->inheritsMargins(),

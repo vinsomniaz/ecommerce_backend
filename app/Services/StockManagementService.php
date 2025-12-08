@@ -175,18 +175,6 @@ class StockManagementService
             $inventoryTo->last_movement_at = now();
             $inventoryTo->save();
 
-            // 🔥 RECALCULAR COSTOS Y PRECIOS EN TODOS LOS ALMACENES
-            try {
-                Log::info('Recalculando precios en todos los almacenes después de traslado');
-
-                $result = $this->pricingService->recalculateProductAllWarehouses($productId);
-
-                Log::info('Precios actualizados en todos los almacenes', $result);
-            } catch (\Exception $e) {
-                Log::error('Error al recalcular costos en traslado', [
-                    'error' => $e->getMessage(),
-                ]);
-            }
 
             activity()
                 ->performedOn($product)
@@ -238,10 +226,11 @@ class StockManagementService
         int $warehouseId,
         int $quantity,
         float $unitCost,
+        ?float $newSalePrice = null,
         string $reason,
         ?string $notes = null
     ): array {
-        return DB::transaction(function () use ($productId, $warehouseId, $quantity, $unitCost, $reason, $notes) {
+        return DB::transaction(function () use ($productId, $warehouseId, $quantity, $unitCost, $newSalePrice, $reason, $notes) {
 
             $product = Product::findOrFail($productId);
             $warehouse = Warehouse::findOrFail($warehouseId);
@@ -250,6 +239,7 @@ class StockManagementService
                 ['product_id' => $productId, 'warehouse_id' => $warehouseId],
                 ['available_stock' => 0, 'reserved_stock' => 0]
             );
+
             $stockBefore = $inventory->available_stock;
 
             // 1. Crear nuevo lote
@@ -288,18 +278,8 @@ class StockManagementService
             $inventory->last_movement_at = now();
             $inventory->save();
 
-            // 🔥 RECALCULAR COSTO PROMEDIO Y PRECIOS EN TODOS LOS ALMACENES
-            try {
-                Log::info('Recalculando precios en todos los almacenes después de ajuste de entrada');
-
-                $pricingResult = $this->pricingService->recalculateProductAllWarehouses($productId);
-
-                Log::info('Precios actualizados en todos los almacenes', $pricingResult);
-            } catch (\Exception $e) {
-                Log::error('Error al recalcular costos en ajuste de entrada', [
-                    'error' => $e->getMessage(),
-                ]);
-            }
+            //4. Actualizar precio de compra por ponderado con nuevo lote y precio de venta que viene
+            $pricingStatus = $this->pricingService->recalculateProductAllWarehouses($productId, $newSalePrice);
 
             activity()
                 ->performedOn($product)
@@ -336,6 +316,7 @@ class StockManagementService
                     'quantity_added' => $quantity,
                     'stock_after' => $inventory->available_stock,
                 ],
+                'pricing_status' => $pricingStatus,
                 'adjustment_date' => now()->format('Y-m-d H:i:s'),
                 'performed_by' => Auth::user()->first_name . ' ' . Auth::user()->last_name,
                 'reason' => $reason,
@@ -436,19 +417,6 @@ class StockManagementService
             $inventory->available_stock -= $quantity;
             $inventory->last_movement_at = now();
             $inventory->save();
-
-            // 🔥 RECALCULAR COSTO PROMEDIO Y PRECIOS EN TODOS LOS ALMACENES
-            try {
-                Log::info('Recalculando precios en todos los almacenes después de ajuste de salida');
-
-                $pricingResult = $this->pricingService->recalculateProductAllWarehouses($productId);
-
-                Log::info('Precios actualizados en todos los almacenes', $pricingResult);
-            } catch (\Exception $e) {
-                Log::error('Error al recalcular costos en ajuste de salida', [
-                    'error' => $e->getMessage(),
-                ]);
-            }
 
             activity()
                 ->performedOn($product)

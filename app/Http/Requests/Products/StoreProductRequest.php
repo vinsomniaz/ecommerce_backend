@@ -27,11 +27,11 @@ class StoreProductRequest extends FormRequest
             'description' => 'nullable|string|max:5000',
             'brand' => 'nullable|string|max:100',
             'min_stock' => 'nullable|integer|min:0',
-            'unit_measure' => 'nullable|string|max:10',
-            'tax_type' => 'nullable|string|max:2',
+            'unit_measure' => 'nullable|string|in:NIU,UND,KGM,MTR,LTR,ZZ',
+            'tax_type' => 'nullable|string|in:10,20,30',
             'weight' => 'nullable|numeric|min:0',
             'barcode' => 'nullable|string|max:50',
-            'distribution_price' => 'nullable|numeric|min:0',
+            'initial_cost' => 'required|numeric|min:0.0001',
 
             // ESTADOS
             'is_active' => 'boolean',
@@ -39,16 +39,22 @@ class StoreProductRequest extends FormRequest
             'visible_online' => 'boolean',
             'is_new' => 'boolean',
 
-            // ✅ NUEVO: PRECIOS POR ALMACÉN
-            'warehouse_prices' => 'nullable|array',
-            'warehouse_prices.*.warehouse_id' => 'required|exists:warehouses,id',
-            'warehouse_prices.*.sale_price' => 'required|numeric|min:0',
-            'warehouse_prices.*.min_sale_price' => 'required|numeric|min:0',
-
-            // ATRIBUTOS
+            // ATRIBUTOS PERSONALIZADOS
             'attributes' => 'nullable|array',
             'attributes.*.name' => 'required|string|max:50',
             'attributes.*.value' => 'required|string|max:200',
+
+            // ✅ PRECIOS (NUEVO)
+            'prices' => 'nullable|array',
+            'prices.*.price_list_id' => 'required|exists:price_lists,id',
+            'prices.*.warehouse_id' => 'nullable|exists:warehouses,id',
+            'prices.*.price' => 'required|numeric|min:0',
+            'prices.*.min_price' => 'nullable|numeric|min:0|lte:prices.*.price',
+            'prices.*.currency' => 'nullable|string|in:PEN,USD',
+            'prices.*.min_quantity' => 'nullable|integer|min:1',
+            'prices.*.valid_from' => 'nullable|date',
+            'prices.*.valid_to' => 'nullable|date|after:prices.*.valid_from',
+            'prices.*.is_active' => 'nullable|boolean',
         ];
     }
 
@@ -56,26 +62,37 @@ class StoreProductRequest extends FormRequest
     {
         return [
             'primary_name.required' => 'El nombre del producto es obligatorio',
+            'primary_name.min' => 'El nombre debe tener al menos 3 caracteres',
             'primary_name.max' => 'El nombre no puede exceder 200 caracteres',
+
+            'initial_cost.required' => 'El costo inicial es obligatorio',
+            'initial_cost.numeric'  => 'El costo inicial debe ser numérico',
+            'initial_cost.min'      => 'El costo inicial debe ser mayor a 0',
+
             'category_id.required' => 'La categoría es obligatoria',
             'category_id.exists' => 'La categoría seleccionada no existe',
+
             'sku.unique' => 'Este SKU ya está registrado en el sistema',
             'sku.max' => 'El SKU no puede exceder 50 caracteres',
-            'min_stock.min' => 'El stock mínimo debe ser mayor o igual a 0',
 
-            // ✅ NUEVO: Mensajes para precios por almacén
-            'warehouse_prices.array' => 'Los precios de almacén deben ser un array',
-            'warehouse_prices.*.warehouse_id.required' => 'El ID del almacén es obligatorio',
-            'warehouse_prices.*.warehouse_id.exists' => 'El almacén seleccionado no existe',
-            'warehouse_prices.*.sale_price.required' => 'El precio de venta es obligatorio',
-            'warehouse_prices.*.sale_price.numeric' => 'El precio de venta debe ser un número',
-            'warehouse_prices.*.sale_price.min' => 'El precio de venta debe ser mayor o igual a 0',
-            'warehouse_prices.*.min_sale_price.required' => 'El precio mínimo es obligatorio',
-            'warehouse_prices.*.min_sale_price.numeric' => 'El precio mínimo debe ser un número',
-            'warehouse_prices.*.min_sale_price.min' => 'El precio mínimo debe ser mayor o igual a 0',
+            'min_stock.min' => 'El stock mínimo debe ser mayor o igual a 0',
+            'unit_measure.in' => 'La unidad de medida no es válida',
+            'tax_type.in' => 'El tipo de IGV no es válido',
 
             'attributes.*.name.required' => 'El nombre del atributo es obligatorio',
             'attributes.*.value.required' => 'El valor del atributo es obligatorio',
+
+            // ✅ MENSAJES DE PRECIOS
+            'prices.*.price_list_id.required' => 'La lista de precios es obligatoria',
+            'prices.*.price_list_id.exists' => 'La lista de precios seleccionada no existe',
+            'prices.*.warehouse_id.exists' => 'El almacén seleccionado no existe',
+            'prices.*.price.required' => 'El precio es obligatorio',
+            'prices.*.price.min' => 'El precio debe ser mayor o igual a 0',
+            'prices.*.min_price.min' => 'El precio mínimo debe ser mayor o igual a 0',
+            'prices.*.min_price.lte' => 'El precio mínimo no puede ser mayor al precio normal',
+            'prices.*.currency.in' => 'La moneda debe ser PEN o USD',
+            'prices.*.min_quantity.min' => 'La cantidad mínima debe ser al menos 1',
+            'prices.*.valid_to.after' => 'La fecha de fin debe ser posterior a la fecha de inicio',
         ];
     }
 
@@ -100,27 +117,22 @@ class StoreProductRequest extends FormRequest
             'is_active' => $this->boolean('is_active', true),
             'is_featured' => $this->boolean('is_featured', false),
             'visible_online' => $this->boolean('visible_online', true),
+            'is_new' => $this->boolean('is_new', false),
         ]);
-    }
 
-    // ✅ NUEVO: Validación adicional
-    public function withValidator($validator)
-    {
-        $validator->after(function ($validator) {
-            $warehousePrices = $this->input('warehouse_prices', []);
+        // ✅ Establecer valores por defecto en precios
+        if ($this->has('prices') && is_array($this->prices)) {
+            $prices = collect($this->prices)->map(function ($price) {
+                return array_merge([
+                    'currency' => 'PEN',
+                    'min_quantity' => 1,
+                    'valid_from' => now()->toDateTimeString(),
+                    'is_active' => true,
+                ], $price);
+            })->toArray();
 
-            foreach ($warehousePrices as $index => $prices) {
-                // Validar que min_sale_price no sea mayor que sale_price
-                if (isset($prices['sale_price']) && isset($prices['min_sale_price'])) {
-                    if ($prices['min_sale_price'] > $prices['sale_price']) {
-                        $validator->errors()->add(
-                            "warehouse_prices.{$index}.min_sale_price",
-                            'El precio mínimo no puede ser mayor al precio de venta'
-                        );
-                    }
-                }
-            }
-        });
+            $this->merge(['prices' => $prices]);
+        }
     }
 
     protected function failedValidation(Validator $validator)
@@ -136,5 +148,31 @@ class StoreProductRequest extends FormRequest
         }
 
         parent::failedValidation($validator);
+    }
+
+    public function withValidator(Validator $validator)
+    {
+        $validator->after(function ($validator) {
+            if ($this->has('prices') && is_array($this->prices)) {
+                $combinations = [];
+
+                foreach ($this->prices as $index => $price) {
+                    $key = sprintf(
+                        '%s-%s',
+                        $price['price_list_id'] ?? 'null',
+                        $price['warehouse_id'] ?? 'null'
+                    );
+
+                    if (in_array($key, $combinations)) {
+                        $validator->errors()->add(
+                            "prices.{$index}",
+                            'Ya existe un precio con la misma lista y almacén en este formulario'
+                        );
+                    }
+
+                    $combinations[] = $key;
+                }
+            }
+        });
     }
 }

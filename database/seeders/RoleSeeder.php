@@ -115,6 +115,29 @@ class RoleSeeder extends Seeder
                 ['name' => 'attributes.bulk-update', 'display_name' => 'Actualización masiva de atributos', 'description' => 'Actualiza múltiples atributos de producto en bloque.'],
             ],
 
+            'Product Prices' => [
+                ['name' => 'product-prices.index', 'display_name' => 'Listar precios de productos', 'description' => 'Lista todos los precios configurados para los productos.'],
+                ['name' => 'product-prices.show', 'display_name' => 'Ver precio de producto', 'description' => 'Muestra el detalle de un precio específico de producto.'],
+                ['name' => 'product-prices.store', 'display_name' => 'Crear precio de producto', 'description' => 'Registra un nuevo precio para un producto en una lista de precios.'],
+                ['name' => 'product-prices.update', 'display_name' => 'Actualizar precio de producto', 'description' => 'Actualiza un precio existente de producto.'],
+                ['name' => 'product-prices.destroy', 'display_name' => 'Eliminar precio de producto', 'description' => 'Elimina (desactiva o borra) un precio de producto.'],
+                ['name' => 'product-prices.bulk-update', 'display_name' => 'Actualización masiva de precios', 'description' => 'Actualiza múltiples precios de productos en una sola operación.'],
+                ['name' => 'product-prices.copy', 'display_name' => 'Copiar precios entre listas', 'description' => 'Copia precios de una lista de precios a otra.'],
+                ['name' => 'product-prices.calculate', 'display_name' => 'Calcular precios desde costo', 'description' => 'Calcula precios automáticamente a partir del costo y márgenes.'],
+                ['name' => 'product-prices.by-product', 'display_name' => 'Ver precios por producto', 'description' => 'Obtiene todos los precios asociados a un producto.'],
+                ['name' => 'product-prices.statistics', 'display_name' => 'Estadísticas de precios', 'description' => 'Obtiene estadísticas de precios y márgenes.'],
+                ['name' => 'product-prices.deactivate-expired', 'display_name' => 'Desactivar precios vencidos', 'description' => 'Desactiva precios cuya vigencia haya expirado.'],
+                ['name' => 'product-prices.toggle-active', 'display_name' => 'Activar/Desactivar precios', 'description' => 'Cambia el estado activo/inactivo de un precio.'],
+            ],
+
+            'Price Lists' => [
+                ['name' => 'price-lists.view', 'display_name' => 'Ver listas de precios', 'description' => 'Permite ver el listado y detalles de listas de precios.'],
+                ['name' => 'price-lists.create', 'display_name' => 'Crear listas de precios', 'description' => 'Permite crear nuevas listas de precios.'],
+                ['name' => 'price-lists.update', 'display_name' => 'Actualizar listas de precios', 'description' => 'Permite editar listas de precios existentes.'],
+                ['name' => 'price-lists.delete', 'display_name' => 'Eliminar listas de precios', 'description' => 'Permite eliminar listas de precios.'],
+                ['name' => 'price-lists.statistics', 'display_name' => 'Estadísticas de listas de precios', 'description' => 'Permite ver estadísticas globales de listas de precios.'],
+            ],
+
             'Inventory' => [
                 ['name' => 'inventory.index', 'display_name' => 'Listado de inventario', 'description' => 'Obtiene el listado general de inventario.'],
                 ['name' => 'inventory.show', 'display_name' => 'Ver inventario', 'description' => 'Muestra el detalle de inventario de un producto en un almacén.'],
@@ -133,6 +156,7 @@ class RoleSeeder extends Seeder
                 ['name' => 'inventory.view.own-warehouse', 'display_name' => 'Ver inventario de su almacén', 'description' => 'Solo puede consultar inventario de su warehouse_id asignado.'],
                 ['name' => 'inventory.manage.all-warehouses', 'display_name' => 'Gestionar inventario de todos los almacenes', 'description' => 'Puede modificar inventario de cualquier almacén.'],
                 ['name' => 'inventory.manage.own-warehouse', 'display_name' => 'Gestionar inventario de su almacén', 'description' => 'Solo puede modificar inventario de su warehouse_id.'],
+                ['name' => 'pricing.update-prices', 'display_name' => 'Actualizar precios de venta productos', 'description' => 'Puede actualizar precios de venta productos.'],
             ],
 
             'Stock Management' => [
@@ -371,6 +395,20 @@ class RoleSeeder extends Seeder
             'attributes.update',
             'attributes.destroy',
             'attributes.bulk-update',
+
+            // PRODUCT PRICES
+            'product-prices.index',
+            'product-prices.show',
+            'product-prices.store',
+            'product-prices.update',
+            'product-prices.destroy',
+            'product-prices.bulk-update',
+            'product-prices.copy',
+            'product-prices.calculate',
+            'product-prices.by-product',
+            'product-prices.statistics',
+            'product-prices.deactivate-expired',
+            'product-prices.toggle-active',
 
             // INVENTORY
             'inventory.index',

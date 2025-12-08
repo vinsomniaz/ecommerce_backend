@@ -11,6 +11,9 @@ class InventoryResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        // ✅ Obtener precio según lista de precios (puede venir del request)
+        $priceListId = $request->input('price_list_id');
+
         return [
             'product_id' => $this->product_id,
             'warehouse_id' => $this->warehouse_id,
@@ -29,6 +32,7 @@ class InventoryResource extends JsonResource
                     return [
                         'id' => $this->product->category->id ?? null,
                         'name' => $this->product->category->name ?? null,
+                        'normal_margin_percentage' => $this->product->category->getEffectiveNormalMargin() ?? null,
                     ];
                 }),
                 'images' => $this->when($this->product->relationLoaded('media'), function () {
@@ -47,7 +51,6 @@ class InventoryResource extends JsonResource
             'warehouse' => [
                 'id' => $this->warehouse->id,
                 'name' => $this->warehouse->name,
-                'code' => $this->warehouse->code ?? null,
                 'address' => $this->warehouse->address ?? null,
                 'is_main' => $this->warehouse->is_main ?? false,
                 'is_active' => $this->warehouse->is_active ?? true,
@@ -63,10 +66,17 @@ class InventoryResource extends JsonResource
             'is_low_stock' => $this->available_stock <= ($this->product->min_stock ?? 0),
             'is_out_of_stock' => $this->available_stock === 0,
 
-            // Precios
-            'sale_price' => $this->sale_price ? number_format($this->sale_price, 2, '.', '') : null,
-            'profit_margin' => $this->profit_margin ? number_format($this->profit_margin, 2, '.', '') : null,
-            'min_sale_price' => $this->min_sale_price ? number_format($this->min_sale_price, 2, '.', '') : null,
+            // ✅ ACTUALIZADO: Precios desde product_prices
+            'sale_price' => $this->getSalePrice($priceListId),
+            'min_sale_price' => $this->getMinSalePrice($priceListId),
+            'profit_margin' => $this->getProfitMargin($priceListId),
+            'average_cost' => $this->average_cost ? number_format($this->average_cost, 4, '.', '') : null,
+
+            // ✅ NUEVO: Información de precios disponibles
+            'available_prices' => $this->when(
+                $request->input('include_all_prices'),
+                fn() => $this->getAllPrices()
+            ),
 
             // Fechas
             'price_updated_at' => $this->price_updated_at?->toIso8601String(),
@@ -74,7 +84,7 @@ class InventoryResource extends JsonResource
 
             // Metadatos útiles
             'stock_percentage' => $this->getStockPercentage(),
-            'estimated_value' => $this->getEstimatedValue(),
+            'estimated_value' => $this->getEstimatedValue($priceListId),
         ];
     }
 
@@ -110,14 +120,16 @@ class InventoryResource extends JsonResource
     }
 
     /**
-     * Calcular valor estimado del inventario
+     * ✅ ACTUALIZADO: Calcular valor estimado con precio de lista
      */
-    private function getEstimatedValue(): ?float
+    private function getEstimatedValue(?int $priceListId = null): ?float
     {
-        if (!$this->sale_price || $this->available_stock === 0) {
+        $salePrice = $this->getSalePrice($priceListId);
+
+        if (!$salePrice || $this->available_stock === 0) {
             return null;
         }
 
-        return round($this->available_stock * $this->sale_price, 2);
+        return round($this->available_stock * $salePrice, 2);
     }
 }

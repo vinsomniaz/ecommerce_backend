@@ -9,6 +9,8 @@ use App\Exceptions\Products\ProductAlreadyExistsException;
 use App\Exceptions\Products\ProductInUseException;
 use App\Models\Category;
 use App\Models\Inventory;
+use App\Models\PriceList;
+use App\Models\ProductPrice;
 use App\Models\Warehouse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
@@ -34,33 +36,39 @@ class ProductService
                 $data['sku'] = $this->generateUniqueSku();
             }
 
-            // Extraer atributos y precios antes de crear el producto
+            // ✅ Extraer atributos y precios
             $attributes = $data['attributes'] ?? [];
-            $warehousePrices = $data['warehouse_prices'] ?? []; // ✅ NUEVO
-            unset($data['attributes'], $data['warehouse_prices']); // ✅ ACTUALIZADO
+            $prices = $data['prices'] ?? [];
+            unset($data['attributes'], $data['prices']);
 
             $data = $this->setDefaultValues($data);
             $product = Product::create($data);
 
-            // Crear atributos si existen
+            // Sincronizar atributos
             if (!empty($attributes)) {
                 $this->syncAttributes($product, $attributes);
             }
 
-            // ✅ NUEVO: Asignar producto a todos los almacenes CON PRECIOS
-            $this->assignProductToAllWarehouses($product, $warehousePrices);
+            // ✅ Asignar a almacenes
+            $this->assignProductToAllWarehouses($product);
+
+            // ✅ Crear precios si se enviaron
+            if (!empty($prices)) {
+                $this->syncPrices($product, $prices);
+            }
 
             activity()
                 ->performedOn($product)
                 ->causedBy(Auth::user())
-                ->withProperties($data)
-                ->log('Producto creado y asignado a almacenes');
+                ->withProperties([
+                    'data' => $data,
+                    'prices_count' => count($prices),
+                ])
+                ->log('Producto creado con precios y asignado a almacenes');
 
-            return $product->fresh(['attributes', 'category', 'inventory.warehouse']);
+            return $product->fresh(['attributes', 'category', 'inventory.warehouse', 'productPrices.priceList']);
         });
     }
-
-
     /**
      * Actualizar un producto existente
      */
@@ -68,36 +76,29 @@ class ProductService
     {
         return DB::transaction(function () use ($id, $data) {
             $product = Product::findOrFail($id);
-
             $oldData = $product->toArray();
 
-            // Validar SKU único si cambió
             if (isset($data['sku']) && $data['sku'] !== $product->sku) {
-                if (
-                    Product::where('sku', $data['sku'])
-                    ->where('id', '!=', $id)
-                    ->exists()
-                ) {
+                if (Product::where('sku', $data['sku'])->where('id', '!=', $id)->exists()) {
                     throw new ProductAlreadyExistsException($data['sku']);
                 }
             }
 
-            // ✅ Extraer atributos y precios antes de actualizar
+            // ✅ Extraer atributos y precios
             $attributes = $data['attributes'] ?? null;
-            $warehousePrices = $data['warehouse_prices'] ?? null;
-            unset($data['attributes'], $data['warehouse_prices']);
+            $prices = $data['prices'] ?? null;
+            unset($data['attributes'], $data['prices']);
 
-            // Actualizar solo los campos enviados
             $product->update($data);
 
-            // ✅ Sincronizar atributos si se enviaron
+            // Sincronizar atributos si se enviaron
             if ($attributes !== null) {
                 $this->syncAttributes($product, $attributes);
             }
 
-            // ✅ Actualizar precios por almacén si se enviaron
-            if ($warehousePrices !== null) {
-                $this->updateWarehousePrices($product, $warehousePrices);
+            // ✅ Sincronizar precios si se enviaron
+            if ($prices !== null) {
+                $this->syncPrices($product, $prices);
             }
 
             activity()
@@ -107,20 +108,171 @@ class ProductService
                     'old' => $oldData,
                     'new' => $product->toArray(),
                     'changed_fields' => array_keys($data),
-                    'prices_updated' => $warehousePrices !== null,
+                    'prices_updated' => $prices !== null,
                 ])
                 ->log('Producto actualizado');
 
-            Log::info('Producto actualizado', [
-                'id' => $product->id,
-                'changed_fields' => array_keys($data),
-                'prices_updated' => $warehousePrices !== null,
+            return $product->fresh([
+                'attributes',
+                'category',
+                'media',
+                'inventory.warehouse',
+                'productPrices.priceList',
+                'productPrices.warehouse'
             ]);
-
-            return $product->fresh(['attributes', 'category', 'media', 'inventory.warehouse']);
         });
     }
 
+
+    /**
+     * ✅ Sincronizar precios del producto
+     */
+    private function syncPrices(Product $product, array $prices): void
+    {
+        $priceIds = [];
+
+        foreach ($prices as $priceData) {
+            if (!empty($priceData['id'])) {
+                // Actualizar existente
+                $price = ProductPrice::where('id', $priceData['id'])
+                    ->where('product_id', $product->id)
+                    ->first();
+
+                if ($price) {
+                    $price->update([
+                        'price_list_id' => $priceData['price_list_id'],
+                        'warehouse_id' => $priceData['warehouse_id'] ?? null,
+                        'price' => $priceData['price'],
+                        'min_price' => $priceData['min_price'] ?? null,
+                        'currency' => $priceData['currency'] ?? 'PEN',
+                        'min_quantity' => $priceData['min_quantity'] ?? 1,
+                        'valid_from' => $priceData['valid_from'] ?? now(),
+                        'valid_to' => $priceData['valid_to'] ?? null,
+                        'is_active' => $priceData['is_active'] ?? true,
+                    ]);
+                    $priceIds[] = $price->id;
+                }
+            } else {
+                // Crear o actualizar si ya existe
+                $existingPrice = ProductPrice::where('product_id', $product->id)
+                    ->where('price_list_id', $priceData['price_list_id'])
+                    ->where('warehouse_id', $priceData['warehouse_id'] ?? null)
+                    ->first();
+
+                if ($existingPrice) {
+                    $existingPrice->update([
+                        'price' => $priceData['price'],
+                        'min_price' => $priceData['min_price'] ?? null,
+                        'currency' => $priceData['currency'] ?? 'PEN',
+                        'min_quantity' => $priceData['min_quantity'] ?? 1,
+                        'valid_from' => $priceData['valid_from'] ?? now(),
+                        'valid_to' => $priceData['valid_to'] ?? null,
+                        'is_active' => $priceData['is_active'] ?? true,
+                    ]);
+                    $priceIds[] = $existingPrice->id;
+                } else {
+                    $newPrice = ProductPrice::create([
+                        'product_id' => $product->id,
+                        'price_list_id' => $priceData['price_list_id'],
+                        'warehouse_id' => $priceData['warehouse_id'] ?? null,
+                        'price' => $priceData['price'],
+                        'min_price' => $priceData['min_price'] ?? null,
+                        'currency' => $priceData['currency'] ?? 'PEN',
+                        'min_quantity' => $priceData['min_quantity'] ?? 1,
+                        'valid_from' => $priceData['valid_from'] ?? now(),
+                        'valid_to' => $priceData['valid_to'] ?? null,
+                        'is_active' => $priceData['is_active'] ?? true,
+                    ]);
+                    $priceIds[] = $newPrice->id;
+                }
+            }
+        }
+
+        // ELIMINAR precios que no están en el array
+        if (!empty($priceIds)) {
+            ProductPrice::where('product_id', $product->id)
+                ->whereNotIn('id', $priceIds)
+                ->delete();
+        }
+
+        Log::info("Precios sincronizados", [
+            'product_id' => $product->id,
+            'prices_count' => count($priceIds),
+        ]);
+    }
+
+    /**
+     * ✅ Eliminar precio específico de un producto
+     *
+     * @param Product $product
+     * @param int $priceId
+     * @return bool
+     */
+    public function deletePrice(Product $product, int $priceId): bool
+    {
+        $price = ProductPrice::where('id', $priceId)
+            ->where('product_id', $product->id)
+            ->firstOrFail();
+
+        $deleted = $price->delete();
+
+        if ($deleted) {
+            activity()
+                ->performedOn($product)
+                ->causedBy(Auth::user())
+                ->withProperties([
+                    'price_id' => $priceId,
+                    'price_list_id' => $price->price_list_id,
+                    'warehouse_id' => $price->warehouse_id,
+                ])
+                ->log('Precio eliminado del producto');
+        }
+
+        return $deleted;
+    }
+
+    /**
+     * ✅ Obtener todos los precios de un producto agrupados por lista
+     *
+     * @param Product $product
+     * @param int|null $warehouseId
+     * @return array
+     */
+    public function getProductPrices(Product $product, ?int $warehouseId = null): array
+    {
+        $query = $product->productPrices()
+            ->with(['priceList:id,code,name', 'warehouse:id,name'])
+            ->where('is_active', true)
+            ->orderBy('price_list_id')
+            ->orderBy('warehouse_id');
+
+        if ($warehouseId) {
+            $query->where(function ($q) use ($warehouseId) {
+                $q->whereNull('warehouse_id')
+                    ->orWhere('warehouse_id', $warehouseId);
+            });
+        }
+
+        return $query->get()->map(function ($price) {
+            return [
+                'id' => $price->id,
+                'price_list_id' => $price->price_list_id,
+                'price_list_code' => $price->priceList->code,
+                'price_list_name' => $price->priceList->name,
+                'warehouse_id' => $price->warehouse_id,
+                'warehouse_name' => $price->warehouse?->name,
+                'price' => (float) $price->price,
+                'min_price' => (float) $price->min_price,
+                'currency' => $price->currency,
+                'min_quantity' => $price->min_quantity,
+                'valid_from' => $price->valid_from?->toDateTimeString(),
+                'valid_to' => $price->valid_to?->toDateTimeString(),
+                'is_active' => $price->is_active,
+                'is_currently_valid' => $price->isCurrentlyValid(),
+                'scope' => $price->getScopeDescription(),
+            ];
+        })->toArray();
+    }
 
     /**
      * Eliminar un producto (soft delete)
@@ -598,28 +750,27 @@ class ProductService
      */
     public function getStatistics(): array
     {
-        // Calcular valor total de inventario desde lotes activos
-        $totalInventoryValue = DB::table('purchase_batches')
-            ->where('status', 'active')
-            ->sum(DB::raw('quantity_available * distribution_price'));
+        // Calcular valor desde product_prices (lista por defecto)
+        $defaultPriceList = PriceList::where('is_active', true)
+            ->orderBy('id')
+            ->first();
 
-        // Calcular valor de costo total
-        $totalCostValue = DB::table('purchase_batches')
-            ->where('status', 'active')
-            ->sum(DB::raw('quantity_available * purchase_price'));
+        $totalInventoryValue = 0;
 
-        // Stock total disponible
-        $totalStock = DB::table('inventory')->sum('available_stock');
+        if ($defaultPriceList) {
+            $inventories = Inventory::where('available_stock', '>', 0)->get();
 
-        // Productos con stock bajo
-        $lowStockProducts = Product::whereHas('inventory', function ($q) {
-            $q->whereColumn('available_stock', '<=', 'products.min_stock');
-        })->count();
+            foreach ($inventories as $inv) {
+                $price = $inv->getSalePrice($defaultPriceList->id);
+                if ($price) {
+                    $totalInventoryValue += $inv->available_stock * $price;
+                }
+            }
+        }
 
-        // Productos sin stock
-        $outOfStockProducts = Product::whereDoesntHave('inventory', function ($q) {
-            $q->where('available_stock', '>', 0);
-        })->count();
+        $totalCostValue = Inventory::where('available_stock', '>', 0)
+            ->selectRaw('SUM(available_stock * average_cost) as total')
+            ->value('total') ?? 0;
 
         return [
             'total_products' => Product::count(),
@@ -629,23 +780,23 @@ class ProductService
             'online_products' => Product::where('visible_online', true)->count(),
             'trashed_products' => Product::onlyTrashed()->count(),
 
-            // Estadísticas de inventario
-            'total_stock' => (int) $totalStock,
-            'low_stock_products' => $lowStockProducts,
-            'out_of_stock_products' => $outOfStockProducts,
+            'total_stock' => (int) DB::table('inventory')->sum('available_stock'),
+            'low_stock_products' => Product::whereHas('inventory', function ($q) {
+                $q->whereColumn('available_stock', '<=', 'products.min_stock');
+            })->count(),
+            'out_of_stock_products' => Product::whereDoesntHave('inventory', function ($q) {
+                $q->where('available_stock', '>', 0);
+            })->count(),
 
-            // Valores monetarios
             'total_inventory_value' => round($totalInventoryValue, 2),
             'total_cost_value' => round($totalCostValue, 2),
             'potential_profit' => round($totalInventoryValue - $totalCostValue, 2),
 
-            // Otros
             'brands_count' => Product::distinct('brand')->whereNotNull('brand')->count('brand'),
             'categories_count' => Product::distinct('category_id')->count('category_id'),
             'products_with_batches' => Product::has('purchaseBatches')->count(),
         ];
     }
-
     /**
      * Duplicar un producto
      */
@@ -685,9 +836,8 @@ class ProductService
     }
 
     // ==================== MÉTODOS PRIVADOS ====================
-    private function assignProductToAllWarehouses(Product $product, array $warehousePrices = []): void
+    private function assignProductToAllWarehouses(Product $product): void
     {
-        // Obtener todos los almacenes activos
         $warehouses = Warehouse::active()->get();
 
         if ($warehouses->isEmpty()) {
@@ -695,66 +845,19 @@ class ProductService
             return;
         }
 
-        // ✅ NUEVO: Crear un mapa de precios por warehouse_id
-        $pricesMap = collect($warehousePrices)->keyBy('warehouse_id');
-
         foreach ($warehouses as $warehouse) {
-            // ✅ NUEVO: Obtener precios específicos del almacén o usar 0.00 por defecto
-            $warehousePriceData = $pricesMap->get($warehouse->id);
-
-            $salePrice = $warehousePriceData['sale_price'] ?? 0.00;
-            $minSalePrice = $warehousePriceData['min_sale_price'] ?? 0.00;
-
             Inventory::create([
                 'product_id' => $product->id,
                 'warehouse_id' => $warehouse->id,
                 'available_stock' => 0,
                 'reserved_stock' => 0,
-                'sale_price' => $salePrice,           // ✅ ACTUALIZADO
-                'min_sale_price' => $minSalePrice,    // ✅ ACTUALIZADO
-                'profit_margin' => 0.00,
+                'average_cost' => 0.00, // Se actualiza cuando hay compras
+                'price_updated_at' => null,
                 'last_movement_at' => null,
             ]);
         }
 
-        Log::info("Producto #{$product->id} asignado a {$warehouses->count()} almacenes con precios");
-    }
-
-    private function updateWarehousePrices(Product $product, array $warehousePrices): void
-    {
-        foreach ($warehousePrices as $priceData) {
-            $warehouseId = $priceData['warehouse_id'];
-            $salePrice = $priceData['sale_price'];
-            $minSalePrice = $priceData['min_sale_price'];
-
-            // Buscar o crear el inventario para este almacén
-            $inventory = Inventory::firstOrCreate(
-                [
-                    'product_id' => $product->id,
-                    'warehouse_id' => $warehouseId,
-                ],
-                [
-                    'available_stock' => 0,
-                    'reserved_stock' => 0,
-                    'sale_price' => $salePrice,
-                    'min_sale_price' => $minSalePrice,
-                    'profit_margin' => 0.00,
-                    'last_movement_at' => null,
-                ]
-            );
-
-            // Si ya existe, actualizar solo los precios
-            if (!$inventory->wasRecentlyCreated) {
-                $inventory->update([
-                    'sale_price' => $salePrice,
-                    'min_sale_price' => $minSalePrice,
-                ]);
-            }
-        }
-
-        Log::info("Precios actualizados para producto #{$product->id}", [
-            'warehouses_count' => count($warehousePrices),
-        ]);
+        Log::info("Producto #{$product->id} asignado a {$warehouses->count()} almacén(es)");
     }
     /**
      * Verificar si el producto tiene transacciones
@@ -800,17 +903,40 @@ class ProductService
      */
     private function syncAttributes(Product $product, array $attributes): void
     {
-        // Eliminar atributos existentes
-        $product->attributes()->delete();
+        $attributeIds = [];
 
-        // Crear nuevos atributos
-        foreach ($attributes as $attribute) {
-            if (!empty($attribute['name']) && !empty($attribute['value'])) {
-                $product->attributes()->create([
-                    'name' => $attribute['name'],
-                    'value' => $attribute['value'],
-                ]);
+        foreach ($attributes as $attr) {
+            if (empty($attr['name']) || empty($attr['value'])) {
+                continue; // Saltar atributos vacíos
             }
+
+            if (!empty($attr['id'])) {
+                // Actualizar existente
+                $existingAttr = $product->attributes()->find($attr['id']);
+
+                if ($existingAttr) {
+                    $existingAttr->update([
+                        'name' => $attr['name'],
+                        'value' => $attr['value'],
+                    ]);
+                    $attributeIds[] = $existingAttr->id;
+                }
+            } else {
+                // Crear nuevo
+                $newAttr = $product->attributes()->create([
+                    'name' => $attr['name'],
+                    'value' => $attr['value'],
+                ]);
+                $attributeIds[] = $newAttr->id;
+            }
+        }
+
+        // 🔥 ELIMINAR atributos que no están en el array
+        if (!empty($attributeIds)) {
+            $product->attributes()->whereNotIn('id', $attributeIds)->delete();
+        } else {
+            // Si no hay atributos, eliminar todos
+            $product->attributes()->delete();
         }
     }
 

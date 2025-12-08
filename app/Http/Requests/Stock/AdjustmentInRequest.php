@@ -20,19 +20,19 @@ class AdjustmentInRequest extends FormRequest
             'warehouse_id' => 'required|exists:warehouses,id',
             'quantity' => 'required|integer|min:1|max:999999',
             'unit_cost' => 'required|numeric|min:0|max:999999.99',
+            'new_sale_price' => 'required|numeric|min:0|max:999999.99',
             'reason' => [
                 'required',
                 Rule::in(['purchase','manual_entry', 'found_stock', 'correction', 'return', 'other'])
             ],
             'notes' => 'nullable|string|max:500',
-            'expiry_date' => 'nullable|date|after:today',
         ];
     }
 
     public function messages(): array
     {
         return [
-            'expiry_date.after' => 'La fecha de vencimiento debe ser posterior a hoy',
+            "new_sale_price.required" => "El nuevo precio de venta debe enviarse",
         ];
     }
 }

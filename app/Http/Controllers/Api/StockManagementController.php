@@ -4,6 +4,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Stock\AdjustmentInRequest;
+use App\Http\Requests\Stock\AdjustmentOutRequest;
+use App\Http\Requests\Stock\TransferStockRequest;
 use App\Services\StockManagementService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -19,15 +22,9 @@ class StockManagementController extends Controller
      * Traslado de stock entre almacenes
      * POST /api/stock/transfer
      */
-    public function transfer(Request $request): JsonResponse
+    public function transfer(TransferStockRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'product_id' => 'required|exists:products,id',
-            'from_warehouse_id' => 'required|exists:warehouses,id',
-            'to_warehouse_id' => 'required|exists:warehouses,id|different:from_warehouse_id',
-            'quantity' => 'required|integer|min:1',
-            'notes' => 'nullable|string|max:500',
-        ]);
+        $validated = $request->validated();
 
         try {
             $result = $this->stockService->transferStock(
@@ -43,7 +40,6 @@ class StockManagementController extends Controller
                 'message' => 'Traslado realizado exitosamente',
                 'data' => $result,
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -59,16 +55,10 @@ class StockManagementController extends Controller
      *
      * ✅ SOLO unit_cost - el precio de venta se calcula automáticamente
      */
-    public function adjustmentIn(Request $request): JsonResponse
+    public function adjustmentIn(AdjustmentInRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'product_id' => 'required|exists:products,id',
-            'warehouse_id' => 'required|exists:warehouses,id',
-            'quantity' => 'required|integer|min:1',
-            'unit_cost' => 'required|numeric|min:0', // ✅ SOLO costo de compra
-            'reason' => ['required', Rule::in(['purchase','manual_entry', 'found_stock', 'correction', 'return', 'other'])],
-            'notes' => 'nullable|string|max:500',
-        ]);
+        // Validar en request AdjustmentInRequest
+        $validated = $request->validated();
 
         try {
             $result = $this->stockService->adjustmentIn(
@@ -76,6 +66,7 @@ class StockManagementController extends Controller
                 $validated['warehouse_id'],
                 $validated['quantity'],
                 $validated['unit_cost'],
+                $validated['new_sale_price'],
                 $validated['reason'],
                 $validated['notes'] ?? null
             );
@@ -85,7 +76,6 @@ class StockManagementController extends Controller
                 'message' => 'Entrada de stock registrada exitosamente',
                 'data' => $result,
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -99,15 +89,9 @@ class StockManagementController extends Controller
      * Ajuste de salida de stock (decrementar)
      * POST /api/stock/adjustment/out
      */
-    public function adjustmentOut(Request $request): JsonResponse
+    public function adjustmentOut(AdjustmentOutRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'product_id' => 'required|exists:products,id',
-            'warehouse_id' => 'required|exists:warehouses,id',
-            'quantity' => 'required|integer|min:1',
-            'reason' => ['required', Rule::in(['sale','damaged', 'expired', 'lost', 'correction', 'sample', 'other'])],
-            'notes' => 'nullable|string|max:500',
-        ]);
+        $validated = $request->validated();
 
         try {
             $result = $this->stockService->adjustmentOut(
@@ -123,7 +107,6 @@ class StockManagementController extends Controller
                 'message' => 'Salida de stock registrada exitosamente',
                 'data' => $result,
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -155,7 +138,6 @@ class StockManagementController extends Controller
                 'success' => true,
                 'data' => $movements,
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -186,7 +168,6 @@ class StockManagementController extends Controller
                 'success' => true,
                 'data' => $batches,
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -218,7 +199,6 @@ class StockManagementController extends Controller
                 'message' => 'Sincronización completada',
                 'data' => $result,
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,

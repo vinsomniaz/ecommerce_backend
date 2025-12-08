@@ -24,13 +24,13 @@ class ProductController extends Controller
     ) {}
 
     /**
-     * Listar productos
+     * Listar productos con filtros
      */
     public function index(Request $request)
     {
         $filters = $request->only([
             'search',
-            'category_id', // ✅ Ya lo tienes
+            'category_id',
             'brand',
             'is_active',
             'is_featured',
@@ -49,8 +49,9 @@ class ProductController extends Controller
 
         return ProductResource::collection($products);
     }
+
     /**
-     * Crear un nuevo producto (SIN precios - se asignarán con compras)
+     * Crear un nuevo producto (SIN precios - se configuran después con compras o endpoint dedicado)
      */
     public function store(StoreProductRequest $request): JsonResponse
     {
@@ -60,23 +61,18 @@ class ProductController extends Controller
             // Contar almacenes asignados
             $warehousesCount = $product->inventory()->count();
 
-            // ✅ NUEVO: Verificar si se configuraron precios
-            $pricesConfigured = $product->inventory()
-                ->where('sale_price', '>', 0)
-                ->count();
-
-            $message = "Producto creado exitosamente y asignado a {$warehousesCount} almacén(es).";
-
-            if ($pricesConfigured > 0) {
-                $message .= " Precios configurados para {$pricesConfigured} almacén(es).";
-            } else {
-                $message .= " Los precios pueden ser configurados posteriormente.";
-            }
+            $message = "Producto creado exitosamente y asignado a {$warehousesCount} almacén(es). " .
+                "Los precios se configurarán automáticamente al realizar compras.";
 
             return response()->json([
                 'success' => true,
                 'message' => $message,
-                'data' => new ProductResource($product->fresh(['attributes', 'category', 'media', 'inventory.warehouse'])),
+                'data' => new ProductResource($product->fresh([
+                    'attributes',
+                    'category',
+                    'media',
+                    'inventory.warehouse'
+                ])),
             ], 201);
         } catch (ProductAlreadyExistsException $e) {
             return response()->json([
@@ -96,9 +92,9 @@ class ProductController extends Controller
     /**
      * Ver detalles de un producto
      */
-    public function show(Product $product, Request $request): JsonResponse
+    public function show(Product $product): JsonResponse
     {
-        $product->load(['media', 'category', 'attributes']); // ✅ AGREGADO 'attributes'
+        $product->load(['media', 'category', 'attributes', 'inventory.warehouse']);
 
         return response()->json([
             'success' => true,
@@ -107,26 +103,19 @@ class ProductController extends Controller
     }
 
     /**
-     * Actualizar un producto
+     * Actualizar un producto (SIN precios)
      */
     public function update(UpdateProductRequest $request, Product $product): JsonResponse
     {
         try {
-            $updatedProduct = $this->productService->updateProduct($product->id, $request->validated());
-
-            // ✅ Verificar si se actualizaron precios
-            $pricesUpdated = $request->has('warehouse_prices');
-
-            $message = 'Producto actualizado exitosamente';
-
-            if ($pricesUpdated) {
-                $pricesCount = count($request->warehouse_prices);
-                $message .= " (precios actualizados en {$pricesCount} almacén(es))";
-            }
+            $updatedProduct = $this->productService->updateProduct(
+                $product->id,
+                $request->validated()
+            );
 
             return response()->json([
                 'success' => true,
-                'message' => $message,
+                'message' => 'Producto actualizado exitosamente',
                 'data' => new ProductResource($updatedProduct),
             ]);
         } catch (ProductAlreadyExistsException $e) {
@@ -142,7 +131,6 @@ class ProductController extends Controller
             ], 500);
         }
     }
-
 
     /**
      * Eliminar un producto (soft delete)
@@ -218,7 +206,7 @@ class ProductController extends Controller
     }
 
     /**
-     * Estadísticas
+     * Estadísticas de productos
      */
     public function statistics(): JsonResponse
     {
@@ -287,6 +275,7 @@ class ProductController extends Controller
             ], 422);
         }
     }
+
     /**
      * Establecer una imagen como principal
      */
@@ -333,6 +322,7 @@ class ProductController extends Controller
             ], 422);
         }
     }
+
     /**
      * Eliminar una imagen específica
      */

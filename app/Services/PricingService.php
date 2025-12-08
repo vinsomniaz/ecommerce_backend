@@ -15,148 +15,148 @@ class PricingService
      * Recalcula precios de una categoría cuando cambian sus márgenes
      * ✅ Usa márgenes efectivos (con herencia)
      */
-    public function recalculateCategoryPricing(Category $category, ?float $oldMarginRetail = null): array
-    {
-        return DB::transaction(function () use ($category, $oldMarginRetail) {
-            // Obtener IDs de categorías (incluye hijos y nietos)
-            $categoryIds = $category->getAllDescendantIdsWithCache();
+    // public function recalculateCategoryPricing(Category $category, ?float $oldMarginRetail = null): array
+    // {
+    //     return DB::transaction(function () use ($category, $oldMarginRetail) {
+    //         // Obtener IDs de categorías (incluye hijos y nietos)
+    //         $categoryIds = $category->getAllDescendantIdsWithCache();
 
-            // Obtener productos de esas categorías
-            $productIds = Product::whereIn('category_id', $categoryIds)->pluck('id');
+    //         // Obtener productos de esas categorías
+    //         $productIds = Product::whereIn('category_id', $categoryIds)->pluck('id');
 
-            if ($productIds->isEmpty()) {
-                Log::info('No hay productos en esta categoría para recalcular', [
-                    'category_id' => $category->id,
-                    'category_name' => $category->name,
-                ]);
+    //         if ($productIds->isEmpty()) {
+    //             Log::info('No hay productos en esta categoría para recalcular', [
+    //                 'category_id' => $category->id,
+    //                 'category_name' => $category->name,
+    //             ]);
 
-                return [
-                    'success' => true,
-                    'inventories_updated' => 0,
-                    'message' => 'No hay productos en esta categoría',
-                ];
-            }
+    //             return [
+    //                 'success' => true,
+    //                 'inventories_updated' => 0,
+    //                 'message' => 'No hay productos en esta categoría',
+    //             ];
+    //         }
 
-            // Obtener inventarios con costo promedio válido
-            $inventories = Inventory::whereIn('product_id', $productIds)
-                ->where('average_cost', '>', 0)
-                ->with('product.category') // ✅ Cargar categoría para obtener márgenes
-                ->get();
+    //         // Obtener inventarios con costo promedio válido
+    //         $inventories = Inventory::whereIn('product_id', $productIds)
+    //             ->where('average_cost', '>', 0)
+    //             ->with('product.category') // ✅ Cargar categoría para obtener márgenes
+    //             ->get();
 
-            if ($inventories->isEmpty()) {
-                Log::warning('No hay inventarios con costo promedio válido para actualizar', [
-                    'category_id' => $category->id,
-                    'products_count' => $productIds->count(),
-                ]);
+    //         if ($inventories->isEmpty()) {
+    //             Log::warning('No hay inventarios con costo promedio válido para actualizar', [
+    //                 'category_id' => $category->id,
+    //                 'products_count' => $productIds->count(),
+    //             ]);
 
-                return [
-                    'success' => true,
-                    'inventories_updated' => 0,
-                    'message' => 'No hay inventarios con costo promedio válido',
-                ];
-            }
+    //             return [
+    //                 'success' => true,
+    //                 'inventories_updated' => 0,
+    //                 'message' => 'No hay inventarios con costo promedio válido',
+    //             ];
+    //         }
 
-            $updated = 0;
-            $errors = [];
+    //         $updated = 0;
+    //         $errors = [];
 
-            foreach ($inventories as $inventory) {
-                try {
-                    // ✅ Obtener la categoría del producto (puede ser hija de la categoría actualizada)
-                    $productCategory = $inventory->product->category;
+    //         foreach ($inventories as $inventory) {
+    //             try {
+    //                 // ✅ Obtener la categoría del producto (puede ser hija de la categoría actualizada)
+    //                 $productCategory = $inventory->product->category;
 
-                    if (!$productCategory) {
-                        Log::warning('Producto sin categoría', [
-                            'product_id' => $inventory->product_id,
-                        ]);
-                        continue;
-                    }
+    //                 if (!$productCategory) {
+    //                     Log::warning('Producto sin categoría', [
+    //                         'product_id' => $inventory->product_id,
+    //                     ]);
+    //                     continue;
+    //                 }
 
-                    // ✅ USAR MÁRGENES EFECTIVOS (con herencia)
-                    $effectiveNormalMargin = $productCategory->getEffectiveNormalMargin();
-                    $effectiveMinMargin = $productCategory->getEffectiveMinMargin();
+    //                 // ✅ USAR MÁRGENES EFECTIVOS (con herencia)
+    //                 $effectiveNormalMargin = $productCategory->getEffectiveNormalMargin();
+    //                 $effectiveMinMargin = $productCategory->getEffectiveMinMargin();
 
-                    // Calcular nuevos precios
-                    $newSalePrice = $this->calculateSalePrice(
-                        $inventory->average_cost,
-                        $effectiveNormalMargin
-                    );
+    //                 // Calcular nuevos precios
+    //                 $newSalePrice = $this->calculateSalePrice(
+    //                     $inventory->average_cost,
+    //                     $effectiveNormalMargin
+    //                 );
 
-                    $newMinSalePrice = $this->calculateSalePrice(
-                        $inventory->average_cost,
-                        $effectiveMinMargin
-                    );
+    //                 $newMinSalePrice = $this->calculateSalePrice(
+    //                     $inventory->average_cost,
+    //                     $effectiveMinMargin
+    //                 );
 
-                    // Actualizar inventario
-                    $inventory->update([
-                        'sale_price' => $newSalePrice,
-                        'profit_margin' => $effectiveNormalMargin,
-                        'min_sale_price' => $newMinSalePrice,
-                        'price_updated_at' => now(),
-                    ]);
+    //                 // Actualizar inventario
+    //                 $inventory->update([
+    //                     'sale_price' => $newSalePrice,
+    //                     'profit_margin' => $effectiveNormalMargin,
+    //                     'min_sale_price' => $newMinSalePrice,
+    //                     'price_updated_at' => now(),
+    //                 ]);
 
-                    $updated++;
+    //                 $updated++;
 
-                    Log::debug('Precio actualizado con margen efectivo', [
-                        'inventory_id' => $inventory->id,
-                        'product_id' => $inventory->product_id,
-                        'product_category' => $productCategory->name,
-                        'category_own_margin' => $productCategory->normal_margin_percentage,
-                        'effective_margin' => $effectiveNormalMargin,
-                        'inherited' => $productCategory->inheritsMargins(),
-                        'average_cost' => $inventory->average_cost,
-                        'new_sale_price' => $newSalePrice,
-                    ]);
+    //                 Log::debug('Precio actualizado con margen efectivo', [
+    //                     'inventory_id' => $inventory->id,
+    //                     'product_id' => $inventory->product_id,
+    //                     'product_category' => $productCategory->name,
+    //                     'category_own_margin' => $productCategory->normal_margin_percentage,
+    //                     'effective_margin' => $effectiveNormalMargin,
+    //                     'inherited' => $productCategory->inheritsMargins(),
+    //                     'average_cost' => $inventory->average_cost,
+    //                     'new_sale_price' => $newSalePrice,
+    //                 ]);
 
-                } catch (\Exception $e) {
-                    $errors[] = [
-                        'inventory_id' => $inventory->id,
-                        'product_id' => $inventory->product_id,
-                        'warehouse_id' => $inventory->warehouse_id,
-                        'error' => $e->getMessage(),
-                    ];
+    //             } catch (\Exception $e) {
+    //                 $errors[] = [
+    //                     'inventory_id' => $inventory->id,
+    //                     'product_id' => $inventory->product_id,
+    //                     'warehouse_id' => $inventory->warehouse_id,
+    //                     'error' => $e->getMessage(),
+    //                 ];
 
-                    Log::error('Error actualizando precio de inventario', [
-                        'inventory_id' => $inventory->id,
-                        'product_id' => $inventory->product_id,
-                        'warehouse_id' => $inventory->warehouse_id,
-                        'error' => $e->getMessage(),
-                        'trace' => $e->getTraceAsString(),
-                    ]);
-                }
-            }
+    //                 Log::error('Error actualizando precio de inventario', [
+    //                     'inventory_id' => $inventory->id,
+    //                     'product_id' => $inventory->product_id,
+    //                     'warehouse_id' => $inventory->warehouse_id,
+    //                     'error' => $e->getMessage(),
+    //                     'trace' => $e->getTraceAsString(),
+    //                 ]);
+    //             }
+    //         }
 
-            // 🔥 SI HAY ERRORES, LANZAR EXCEPCIÓN
-            if (!empty($errors)) {
-                $errorMessage = "Se encontraron " . count($errors) . " errores al actualizar precios";
+    //         // 🔥 SI HAY ERRORES, LANZAR EXCEPCIÓN
+    //         if (!empty($errors)) {
+    //             $errorMessage = "Se encontraron " . count($errors) . " errores al actualizar precios";
 
-                Log::error('Errores críticos en recálculo de precios', [
-                    'total_errors' => count($errors),
-                    'errors' => $errors,
-                ]);
+    //             Log::error('Errores críticos en recálculo de precios', [
+    //                 'total_errors' => count($errors),
+    //                 'errors' => $errors,
+    //             ]);
 
-                throw new \Exception($errorMessage . ". Detalles: " . json_encode($errors));
-            }
+    //             throw new \Exception($errorMessage . ". Detalles: " . json_encode($errors));
+    //         }
 
-            Log::info('Precios recalculados exitosamente por cambio de margen', [
-                'category_id' => $category->id,
-                'category_name' => $category->name,
-                'old_margin' => $oldMarginRetail,
-                'new_margin' => $category->normal_margin_percentage,
-                'effective_margin' => $category->getEffectiveNormalMargin(),
-                'products_affected' => $productIds->count(),
-                'inventories_updated' => $updated,
-            ]);
+    //         Log::info('Precios recalculados exitosamente por cambio de margen', [
+    //             'category_id' => $category->id,
+    //             'category_name' => $category->name,
+    //             'old_margin' => $oldMarginRetail,
+    //             'new_margin' => $category->normal_margin_percentage,
+    //             'effective_margin' => $category->getEffectiveNormalMargin(),
+    //             'products_affected' => $productIds->count(),
+    //             'inventories_updated' => $updated,
+    //         ]);
 
-            return [
-                'success' => true,
-                'category_id' => $category->id,
-                'category_name' => $category->name,
-                'products_affected' => $productIds->count(),
-                'inventories_updated' => $updated,
-                'inventories_skipped' => 0,
-            ];
-        });
-    }
+    //         return [
+    //             'success' => true,
+    //             'category_id' => $category->id,
+    //             'category_name' => $category->name,
+    //             'products_affected' => $productIds->count(),
+    //             'inventories_updated' => $updated,
+    //             'inventories_skipped' => 0,
+    //         ];
+    //     });
+    // }
 
     /**
      * Recalcula el costo promedio ponderado GLOBAL y actualiza precios
@@ -166,17 +166,11 @@ class PricingService
     public function recalculateInventoryCost(int $productId, int $warehouseId): array
     {
         return DB::transaction(function () use ($productId, $warehouseId) {
-            // Buscar inventario
             $inventory = Inventory::where('product_id', $productId)
                 ->where('warehouse_id', $warehouseId)
                 ->first();
 
             if (!$inventory) {
-                Log::warning('Inventario no encontrado para recalcular', [
-                    'product_id' => $productId,
-                    'warehouse_id' => $warehouseId,
-                ]);
-
                 return [
                     'success' => false,
                     'message' => 'Inventario no encontrado',
@@ -184,88 +178,28 @@ class PricingService
             }
 
             $oldAverageCost = $inventory->average_cost;
-            $oldSalePrice = $inventory->sale_price;
 
-            // ✅ Calcular costo promedio GLOBAL (de todos los almacenes)
+            // ✅ Calcular costo promedio GLOBAL
             $averageCost = $this->calculateGlobalWeightedAverageCost($productId);
             $inventory->average_cost = $averageCost;
+            $inventory->save(); // ✅ SOLO guarda average_cost, NO toca sale_price
 
-            // Si no hay costo válido, solo guardar
-            if ($averageCost <= 0) {
-                $inventory->save();
-
-                return [
-                    'success' => true,
-                    'average_cost_updated' => true,
-                    'prices_updated' => false,
-                    'message' => 'Costo actualizado a 0 (sin lotes activos)',
-                ];
-            }
-
-            // Obtener categoría del producto para aplicar margen
-            $product = Product::with('category')->find($productId);
-
-            if (!$product || !$product->category) {
-                // Guardar solo el costo sin actualizar precios
-                $inventory->save();
-
-                Log::warning('Producto sin categoría, no se actualizaron precios', [
-                    'product_id' => $productId,
-                ]);
-
-                return [
-                    'success' => true,
-                    'average_cost_updated' => true,
-                    'prices_updated' => false,
-                    'message' => 'Costo actualizado pero producto sin categoría',
-                ];
-            }
-
-            $category = $product->category;
-
-            // ✅ USAR MÁRGENES EFECTIVOS (con herencia)
-            $effectiveNormalMargin = $category->getEffectiveNormalMargin();
-            $effectiveMinMargin = $category->getEffectiveMinMargin();
-
-            // Calcular nuevos precios de venta
-            $newSalePrice = $this->calculateSalePrice($averageCost, $effectiveNormalMargin);
-            $newMinSalePrice = $this->calculateSalePrice($averageCost, $effectiveMinMargin);
-
-            // Actualizar inventario con nuevos precios
-            $inventory->sale_price = $newSalePrice;
-            $inventory->profit_margin = $effectiveNormalMargin;
-            $inventory->min_sale_price = $newMinSalePrice;
-            $inventory->price_updated_at = now();
-            $inventory->save();
-
-            Log::info('Costo GLOBAL y precios recalculados con márgenes efectivos', [
+            Log::info('Costo promedio actualizado (precios NO modificados)', [
                 'product_id' => $productId,
-                'product_name' => $product->primary_name,
                 'warehouse_id' => $warehouseId,
-                'category_name' => $category->name,
-                'category_own_margin' => $category->normal_margin_percentage,
-                'effective_normal_margin' => $effectiveNormalMargin,
-                'effective_min_margin' => $effectiveMinMargin,
-                'inherits_margins' => $category->inheritsMargins(),
                 'old_average_cost' => $oldAverageCost,
                 'new_average_cost' => $averageCost,
-                'old_sale_price' => $oldSalePrice,
-                'new_sale_price' => $newSalePrice,
-                'cost_is_global' => true,
+                'sale_price' => $inventory->sale_price, // Se mantiene igual
+                'note' => 'Los precios ahora se calculan dinámicamente',
             ]);
 
             return [
                 'success' => true,
                 'average_cost_updated' => true,
-                'prices_updated' => true,
-                'product_id' => $productId,
-                'warehouse_id' => $warehouseId,
+                'prices_updated' => now(),
                 'old_average_cost' => $oldAverageCost,
                 'new_average_cost' => $averageCost,
-                'old_sale_price' => $oldSalePrice,
-                'new_sale_price' => $newSalePrice,
-                'margin_applied' => $effectiveNormalMargin,
-                'inherited_margin' => $category->inheritsMargins(),
+                'message' => 'Costo actualizado, precios se calculan dinámicamente',
             ];
         });
     }
@@ -367,6 +301,60 @@ class PricingService
     }
 
     /**
+     * ✅ NUEVO: Calcula precios sugeridos sin guardar
+     */
+    public function getSuggestedPrices(int $productId, int $warehouseId): array
+    {
+        $inventory = Inventory::where('product_id', $productId)
+            ->where('warehouse_id', $warehouseId)
+            ->with('product.category')
+            ->first();
+
+        if (!$inventory || !$inventory->product) {
+            return [
+                'suggested_sale_price' => null,
+                'suggested_min_sale_price' => null,
+                'margin_used' => null,
+                'min_margin_used' => null,
+            ];
+        }
+
+        $category = $inventory->product->category;
+
+        if (!$category) {
+            return [
+                'suggested_sale_price' => null,
+                'suggested_min_sale_price' => null,
+                'margin_used' => null,
+                'min_margin_used' => null,
+            ];
+        }
+
+        $effectiveNormalMargin = $category->getEffectiveNormalMargin();
+        $effectiveMinMargin = $category->getEffectiveMinMargin();
+
+        $suggestedSalePrice = $this->calculateSalePrice(
+            $inventory->average_cost,
+            $effectiveNormalMargin
+        );
+
+        $suggestedMinSalePrice = $this->calculateSalePrice(
+            $inventory->average_cost,
+            $effectiveMinMargin
+        );
+
+        return [
+            'suggested_sale_price' => $suggestedSalePrice,
+            'suggested_min_sale_price' => $suggestedMinSalePrice,
+            'margin_used' => $effectiveNormalMargin,
+            'min_margin_used' => $effectiveMinMargin,
+            'average_cost' => $inventory->average_cost,
+            'category_name' => $category->name,
+            'inherits_margin' => $category->inheritsMargins(),
+        ];
+    }
+
+    /**
      * Calcula el margen real de un inventario
      * Útil para reportes y validaciones
      *
@@ -434,15 +422,26 @@ class PricingService
      * Recalcula costos y precios para todos los inventarios de un producto
      * Útil cuando se hacen cambios masivos
      */
-    public function recalculateProductAllWarehouses(int $productId): array
+    public function recalculateProductAllWarehouses(int $productId, ?float $newSalePrice = null): array
     {
         $inventories = Inventory::where('product_id', $productId)->get();
 
         $results = [];
         $updated = 0;
         $skipped = 0;
+        $sale_price = 0;
 
         foreach ($inventories as $inventory) {
+
+            //Setea el nuevo precio de venta
+            if (isset($newSalePrice)) {
+                $inventory->update([
+                    'sale_price' => $newSalePrice
+                ]);
+                $sale_price = $newSalePrice;
+            }
+
+            //Recalcula costos y termina diciendo que se actualizaron los precios
             $result = $this->recalculateInventoryCost(
                 $inventory->product_id,
                 $inventory->warehouse_id
@@ -464,6 +463,7 @@ class PricingService
             'updated' => $updated,
             'skipped' => $skipped,
             'details' => $results,
+            'sale_price' => $sale_price ?: null,
         ];
     }
 }
