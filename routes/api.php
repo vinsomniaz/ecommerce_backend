@@ -72,6 +72,83 @@ Route::prefix('ecommerce')->name('ecommerce/')->group(function () {
     // Lista de Distribución (Sin paginación)
     Route::get('distribution-list', [EcommerceController::class, 'distributionList'])
         ->name('distribution-list');
+
+    //Cuentas
+    Route::post('register', [RegisteredUserController::class, 'storeCustomer']);
+    Route::post('login', [AuthenticatedSessionController::class, 'store']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | CARRITO DE COMPRAS (Cart) Y CHECKOUT (R1, R2, R3)
+    |--------------------------------------------------------------------------
+    */
+    Route::middleware('auth:sanctum')->group(function () {
+
+        Route::prefix('cart')->group(function () {
+            // R1.1, R2.2: Obtener carrito
+            Route::get('/', [CartController::class, 'show'])->name('cart.show');
+
+            // R1.2: Agregar/Actualizar item
+            Route::post('items', [CartController::class, 'addItem'])->name('cart.items.add');
+            Route::patch('items/{productId}', [CartController::class, 'updateItem'])->name('cart.items.update');
+
+            // Eliminar item
+            Route::delete('items/{productId}', [CartController::class, 'removeItem'])->name('cart.items.remove');
+
+
+            // R3: Proceso de Checkout
+            Route::post('checkout', [CartController::class, 'checkout'])->name('checkout.process');
+        });
+    });
+});
+
+
+/*
+|--------------------------------------------------------------------------
+|AUTENTICACIÓN
+|--------------------------------------------------------------------------
+|
+*/
+Route::prefix('auth')->group(function () {
+    // --- VERIFICACIÓN DE CORREO ---
+    // Link que llega al correo (Debe estar firmado)
+    Route::get('/verify-email/{id}/{hash}', [VerifyEmailController::class, '__invoke'])
+        ->middleware(['throttle:6,1'])
+        ->name('verification.verify');
+
+    // Reenviar correo de verificación
+    Route::post('/email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
+        ->middleware(['auth:sanctum', 'throttle:6,1'])
+        ->name('verification.send');
+
+    // --- RECUPERACIÓN DE CONTRASEÑA ---
+    // 1. Solicitar link (Forgot Password)
+    Route::post('/forgot-password', [PasswordResetLinkController::class, 'store'])
+        ->name('password.email');
+
+    // 2. Resetear contraseña (usando el token)
+    Route::post('/reset-password', [NewPasswordController::class, 'store'])
+        ->name('password.store');
+});
+
+
+/*
+|--------------------------------------------------------------------------
+| RUTAS DE PAÍSES Y UBIGEOS (Públicas)
+|--------------------------------------------------------------------------
+|
+| Endpoints para listar países y ubigeos (necesarios para formularios)
+|
+*/
+Route::prefix('countries')->group(function () {
+    Route::get('/', [CountryController::class, 'index']);
+    Route::get('{code}', [CountryController::class, 'show']);
+});
+
+Route::prefix('ubigeos')->group(function () {
+    Route::get('tree', [UbigeoController::class, 'tree']); // Para Cascader
+    Route::get('/', [UbigeoController::class, 'index']);
+    Route::get('{ubigeo}', [UbigeoController::class, 'show']);
 });
 
 /*
