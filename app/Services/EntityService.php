@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 
 class EntityService
 {
@@ -191,5 +192,25 @@ class EntityService
 
         // Order by
         $query->orderBy('registered_at', 'desc');
+    }
+
+    /**
+     * Get global statistics for entities with caching
+     */
+    public function getGlobalStatistics(): array
+    {
+        $version = Cache::remember('entities_version', now()->addDay(), fn() => 1);
+        $key = "entities_global_stats_v{$version}";
+
+        return Cache::remember($key, now()->addMinutes(5), function () {
+            return [
+                'total_entities' => Entity::count(),
+                'active_entities' => Entity::where('is_active', true)->count(),
+                'inactive_entities' => Entity::where('is_active', false)->count(),
+                'total_customers' => Entity::customers()->count(),
+                'total_suppliers' => Entity::suppliers()->count(),
+                'total_both' => Entity::where('type', 'both')->count(),
+            ];
+        });
     }
 }

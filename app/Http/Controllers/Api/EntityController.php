@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Entity\StoreEntityRequest;
 use App\Http\Requests\Entity\UpdateEntityRequest;
 use App\Http\Resources\EntityResource;
+use App\Http\Resources\EntityCollection;
 use App\Models\Entity;
 use App\Services\EntityService;
 use Illuminate\Http\JsonResponse;
@@ -21,7 +22,7 @@ class EntityController extends Controller
     /**
      * Display a listing of entities.
      */
-    public function index(Request $request): AnonymousResourceCollection
+    public function index(Request $request): JsonResponse
     {
         $filters = [
             'type' => $request->get('type'),
@@ -39,7 +40,24 @@ class EntityController extends Controller
 
         $entities = $this->entityService->getAll($filters);
 
-        return EntityResource::collection($entities);
+        // Instanciar EntityCollection una sola vez
+        $collection = new EntityCollection($entities);
+
+        if ($entities->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Aún no se ha creado ninguna entidad',
+                'data' => [],
+                'meta' => $collection->with($request)['meta'], // stats + paginación vacía coherente
+            ], 200);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Entidades obtenidas correctamente',
+            'data' => $collection->toArray($request)['data'],
+            'meta' => $collection->with($request)['meta'],
+        ], 200);
     }
 
     /**
@@ -121,6 +139,20 @@ class EntityController extends Controller
         return response()->json([
             'message' => 'Cliente activado exitosamente',
             'data' => new EntityResource($entity)
+        ]);
+    }
+
+    /**
+     * Get global statistics for entities
+     * GET /api/entities/statistics/global
+     */
+    public function globalStatistics(): JsonResponse
+    {
+        $stats = $this->entityService->getGlobalStatistics();
+
+        return response()->json([
+            'success' => true,
+            'data' => $stats,
         ]);
     }
 }

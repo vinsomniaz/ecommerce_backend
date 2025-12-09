@@ -29,12 +29,12 @@ class PriceListSeeder extends Seeder
                 'description' => 'Precio para distribuidores autorizados',
                 'is_active' => true,
             ],
-            [
-                'code' => 'MIN_RETAIL',
-                'name' => 'Precio Mínimo Minorista',
-                'description' => 'Precio mínimo permitido para venta minorista',
-                'is_active' => true,
-            ],
+            // [
+            //     'code' => 'MIN_RETAIL',
+            //     'name' => 'Precio Mínimo Minorista',
+            //     'description' => 'Precio mínimo permitido para venta minorista',
+            //     'is_active' => true,
+            // ],
         ];
 
         foreach ($lists as $list) {
