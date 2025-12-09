@@ -15,7 +15,10 @@ use Spatie\Activitylog\Traits\LogsActivity;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+use App\Observers\ProductObserver;
 
+#[ObservedBy([ProductObserver::class])]
 class Product extends Model implements HasMedia
 {
     use HasFactory, SoftDeletes, InteractsWithMedia, LogsActivity;
@@ -77,15 +80,16 @@ class Product extends Model implements HasMedia
     /**
      * Registrar las conversiones de medios
      */
-    public function registerMediaConversions(Media $media = null): void
+    public function registerMediaConversions(?Media $media = null): void
     {
+        // No lo usas, pero la firma queda compatible con Spatie
         $this->addMediaConversion('thumb')
             ->width(150)
             ->height(150)
             ->sharpen(10)
             ->quality(85)
             ->background('rgba(0, 0, 0, 0)')
-            ->nonQueued() // ⚠️ IMPORTANTE: Genera inmediatamente
+            ->nonQueued()
             ->performOnCollections('images');
 
         $this->addMediaConversion('medium')
@@ -93,7 +97,7 @@ class Product extends Model implements HasMedia
             ->height(600)
             ->quality(85)
             ->background('rgba(0, 0, 0, 0)')
-            ->nonQueued() // ⚠️ IMPORTANTE: Genera inmediatamente
+            ->nonQueued()
             ->performOnCollections('images');
 
         $this->addMediaConversion('large')
@@ -101,7 +105,7 @@ class Product extends Model implements HasMedia
             ->height(1200)
             ->quality(85)
             ->background('rgba(0, 0, 0, 0)')
-            ->nonQueued() // ⚠️ IMPORTANTE: Genera inmediatamente
+            ->nonQueued()
             ->performOnCollections('images');
 
         $this->addMediaConversion('webp')

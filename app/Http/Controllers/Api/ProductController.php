@@ -14,6 +14,7 @@ use App\Models\Product;
 use App\Exceptions\Products\ProductNotFoundException;
 use App\Exceptions\Products\ProductAlreadyExistsException;
 use App\Exceptions\Products\ProductInUseException;
+use App\Http\Resources\Products\ProductCollection;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -26,7 +27,7 @@ class ProductController extends Controller
     /**
      * Listar productos con filtros
      */
-    public function index(Request $request)
+    public function index(Request $request): JsonResponse
     {
         $filters = $request->only([
             'search',
@@ -44,10 +45,27 @@ class ProductController extends Controller
             'with_trashed'
         ]);
 
-        $perPage = $request->input('per_page', 15);
+        $perPage  = $request->input('per_page', 15);
         $products = $this->productService->getFiltered($filters, $perPage);
 
-        return ProductResource::collection($products);
+        // ✅ instancia UNA sola vez
+        $collection = new ProductCollection($products);
+
+        if ($products->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Aún no se ha creado ningún producto',
+                'data'    => [],
+                'meta'    => $collection->with($request)['meta'], // stats + paginación vacía coherente
+            ], 200);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Productos obtenidos correctamente',
+            'data'    => $collection->toArray($request)['data'],
+            'meta'    => $collection->with($request)['meta'],
+        ], 200);
     }
 
     /**
