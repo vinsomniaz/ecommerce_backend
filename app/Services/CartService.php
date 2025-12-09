@@ -44,32 +44,25 @@ class CartService
     }
 
     /**
-     * Agregar o actualizar producto en el carrito con validación de stock (R1.2)
+     * Agregar o actualizar producto en el carrito con validación de stock GLOBAL (R1.2)
      */
     public function addOrUpdateItem(Cart $cart, int $productId, int $quantity): CartDetail
     {
         return DB::transaction(function () use ($cart, $productId, $quantity) {
-            // 1. Determinar almacén principal de venta online
-            $mainWarehouse = Warehouse::main()->visibleOnline()->first();
-            if (!$mainWarehouse) {
-                throw ApiException::badRequest('No hay un almacén principal de venta online configurado.', 'NO_MAIN_WAREHOUSE');
-            }
 
-            $inventory = Inventory::where('product_id', $productId)
-                ->where('warehouse_id', $mainWarehouse->id)
-                ->first();
-
-            $availableStock = $inventory?->available_stock ?? 0;
+            // 1. Usar Stock Global (suma de almacenes)
+            $product = \App\Models\Product::findOrFail($productId);
+            $availableStock = $product->total_stock; // Accessor que suma inventories
 
             if ($quantity <= 0) {
                 $cart->removeProduct($productId);
                 throw ApiException::badRequest('Cantidad no válida, producto eliminado del carrito.', 'INVALID_QUANTITY');
             }
 
-            // 2. Validar Stock (R1.2)
+            // 2. Validar Stock Global (R1.2)
             if ($quantity > $availableStock) {
                 throw new InsufficientStockException(
-                    "Stock insuficiente para el producto. Disponible: {$availableStock}",
+                    "Stock insuficiente para el producto. Disponible Total: {$availableStock}",
                     $quantity,
                     $availableStock
                 );
@@ -99,8 +92,6 @@ class CartService
         $cart->removeProduct($productId);
         $this->recalculateTotals($cart);
     }
-
-
 
     /**
      * Calcular y obtener totales (R1.3, R2.2)
@@ -160,7 +151,7 @@ class CartService
 
             $cart->load('details.product');
 
-            // 1. Re-validar stock (R1.2)
+            // 1. Re-validar stock GLOBAL (R1.2)
             $this->validateAllStock($cart);
 
             // 2. Integración con Entidades (R3.1)
@@ -173,50 +164,109 @@ class CartService
                 $customerEntity,
                 $checkoutData['address']
             );
-            $warehouse = Warehouse::main()->visibleOnline()->firstOrFail();
+            $mainWarehouse = Warehouse::main()->visibleOnline()->firstOrFail();
 
-            // 4. Bloqueo de Stock (Soft Reserve) (R3.3)
-            $this->softReserveStock($cart, $warehouse->id);
+            // 4. Cálculo y Bloqueo de Stock GLOBAL (R3.3)
+            $itemsToReserve = $cart->details->map(fn($d) => [
+                'product_id' => $d->product_id,
+                'quantity' => $d->quantity
+            ])->toArray();
+
+            // Calcular Allocation
+            $allocation = $this->stockService->calculateGlobalAllocation($itemsToReserve);
+
+            // Reservar según Allocation
+            $this->stockService->softReserveAllocated($allocation);
+
+            // Generar nota de Allocation (si hay split)
+            $allocationNotes = [];
+            foreach ($allocation as $allocItem) {
+                if (count($allocItem['allocation']) > 1) {
+                    $details = implode(', ', array_map(fn($a) => "{$a['warehouse_name']}: {$a['quantity']}", $allocItem['allocation']));
+                    $allocationNotes[] = "Prod #{$allocItem['product_id']} -> [{$details}]";
+                } elseif (isset($allocItem['allocation'][0]) && $allocItem['allocation'][0]['warehouse_id'] != $mainWarehouse->id) {
+                    // Si se toma de un almacén secundario, también avisar
+                    $wName = $allocItem['allocation'][0]['warehouse_name'];
+                    $allocationNotes[] = "Prod #{$allocItem['product_id']} -> Tomado de {$wName}";
+                }
+            }
+            $obs = $checkoutData['observations'] ?? '';
+            if (!empty($allocationNotes)) {
+                $obs .= "\n[Stock Multi-Almacén]: " . implode('; ', $allocationNotes);
+            }
 
             // 5. Re-validar totales (R1.3)
             $totals = $this->recalculateTotals($cart);
-            $igvRate = $this->settingService->get('sales', 'igv_rate', 0.18); // Obtener tasa de IGV para item level
-            
-            // 6. Creación de la Orden (Estado Pendiente) (R3.3)
+            $igvRate = $this->settingService->get('sales', 'igv_rate', 0.18);
+
+            // 6. Conversión de Moneda
+            $targetCurrency = strtoupper($checkoutData['currency'] ?? 'PEN');
+            $exchangeRate = 1.0;
+
+            if ($targetCurrency !== 'PEN') {
+                $exchangeRate = \App\Models\ExchangeRate::getRate($targetCurrency);
+                if (!$exchangeRate) {
+                    throw ApiException::badRequest("La moneda {$targetCurrency} no está soportada o no tiene tipo de cambio registrado.");
+                }
+
+                // Convertir montos (Base PEN / Rate = Target)
+                // Ej: 375 PEN / 3.75 = 100 USD
+                $totals['subtotal'] = round($totals['subtotal'] / $exchangeRate, 2);
+                $totals['tax'] = round($totals['tax'] / $exchangeRate, 2);
+                $totals['shipping_cost'] = round($totals['shipping_cost'] / $exchangeRate, 2);
+                $totals['discount'] = round(($totals['discount'] ?? 0) / $exchangeRate, 2);
+                $totals['coupon_discount'] = round(($totals['coupon_discount'] ?? 0) / $exchangeRate, 2);
+                $totals['total'] = round($totals['total'] / $exchangeRate, 2);
+            }
+
+            // 7. Crear Orden de Venta
             $order = Order::create([
-                'customer_id' => $user->id,
-                'warehouse_id' => $warehouse->id,
+                'customer_id' => $customerEntity->id,
+                'user_id' => $user->id,
+                'warehouse_id' => $mainWarehouse->id, // El pedido nace asociado al principal (luego el Allocation dice la verdad)
                 'shipping_address_id' => $shippingAddress->id,
                 'coupon_id' => $cart->coupon_id,
-                'status' => 'pendiente', // Usar 'pendiente' según app/Models/Order.php
-                'currency' => $checkoutData['currency'] ?? 'PEN',
+                'sale_type' => 'store',
+                'status' => 'pendiente',
+
+                'currency' => $targetCurrency,
+                // 'exchange_rate' => $exchangeRate, // Si existiera en tabla orders
+
                 'subtotal' => $totals['subtotal'],
-                'discount' => 0.00,
-                'coupon_discount' => 0.00,
+                'discount' => $totals['discount'] ?? 0.00, // Ensure discount is set, default to 0 if not in totals
+                'coupon_discount' => $totals['coupon_discount'] ?? 0.00, // No convertido en recalculateTotals? Asumimos que sí o es 0
                 'tax' => $totals['tax'],
                 'shipping_cost' => $totals['shipping_cost'],
                 'total' => $totals['total'],
+
+                'stock_allocation' => $allocation, // JSON field
+                'observations' => trim($obs),
                 'order_date' => now(),
-                'observations' => $checkoutData['observations'] ?? null,
             ]);
 
-            // 7. Mover items del carrito a OrderDetails (asumo modelo OrderDetail)
+            // 8. Mover items del carrito a OrderDetails
             foreach ($cart->details as $detail) {
-                // Re-obtener el precio unitario final para el detalle
+                // Convertir unit price
                 $unitPrice = $detail->unit_price;
+                if ($exchangeRate > 1.0) {
+                    $unitPrice = round($unitPrice / $exchangeRate, 2);
+                }
+
                 $quantity = $detail->quantity;
-                
-                // Cálculo de subtotales/totales del item
                 $subtotal = $unitPrice * $quantity;
-                $taxAmount = $subtotal * $igvRate;
+                // Recalcular impuestos sobre el nuevo subtotal convertido
+                // Nota: Esto asume precio sin IGV o con IGV según lógica de negocio.
+                // Si unit_price ya incluye IGV, el taxAmount se desglosa. Si no, se agrega.
+                // La lógica original sumaba taxAmount = subtotal * igvRate. Mantenemos eso.
+                $taxAmount = round($subtotal * $igvRate, 2);
                 $total = $subtotal + $taxAmount;
 
                 $order->details()->create([
                     'product_id' => $detail->product_id,
-                    'product_name' => $detail->product_name, // Usando accessor de CartDetail
+                    'product_name' => $detail->product_name,
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,
-                    'discount' => 0.00, // No hay descuento en CartDetail
+                    'discount' => 0.00,
                     'subtotal' => $subtotal,
                     'tax_amount' => $taxAmount,
                     'total' => $total,
@@ -227,23 +277,44 @@ class CartService
             $cart->update(['converted_to_order_at' => now()]);
             $cart->clear();
 
-            $order->updateStatus('pendiente', 'Orden creada y stock reservado', null);
+            $order->updateStatus('pendiente', 'Orden creada con reserva global', null);
 
             return $order->fresh(['shippingAddress', 'warehouse', 'statusHistory']);
         });
     }
 
     /**
-     * Lógica de reserva de stock (R3.3 - Bloqueo de Stock)
+     * Lógica de reserva de stock (DEPRECATED - Usado legacy)
      */
     protected function softReserveStock(Cart $cart, int $warehouseId): void
     {
-        $reserves = $cart->details->map(fn($d) => [
-            'product_id' => $d->product_id,
-            'quantity' => $d->quantity
-        ])->toArray();
+        // Redirigir a lógica global asumiendo un solo almacén si se usa aun
+        // Por seguridad, mantenemos la implementación antigua o la eliminamos.
+        // Al haber cambiado processCheckout, este método ya no se llama desde ahí.
+        // Lo dejamos vacío o lanzamos error para evitar uso accidental.
+    }
 
-        $this->stockService->softReserve($warehouseId, $reserves);
+    // ...
+
+    /**
+     * Re-valida el stock Global de todos los items en el carrito (Final Check)
+     */
+    protected function validateAllStock(Cart $cart): void
+    {
+        $itemsToValidate = $cart->details->pluck('quantity', 'product_id')->toArray();
+
+        foreach ($itemsToValidate as $productId => $quantity) {
+            $product = \App\Models\Product::findOrFail($productId);
+            $availableStock = $product->total_stock; // Global Stock
+
+            if ($quantity > $availableStock) {
+                throw new InsufficientStockException(
+                    "Stock insuficiente para {$product->primary_name} en el checkout. Disponible Global: {$availableStock}",
+                    $quantity,
+                    $availableStock
+                );
+            }
+        }
     }
 
     /**
@@ -307,36 +378,5 @@ class CartService
         ]);
 
         return $entity;
-    }
-
-    /**
-     * Re-valida el stock de todos los items en el carrito (Final Check)
-     */
-    protected function validateAllStock(Cart $cart): void
-    {
-        $mainWarehouse = Warehouse::main()->visibleOnline()->first();
-        if (!$mainWarehouse) {
-            throw ApiException::badRequest('No hay un almacén principal de venta online configurado.', 'NO_MAIN_WAREHOUSE');
-        }
-
-        $itemsToValidate = $cart->details->pluck('quantity', 'product_id')->toArray();
-        $warehouseId = $mainWarehouse->id;
-
-        foreach ($itemsToValidate as $productId => $quantity) {
-            $inventory = Inventory::where('product_id', $productId)
-                ->where('warehouse_id', $warehouseId)
-                ->first();
-
-            $availableStock = $inventory?->available_stock ?? 0;
-            $productName = $inventory->product->primary_name ?? 'Producto ID ' . $productId;
-
-            if ($quantity > $availableStock) {
-                throw new InsufficientStockException(
-                    "Stock insuficiente para {$productName} en el checkout. Disponible: {$availableStock}",
-                    $quantity,
-                    $availableStock
-                );
-            }
-        }
     }
 }

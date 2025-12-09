@@ -10,6 +10,8 @@ class SaleDetail extends Model
 {
     use HasFactory;
 
+    public $timestamps = false;
+
     protected $fillable = [
         'sale_id',
         'product_id',
