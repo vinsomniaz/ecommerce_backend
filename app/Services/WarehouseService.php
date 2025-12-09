@@ -168,9 +168,7 @@ class WarehouseService
                     'warehouse_id' => $warehouse->id,
                     'available_stock' => 0,
                     'reserved_stock' => 0,
-                    'sale_price' => 0.00,
-                    'min_sale_price' => 0.00,
-                    'profit_margin' => 0.00,
+                    'average_cost' => 0.00,
                     'last_movement_at' => null,
                     'price_updated_at' => null,
                 ];
