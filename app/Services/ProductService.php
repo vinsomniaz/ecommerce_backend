@@ -18,6 +18,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
 
 class ProductService
@@ -618,22 +619,36 @@ class ProductService
                 'unfeature' => $query->update(['is_featured' => false]),
                 'show_online' => $query->update(['visible_online' => true]),
                 'hide_online' => $query->update(['visible_online' => false]),
-                'mark_new' => $query->update(['is_new' => true]), // ✅ AGREGAR
-                'unmark_new' => $query->update(['is_new' => false]), // ✅ AGREGAR
+                'mark_new' => $query->update(['is_new' => true]),
+                'unmark_new' => $query->update(['is_new' => false]),
                 'delete' => $query->delete(),
                 default => throw new InvalidArgumentException("Acción '{$action}' no válida"),
             };
 
-            activity()
-                ->causedBy(Auth::user())
-                ->withProperties([
-                    'action' => $action,
-                    'product_ids' => $productIds,
-                    'affected_count' => $count,
-                ])
-                ->log("Actualización masiva de productos: {$action}");
+            // ✅ invalidación manual porque query builder no dispara observers
+            Cache::forget('categories_tree');
+            Cache::increment('categories_version');
+            Cache::forget('categories_global_stats');
+            Cache::increment('products_version');
 
             return $count;
+        });
+    }
+
+    public function getGlobalStats(): array
+    {
+        $version = Cache::remember('products_version', now()->addDay(), fn() => 1);
+        $key = "products_global_stats_v{$version}";
+
+        return Cache::remember($key, now()->addMinutes(5), function () {
+            return [
+                'total_products' => Product::count(),
+                'active_products' => Product::where('is_active', true)->count(),
+                'inactive_products' => Product::where('is_active', false)->count(),
+                'featured_products' => Product::where('is_featured', true)->count(),
+                'online_products' => Product::where('visible_online', true)->count(),
+                'new_products' => Product::where('is_new', true)->count(),
+            ];
         });
     }
 

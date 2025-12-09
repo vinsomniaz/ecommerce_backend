@@ -6,6 +6,7 @@ namespace App\Http\Resources\Products;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use App\Models\Product;
+use App\Services\ProductService;
 
 class ProductCollection extends ResourceCollection
 {
@@ -15,10 +16,9 @@ class ProductCollection extends ResourceCollection
     public function toArray(Request $request): array
     {
         return [
-            'data' => $this->collection,
+            'data' => ProductResource::collection($this->collection),
         ];
     }
-
     /**
      * Customize the pagination information for the resource.
      *
@@ -55,14 +55,7 @@ class ProductCollection extends ResourceCollection
                 ],
 
                 // Estadísticas globales
-                'global_stats' => [
-                    'total_products' => Product::count(),
-                    'active_products' => Product::where('is_active', true)->count(),
-                    'inactive_products' => Product::where('is_active', false)->count(),
-                    'featured_products' => Product::where('is_featured', true)->count(),
-                    'online_products' => Product::where('visible_online', true)->count(),
-                    'new_products' => Product::where('is_new', true)->count(),
-                ],
+                'global_stats' => app(ProductService::class)->getGlobalStats(),
             ],
         ];
     }
