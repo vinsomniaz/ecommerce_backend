@@ -96,7 +96,7 @@ class CartService
     /**
      * Calcular y obtener totales (R1.3, R2.2)
      */
-    public function recalculateTotals(Cart $cart): array
+    public function recalculateTotals(Cart $cart, string $targetCurrency = 'PEN', float $exchangeRate = 1.0): array
     {
         $cart->load('details.product.firstWarehouseInventory');
 
@@ -105,27 +105,45 @@ class CartService
         $igvRate = $this->settingService->get('sales', 'igv_rate', 0.18); // 18%
 
         foreach ($cart->details as $detail) {
-            $unitPrice = $detail->unit_price;
+            // El unit_price del modelo CartDetail obtiene el precio del producto en PEN (base)
+            $unitPriceInPen = $detail->unit_price;
+
+            // Convertimos si es necesario para el cálculo interno, 
+            // aunque generalmente calculamos todo en base y convertimos al final.
+            // PERO, para consistencia con el frontend que sumará items convertidos:
             $quantity = $detail->quantity;
 
-            $itemSubtotal = $unitPrice * $quantity;
+            $itemSubtotal = $unitPriceInPen * $quantity;
             $subtotal += $itemSubtotal;
             $totalCost += ($detail->product->average_cost * $quantity);
         }
 
-        // 1. Base Imponible es el Subtotal
+        // 1. Base Imponible es el Subtotal (en PEN)
         $taxableBase = $subtotal;
 
-        // 2. Calcular IGV/Impuestos (R2.2)
+        // 2. Calcular IGV/Impuestos (R2.2) (en PEN)
         $tax = $taxableBase * $igvRate;
 
-        // 3. Costo de Envío (R3.2)
+        // 3. Costo de Envío (R3.2) (en PEN)
         $shippingCost = $this->settingService->get('ecommerce', 'default_shipping_cost', 0.0);
 
-        // 4. Total a Pagar (R2.2)
+        // 4. Total a Pagar (R2.2) (en PEN)
         $total = $taxableBase + $tax + $shippingCost;
 
+        // 5. Conversión de Moneda
+        // Si la tasa es > 1, dividimos (PEN / Tasa = USD)
+        // Ej: 100 PEN / 3.75 = 26.66 USD
+        if ($exchangeRate > 1.0 && $targetCurrency !== 'PEN') {
+            $subtotal = $taxableBase / $exchangeRate;
+            $tax = ($taxableBase * $igvRate) / $exchangeRate;
+            $shippingCost = $shippingCost / $exchangeRate;
+            $totalCost = $totalCost / $exchangeRate;
+            $total = $total / $exchangeRate;
+        }
+
         $results = [
+            'currency' => $targetCurrency,
+            'exchange_rate' => $exchangeRate,
             'subtotal' => round($subtotal, 2),
             'tax' => round($tax, 2),
             'shipping_cost' => round($shippingCost, 2),
