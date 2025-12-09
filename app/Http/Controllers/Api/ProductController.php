@@ -14,6 +14,7 @@ use App\Models\Product;
 use App\Exceptions\Products\ProductNotFoundException;
 use App\Exceptions\Products\ProductAlreadyExistsException;
 use App\Exceptions\Products\ProductInUseException;
+use App\Http\Resources\Products\ProductCollection;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -47,7 +48,7 @@ class ProductController extends Controller
         $perPage = $request->input('per_page', 15);
         $products = $this->productService->getFiltered($filters, $perPage);
 
-        return ProductResource::collection($products);
+        return new ProductCollection($products);
     }
 
     /**
