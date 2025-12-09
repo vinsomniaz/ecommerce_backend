@@ -23,6 +23,8 @@ use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SupplierImportController;
 use App\Http\Controllers\Auth\PermissionController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\CountryController;
+use App\Http\Controllers\Api\UbigeoController;
 
 /*
 |--------------------------------------------------------------------------
@@ -56,6 +58,25 @@ Route::prefix('ecommerce')->name('ecommerce/')->group(function () {
     // Lista de Distribución (Sin paginación)
     Route::get('distribution-list', [EcommerceController::class, 'distributionList'])
         ->name('distribution-list');
+});
+
+/*
+|--------------------------------------------------------------------------
+| RUTAS DE PAÍSES Y UBIGEOS (Públicas)
+|--------------------------------------------------------------------------
+|
+| Endpoints para listar países y ubigeos (necesarios para formularios)
+|
+*/
+Route::prefix('countries')->group(function () {
+    Route::get('/', [CountryController::class, 'index']);
+    Route::get('{code}', [CountryController::class, 'show']);
+});
+
+Route::prefix('ubigeos')->group(function () {
+    Route::get('tree', [UbigeoController::class, 'tree']); // Para Cascader
+    Route::get('/', [UbigeoController::class, 'index']);
+    Route::get('{ubigeo}', [UbigeoController::class, 'show']);
 });
 
 /*
@@ -414,6 +435,10 @@ Route::middleware('auth:sanctum')->prefix('inventory')->group(function () {
    ENTIDADES
    ============================================ */
 Route::middleware('auth:sanctum')->prefix('entities')->group(function () {
+
+    // Statistics endpoint (must be before dynamic routes)
+    Route::get('statistics/global', [EntityController::class, 'globalStatistics'])
+        ->middleware('permission:entities.statistics.global');
 
     Route::get('search', [EntityController::class, 'search'])
         ->middleware('permission:entities.search');
