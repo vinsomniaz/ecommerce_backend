@@ -32,7 +32,7 @@ class EntityController extends Controller
             'registered_from' => $request->get('registered_from'),
             'registered_to' => $request->get('registered_to'),
             'per_page' => $request->get('per_page', 50),
-            'with' => ['defaultAddress.ubigeoData', 'user'], // Incluir relaciones anidadas
+            'with' => ['defaultAddress.ubigeoData', 'user', 'documentType'], // Incluir relaciones anidadas
         ];
 
         // Remove null values
@@ -78,7 +78,7 @@ class EntityController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        $entity = $this->entityService->findById($id, ['user', 'ubigeoData', 'defaultAddress.ubigeoData', 'country']);
+        $entity = $this->entityService->findById($id, ['user', 'ubigeoData', 'defaultAddress.ubigeoData', 'country','documentType']);
 
         if (!$entity) {
             return response()->json([

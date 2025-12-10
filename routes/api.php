@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\SupplierImportController;
 use App\Http\Controllers\Auth\PermissionController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\CountryController;
+use App\Http\Controllers\Api\DocumentTypeController;
 use App\Http\Controllers\Api\UbigeoController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
@@ -501,6 +502,14 @@ Route::middleware('auth:sanctum')->prefix('inventory')->group(function () {
         Route::patch('update', [PricingController::class, 'updatePrices'])
             ->middleware('permission:pricing.update-prices');
     });
+});
+
+/* ============================================
+   TIPOS DE DOCUMENTO
+   ============================================ */
+Route::prefix('document-types')->group(function () {
+    Route::get('/', [DocumentTypeController::class, 'index']);
+    Route::get('{code}', [DocumentTypeController::class, 'show']);
 });
 
 /* ============================================

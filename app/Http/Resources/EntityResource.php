@@ -16,6 +16,7 @@ class EntityResource extends JsonResource
             'id' => $this->id,
             'type' => $this->type,
             'tipo_documento' => $this->tipo_documento,
+            'tipo_documento_name' => $this->whenLoaded('documentType', $this->documentType?->name),
             'numero_documento' => $this->numero_documento,
             'tipo_persona' => $this->tipo_persona,
             'full_name' => $this->full_name,
@@ -23,11 +24,11 @@ class EntityResource extends JsonResource
             'email' => $this->email,
             'phone' => $this->phone,
             
-            // NUEVO: País y Ubigeo de la dirección fiscal
+            // País y Ubigeo de la dirección fiscal
             'country_code' => $this->country_code,
-            'country_name' => $this->whenLoaded('country', $this->country->name ?? null),
+            'country_name' => $this->whenLoaded('country', $this->country?->name),
             'ubigeo' => $this->ubigeo,
-            'ubigeo_name' => $this->whenLoaded('ubigeoData', $this->ubigeoData->distrito ?? null),
+            'ubigeo_name' => $this->whenLoaded('ubigeoData', $this->ubigeoData?->distrito),
 
             'is_active' => $this->is_active,
             'registered_at' => $this->registered_at?->format('Y-m-d H:i:s'),
@@ -39,13 +40,22 @@ class EntityResource extends JsonResource
                     'id' => $this->defaultAddress->id,
                     'address' => $this->defaultAddress->address,
                     'country_code' => $this->defaultAddress->country_code,
-                    'country_name' => $this->defaultAddress->country->name ?? null,
-                    'distrito' => $this->defaultAddress->ubigeoData->distrito ?? null,
-                    'provincia' => $this->defaultAddress->ubigeoData->provincia ?? null,
-                    'departamento' => $this->defaultAddress->ubigeoData->departamento ?? null,
+                    'country_name' => $this->defaultAddress->country?->name,
+                    'distrito' => $this->defaultAddress->ubigeoData?->distrito,
+                    'provincia' => $this->defaultAddress->ubigeoData?->provincia,
+                    'departamento' => $this->defaultAddress->ubigeoData?->departamento,
                 ];
             }),
             'user_id' => $this->whenLoaded('user', $this->user_id),
+            
+            // Información completa del tipo de documento (opcional, para casos detallados)
+            'document_type' => $this->whenLoaded('documentType', function () {
+                return $this->documentType ? [
+                    'code' => $this->documentType->code,
+                    'name' => $this->documentType->name,
+                    'length' => $this->documentType->length,
+                ] : null;
+            }),
         ];
     }
 }
