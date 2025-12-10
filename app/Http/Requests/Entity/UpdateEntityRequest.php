@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Entity;
 
+use App\Models\DocumentType;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -21,29 +22,34 @@ class UpdateEntityRequest extends FormRequest
     public function rules(): array
     {
         $entityId = $this->route('entity');
-        $countryCode = $this->input('country_code', $this->entity->country_code);
 
         return [
             'type' => 'sometimes|in:customer,supplier,both',
-            'tipo_documento' => 'sometimes|in:01,06',
+            'tipo_documento' => 'sometimes|exists:document_types,code',
             'numero_documento' => [
                 'sometimes',
-                'numeric',
+                'string',
                 Rule::unique('entities')->where(function ($query) {
                     return $query->where('tipo_documento', $this->tipo_documento ?? $this->entity->tipo_documento);
                 })->ignore($entityId),
                 function ($attribute, $value, $fail) {
                     $tipoDoc = $this->tipo_documento ?? $this->entity->tipo_documento;
-                    if ($tipoDoc == '01' && strlen($value) != 8) {
-                        $fail('DNI debe tener 8 dígitos');
+                    $documentType = DocumentType::find($tipoDoc);
+                    
+                    if (!$documentType) {
+                        $fail('Tipo de documento no válido');
+                        return;
                     }
-                    if ($tipoDoc == '06') {
-                        if (strlen($value) != 11) {
-                            $fail('RUC debe tener 11 dígitos');
-                        }
-                        if (!str_starts_with($value, '10') && !str_starts_with($value, '20')) {
-                            $fail('RUC debe empezar con 10 o 20');
-                        }
+
+                    // Validar longitud si está definida
+                    if ($documentType->length && strlen($value) != $documentType->length) {
+                        $fail("{$documentType->name} debe tener {$documentType->length} dígitos");
+                        return;
+                    }
+
+                    // Validar patrón si está definido
+                    if ($documentType->validation_pattern && !$documentType->validateDocument($value)) {
+                        $fail("El formato del {$documentType->name} no es válido");
                     }
                 }
             ],
@@ -58,7 +64,7 @@ class UpdateEntityRequest extends FormRequest
                 'max:100',
                 Rule::unique('entities')->ignore($entityId)
             ],
-            'phone' => 'nullable|digits:9',
+            'phone' => 'nullable|string|max:20',
             'address' => 'nullable|string|max:250',
             'country_code' => ['sometimes', 'string', 'size:2', 'exists:countries,code'],
             'ubigeo' => [
@@ -80,16 +86,15 @@ class UpdateEntityRequest extends FormRequest
     {
         return [
             'type.in' => 'El tipo debe ser customer, supplier o both',
-            'tipo_documento.in' => 'El tipo de documento debe ser 01 (DNI) o 06 (RUC)',
+            'tipo_documento.exists' => 'El tipo de documento no es válido',
             'numero_documento.unique' => 'Este número de documento ya está registrado',
-            'numero_documento.numeric' => 'El número de documento debe ser numérico',
             'tipo_persona.in' => 'El tipo de persona debe ser natural o juridica',
             'first_name.required_if' => 'El nombre es obligatorio para personas naturales',
             'last_name.required_if' => 'El apellido es obligatorio para personas naturales',
             'business_name.required_if' => 'La razón social es obligatoria para personas jurídicas',
             'email.email' => 'El email debe ser válido',
             'email.unique' => 'Este email ya está registrado',
-            'phone.digits' => 'El teléfono debe tener 9 dígitos',
+            'phone.max' => 'El teléfono no puede tener más de 20 caracteres',
             'ubigeo.exists' => 'El ubigeo no es válido',
             'ubigeo.size' => 'El ubigeo debe tener 6 caracteres',
         ];
