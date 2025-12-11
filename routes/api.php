@@ -28,6 +28,8 @@ use App\Http\Controllers\Api\CountryController;
 use App\Http\Controllers\Api\DocumentTypeController;
 use App\Http\Controllers\Api\ExchangeRateController;
 use App\Http\Controllers\Api\UbigeoController;
+use App\Models\Order;
+use App\Services\OrderService;
 
 /*
 |--------------------------------------------------------------------------
@@ -851,4 +853,17 @@ Route::middleware('auth:sanctum')->prefix('gemini')->group(function () {
 
     Route::post('/clear-cache', [GeminiController::class, 'clearCache'])
         ->middleware('permission:gemini.clear-cache');
+});
+
+// --- TEST ROUTE FOR ORDER CONFIRMATION FLOW (TEMPORARY) ---
+Route::post('/test/confirm-order/{order}', function (Order $order, Request $request) {
+    $orderService = app(OrderService::class);
+    // Simular método de pago 'cash' por defecto o leer del request
+    $paymentMethod = $request->input('payment_method', 'cash');
+    $sale = $orderService->confirmOrder($order, $paymentMethod);
+    return response()->json([
+        'success' => true,
+        'message' => 'Order confirmed and converted to sale',
+        'sale' => $sale->load('details', 'payments')
+    ]);
 });

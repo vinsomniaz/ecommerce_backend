@@ -29,6 +29,7 @@ class Order extends Model
         'total',
         'order_date',
         'observations',
+        'stock_allocation',
     ];
 
     protected $casts = [
@@ -39,6 +40,7 @@ class Order extends Model
         'shipping_cost' => 'decimal:2',
         'total' => 'decimal:2',
         'order_date' => 'datetime',
+        'stock_allocation' => 'array',
     ];
 
     // Relaciones
