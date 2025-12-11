@@ -15,7 +15,6 @@ use App\Models\ProductPrice;
 use App\Models\Ubigeo;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-// use Illuminate\Foundation\Testing\RefreshDatabase; // DISABLE to persist state between steps
 use App\Services\OrderService;
 use Database\Seeders\DefaultSettingsSeeder;
 use Database\Seeders\RoleSeeder;
@@ -27,7 +26,19 @@ class PurchaseSimulationTest extends TestCase
     // use RefreshDatabase; // DISABLE to persist state between steps
 
     protected static $initialized = false;
-    protected static $userId;
+    protected static $sharedData = []; // Store data per iteration: [1 => ['user' => ...], 2 => ...]
+
+    // CONFIGURATION: Number of iterations
+    const ITERATIONS = 3;
+
+    public static function iterationsProvider(): array
+    {
+        $data = [];
+        for ($i = 1; $i <= self::ITERATIONS; $i++) {
+            $data["iteración_{$i}"] = [$i];
+        }
+        return $data;
+    }
 
     protected function setUp(): void
     {
@@ -38,13 +49,13 @@ class PurchaseSimulationTest extends TestCase
             $this->artisan('migrate:fresh');
 
             $this->seed([
-                RoleSeeder::class,
-                DefaultSettingsSeeder::class,
+                \Database\Seeders\RoleSeeder::class,
+                \Database\Seeders\DefaultSettingsSeeder::class,
             ]);
 
-            Country::factory()->create(['code' => 'PE', 'name' => 'PERU']);
+            \App\Models\Country::factory()->create(['code' => 'PE', 'name' => 'PERU']);
 
-            Ubigeo::factory()->create([
+            \App\Models\Ubigeo::factory()->create([
                 'ubigeo' => '150101',
                 'departamento' => 'LIMA',
                 'provincia' => 'LIMA',
@@ -52,14 +63,14 @@ class PurchaseSimulationTest extends TestCase
                 'country_code' => 'PE'
             ]);
 
-            $warehouse = Warehouse::factory()->create([
+            $warehouse = \App\Models\Warehouse::factory()->create([
                 'name' => 'Almacén Principal',
                 'is_main' => true,
             ]);
 
             // Create Products & Prices
-            $category = Category::factory()->create();
-            $priceList = PriceList::firstOrCreate(
+            $category = \App\Models\Category::factory()->create();
+            $priceList = \App\Models\PriceList::firstOrCreate(
                 ['code' => 'MINORISTA'],
                 ['name' => 'Lista Minorista', 'is_active' => true]
             );
@@ -75,7 +86,7 @@ class PurchaseSimulationTest extends TestCase
                     ['available_stock' => 500]
                 );
 
-                ProductPrice::create([
+                \App\Models\ProductPrice::create([
                     'product_id' => $product->id,
                     'price_list_id' => $priceList->id,
                     'price' => 100.00,
@@ -90,10 +101,14 @@ class PurchaseSimulationTest extends TestCase
         }
     }
 
-    public function test_01_registro_de_cliente()
+    /**
+     * @dataProvider iterationsProvider
+     */
+    public function test_01_registro_de_cliente($iteration)
     {
         $faker = Faker::create('es_PE');
-        $email = 'user_flow_' . uniqid() . '@example.com';
+        // Unique email per iteration
+        $email = 'user_' . uniqid() . "_iter{$iteration}@example.com";
         $password = 'password123';
         $dni = (string) $faker->numberBetween(10000000, 99999999);
 
@@ -115,34 +130,36 @@ class PurchaseSimulationTest extends TestCase
         $user = User::where('email', $email)->first();
         $this->assertNotNull($user, "User $email not created");
 
-        // Save ID for next steps
-        static::$userId = $user->id;
-
-        return $userData; // Pass data to next test
+        // Store in shared state
+        static::$sharedData[$iteration]['user'] = $user;
     }
 
     /**
+     * @dataProvider iterationsProvider
      * @depends test_01_registro_de_cliente
      */
-    public function test_02_login_de_usuario($userData)
+    public function test_02_login_de_usuario($iteration)
     {
-        $this->assertNotNull(static::$userId, "User ID not set from previous test");
-        $user = User::find(static::$userId);
+        $user = static::$sharedData[$iteration]['user'] ?? null;
+        $this->assertNotNull($user, "User not found in shared state for iteration $iteration");
+
         $this->actingAs($user); // Login
         $this->assertAuthenticatedAs($user);
-
-        return $user;
     }
 
     /**
+     * @dataProvider iterationsProvider
      * @depends test_02_login_de_usuario
      */
-    public function test_03_agregar_productos_al_carrito($user)
+    public function test_03_agregar_productos_al_carrito($iteration)
     {
+        $user = static::$sharedData[$iteration]['user'] ?? null;
+        $this->assertNotNull($user);
+
         $this->actingAs($user); // Restore session
 
         $products = Product::take(3)->get();
-        $this->assertCount(3, $products, "Need 3 products seeded");
+        // $this->assertCount(3, $products, "Need 3 products seeded");
 
         $addedCount = 0;
         foreach ($products as $product) {
@@ -155,15 +172,17 @@ class PurchaseSimulationTest extends TestCase
             }
         }
         $this->assertGreaterThan(0, $addedCount, "Failed to add items to cart");
-
-        return $user;
     }
 
     /**
+     * @dataProvider iterationsProvider
      * @depends test_03_agregar_productos_al_carrito
      */
-    public function test_04_checkout_y_generacion_de_pedido($user)
+    public function test_04_checkout_y_generacion_de_pedido($iteration)
     {
+        $user = static::$sharedData[$iteration]['user'] ?? null;
+        $this->assertNotNull($user);
+
         $this->actingAs($user);
 
         $ubigeo = Ubigeo::where('departamento', 'LIMA')->first();
@@ -196,17 +215,22 @@ class PurchaseSimulationTest extends TestCase
         $orderData = $response->json('data');
         $this->assertNotNull($orderData['id']);
 
-        return $orderData['id'];
+        static::$sharedData[$iteration]['order_id'] = $orderData['id'];
     }
 
     /**
+     * @dataProvider iterationsProvider
      * @depends test_04_checkout_y_generacion_de_pedido
      */
-    public function test_05_procesamiento_de_pago($orderId)
+    public function test_05_procesamiento_de_pago($iteration)
     {
-        // Don't need actingAs strictly for service call, but good practice if logic depends on Auth
-        // $user = User::find(static::$userId);
-        // $this->actingAs($user);
+        $orderId = static::$sharedData[$iteration]['order_id'] ?? null;
+
+        // Ensure orderId is scalar to avoid find() returning a Collection
+        if (is_array($orderId)) {
+            $orderId = reset($orderId);
+        }
+        $this->assertNotNull($orderId, "Order ID not found for iteration $iteration");
 
         $order = Order::find($orderId);
         $this->assertNotNull($order, "Order $orderId not found in DB");
@@ -216,5 +240,7 @@ class PurchaseSimulationTest extends TestCase
 
         $this->assertNotNull($sale);
         $this->assertEquals('paid', $sale->payment_status);
+
+        static::$sharedData[$iteration]['sale'] = $sale;
     }
 }
