@@ -24,6 +24,9 @@ class EntityService
         // Load relationships if requested
         if (isset($filters['with'])) {
             $query->with($filters['with']);
+        } else {
+            // Siempre cargar documentType por defecto
+            $query->with('documentType');
         }
 
         // Pagination
@@ -41,6 +44,11 @@ class EntityService
     {
         $query = Entity::query();
 
+        // Asegurar que documentType siempre esté incluido
+        if (!in_array('documentType', $relations)) {
+            $relations[] = 'documentType';
+        }
+
         if (!empty($relations)) {
             // Make sure 'country' is included if needed by the resource
             if (!in_array('country', $relations)) {
@@ -48,7 +56,7 @@ class EntityService
             }
             $query->with($relations);
         } else {
-            $query->with('country');
+            $query->with(['country', 'documentType']);
         }
 
         return $query->find($id);
@@ -73,7 +81,7 @@ class EntityService
             // Create entity
             $entity = Entity::create($data);
 
-            return $entity->load(['user', 'ubigeoData']);
+            return $entity->load(['user', 'ubigeoData', 'documentType']);
         });
     }
 
@@ -84,7 +92,7 @@ class EntityService
     {
         return DB::transaction(function () use ($entity, $data) {
             $entity->update($data);
-            return $entity->fresh(['user', 'ubigeoData']);
+            return $entity->fresh(['user', 'ubigeoData', 'documentType']);
         });
     }
 
@@ -135,6 +143,9 @@ class EntityService
         // Apply additional filters
         $this->applyFilters($query, $filters);
 
+        // Cargar documentType
+        $query->with('documentType');
+
         // Pagination
         if (isset($filters['per_page'])) {
             return $query->paginate($filters['per_page']);
@@ -161,14 +172,14 @@ class EntityService
             });
         }
 
-        // === CORRECCIÓN DE LÓGICA DE FILTRADO POR TIPO ===
+        // Filter by type
         if (isset($filters['type'])) {
             $type = $filters['type'];
 
             if ($type === 'customer') {
-                $query->customers(); // Usa el scope para 'customer' y 'both'
+                $query->customers();
             } elseif ($type === 'supplier') {
-                $query->suppliers(); // Usa el scope para 'supplier' y 'both'
+                $query->suppliers();
             }
         }
 
@@ -185,7 +196,7 @@ class EntityService
             $query->where('is_active', filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN));
         }
 
-        // Other filters
+        // Filter by document type
         if (isset($filters['tipo_documento'])) {
             $query->where('tipo_documento', $filters['tipo_documento']);
         }
