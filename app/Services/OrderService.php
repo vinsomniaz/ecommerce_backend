@@ -46,7 +46,7 @@ class OrderService
                 'tax' => $order->tax,
                 'total' => $order->total,
                 'payment_status' => 'paid', // Se asume pagado al confirmar
-                'user_id' => $order->customer_id, // Usuario que compró
+                'user_id' => \App\Models\Entity::find($order->customer_id)?->user_id ?? $order->customer_id, // Get User ID from Entity
                 'registered_at' => now(),
             ]);
 
