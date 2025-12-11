@@ -32,6 +32,7 @@ use App\Http\Controllers\Auth\EmailVerificationNotificationController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Api\CartController;
+use App\Http\Controllers\Api\EcommerceConfigController;
 use App\Http\Controllers\Api\ExchangeRateController;
 use App\Models\Order;
 use App\Services\OrderService;
@@ -897,4 +898,19 @@ Route::post('/test/confirm-order/{order}', function (Order $order, Request $requ
         'message' => 'Order confirmed and converted to sale',
         'sale' => $sale->load('details', 'payments')
     ]);
+});
+
+/* ============================================
+   CONFIGURACIÓN E-COMMERCE (Banners, Footer, etc.)
+   ============================================ */
+Route::prefix('ecommerce-config')->group(function () {
+    // Rutas públicas (lectura)
+    Route::get('/', [EcommerceConfigController::class, 'index']);
+
+    // Rutas privadas (gestión)
+    Route::middleware(['auth:sanctum', 'role:super-admin'])->group(function () {
+        Route::post('/', [EcommerceConfigController::class, 'store']);
+        Route::post('/{id}', [EcommerceConfigController::class, 'update']);
+        Route::delete('/{id}', [EcommerceConfigController::class, 'destroy']);
+    });
 });
