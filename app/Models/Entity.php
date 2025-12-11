@@ -7,7 +7,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+use App\Observers\EntityObserver;
 
+#[ObservedBy([EntityObserver::class])]
 class Entity extends Model
 {
     use HasFactory;
@@ -76,6 +79,14 @@ class Entity extends Model
     }
 
     /**
+     * Relación con tipo de documento
+     */
+    public function documentType(): BelongsTo
+    {
+        return $this->belongsTo(DocumentType::class, 'tipo_documento', 'code');
+    }
+
+    /**
      * Get the user that created this entity
      */
     public function user(): BelongsTo
@@ -92,11 +103,27 @@ class Entity extends Model
     }
 
     /**
+     * Get the country information
+     */
+    public function country(): BelongsTo
+    {
+        return $this->belongsTo(Country::class, 'country_code', 'code');
+    }
+
+    /**
      * Get the default address for the entity.
      */
     public function defaultAddress(): HasOne
     {
         return $this->hasOne(Address::class)->where('is_default', true);
+    }
+
+    /**
+     * Get all addresses for the entity.
+     */
+    public function addresses(): HasMany
+    {
+        return $this->hasMany(Address::class);
     }
 
     /**
@@ -140,18 +167,5 @@ class Entity extends Model
     public function getDisplayNameAttribute(): string
     {
         return $this->full_name;
-    }
-
-    /**
-     * Get all addresses for the entity.
-     */
-    public function addresses(): HasMany
-    {
-        return $this->hasMany(Address::class);
-    }
-
-    public function country(): BelongsTo
-    {
-        return $this->belongsTo(Country::class, 'country_code', 'code');
     }
 }

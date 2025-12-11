@@ -1,14 +1,12 @@
 <?php
-// app/Http/Resources/Products/ProductCollection.php
 
-namespace App\Http\Resources\Products;
+namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\ResourceCollection;
-use App\Models\Product;
-use App\Services\ProductService;
+use App\Services\EntityService;
 
-class ProductCollection extends ResourceCollection
+class EntityCollection extends ResourceCollection
 {
     /**
      * Transform the resource collection into an array.
@@ -16,9 +14,10 @@ class ProductCollection extends ResourceCollection
     public function toArray(Request $request): array
     {
         return [
-            'data' => ProductResource::collection($this->collection),
+            'data' => EntityResource::collection($this->collection),
         ];
     }
+
     /**
      * Customize the pagination information for the resource.
      *
@@ -48,14 +47,14 @@ class ProductCollection extends ResourceCollection
 
                 // Estadísticas de la página actual
                 'page_stats' => [
-                    'active_products' => $this->collection->where('is_active', true)->count(),
-                    'inactive_products' => $this->collection->where('is_active', false)->count(),
-                    'featured_products' => $this->collection->where('is_featured', true)->count(),
-                    'total_stock_in_page' => $this->collection->sum('total_stock'),
+                    'active_entities' => $this->collection->where('is_active', true)->count(),
+                    'inactive_entities' => $this->collection->where('is_active', false)->count(),
+                    'customers_in_page' => $this->collection->filter(fn($e) => in_array($e->type, ['customer', 'both']))->count(),
+                    'suppliers_in_page' => $this->collection->filter(fn($e) => in_array($e->type, ['supplier', 'both']))->count(),
                 ],
 
                 // Estadísticas globales
-                'global_stats' => app(ProductService::class)->getGlobalStats(),
+                'global_stats' => app(EntityService::class)->getGlobalStatistics(),
             ],
         ];
     }

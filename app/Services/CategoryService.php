@@ -23,9 +23,9 @@ class CategoryService
      */
     public function getCategories(Request $request): LengthAwarePaginator
     {
-        $perPage = $request->query('per_page', 20);
-        $search = $request->query('search');
-        $level = $request->query('level');
+        $perPage  = $request->query('per_page', 20);
+        $search   = $request->query('search');
+        $level    = $request->query('level');
         $parentId = $request->query('parent_id');
         $isActive = $request->query('is_active');
 
@@ -41,13 +41,14 @@ class CategoryService
         ]));
 
         return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($perPage, $search, $level, $parentId, $isActive) {
+
             $query = Category::query();
 
             if ($search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")
-                        ->orWhere('description', 'like', "%{$search}%")
-                        ->orWhere('slug', 'like', "%{$search}%");
+                      ->orWhere('description', 'like', "%{$search}%")
+                      ->orWhere('slug', 'like', "%{$search}%");
                 });
             }
 
@@ -67,12 +68,11 @@ class CategoryService
                 $query->where('is_active', filter_var($isActive, FILTER_VALIDATE_BOOLEAN));
             }
 
-            return $query->with([
-                'parent',
-                'children' => function ($q) {
-                    $q->withCount('products');
-                }
-            ])
+            return $query
+                ->with([
+                    'parent',
+                    'children' => fn($q) => $q->withCount('products')
+                ])
                 ->withCount('children')
                 ->withCount('products')
                 ->orderBy('order')
@@ -105,11 +105,12 @@ class CategoryService
     public function createCategory(array $data): Category
     {
         return DB::transaction(function () use ($data) {
+
             if (!isset($data['slug'])) {
                 $data['slug'] = Str::slug($data['name']);
             }
 
-            if (isset($data['parent_id']) && $data['parent_id']) {
+            if (!empty($data['parent_id'])) {
                 $parent = Category::find($data['parent_id']);
 
                 if (!$parent) {
@@ -131,8 +132,8 @@ class CategoryService
 
             if (
                 Category::where('name', $data['name'])
-                ->where('parent_id', $data['parent_id'])
-                ->exists()
+                    ->where('parent_id', $data['parent_id'])
+                    ->exists()
             ) {
                 throw new CategoryValidationException(
                     'Ya existe una categoría con ese nombre en el mismo nivel',
@@ -148,16 +149,13 @@ class CategoryService
             }
 
             if (!isset($data['order'])) {
-                $maxOrder = Category::where('parent_id', $data['parent_id'])
-                    ->max('order') ?? 0;
+                $maxOrder = Category::where('parent_id', $data['parent_id'])->max('order') ?? 0;
                 $data['order'] = $maxOrder + 1;
             }
 
             $data['is_active'] = $data['is_active'] ?? true;
 
             $category = Category::create($data);
-
-            $this->clearCategoryCache($category);
 
             Log::info('Categoría creada', [
                 'id' => $category->id,
@@ -170,25 +168,19 @@ class CategoryService
 
     /**
      * Actualiza una categoría
-     * 🔥 AHORA con validación ESTRICTA: si falla el pricing, se revierte TODO
      */
     public function updateCategory(int $id, array $data): Category
     {
         return DB::transaction(function () use ($id, $data) {
+
             $category = Category::findOrFail($id);
 
-            // 🔥 GUARDAR MÁRGENES ANTERIORES
-            $oldMarginRetail = $category->normal_margin_percentage;
-            $oldMarginRetailMin = $category->min_margin_percentage;
-            $marginChanged = false;
-
-            // Validar nombre único si cambió
             if (isset($data['name']) && $data['name'] !== $category->name) {
                 if (
                     Category::where('name', $data['name'])
-                    ->where('parent_id', $category->parent_id)
-                    ->where('id', '!=', $id)
-                    ->exists()
+                        ->where('parent_id', $category->parent_id)
+                        ->where('id', '!=', $id)
+                        ->exists()
                 ) {
                     throw new CategoryValidationException(
                         'Ya existe una categoría con ese nombre',
@@ -197,12 +189,11 @@ class CategoryService
                 }
             }
 
-            // Validar slug único si cambió
             if (isset($data['slug']) && $data['slug'] !== $category->slug) {
                 if (
                     Category::where('slug', $data['slug'])
-                    ->where('id', '!=', $id)
-                    ->exists()
+                        ->where('id', '!=', $id)
+                        ->exists()
                 ) {
                     throw new CategoryValidationException(
                         'El slug ya está en uso',
@@ -211,33 +202,11 @@ class CategoryService
                 }
             }
 
-            // 🔥 DETECTAR si cambió el margen
-            if (
-                (isset($data['normal_margin_percentage']) && $data['normal_margin_percentage'] != $oldMarginRetail) ||
-                (isset($data['min_margin_percentage']) && $data['min_margin_percentage'] != $oldMarginRetailMin)
-            ) {
-                $marginChanged = true;
-
-                Log::info('Cambio de margen detectado', [
-                    'category_id' => $category->id,
-                    'category_name' => $category->name,
-                    'old_margin_retail' => $oldMarginRetail,
-                    'new_margin_retail' => $data['normal_margin_percentage'] ?? $oldMarginRetail,
-                    'old_margin_retail_min' => $oldMarginRetailMin,
-                    'new_margin_retail_min' => $data['min_margin_percentage'] ?? $oldMarginRetailMin,
-                ]);
-            }
-
-            // Actualizar categoría
             $category->update($data);
-
-            // Limpiar caché
-            $this->clearCategoryCache($category);
 
             Log::info('Categoría actualizada exitosamente', [
                 'id' => $category->id,
                 'name' => $category->name,
-                'note' => 'Los precios ahora se calculan dinámicamente al consultar',
             ]);
 
             return $category->fresh(['parent', 'children']);
@@ -250,6 +219,7 @@ class CategoryService
     public function deleteCategory(int $id): bool
     {
         return DB::transaction(function () use ($id) {
+
             $category = Category::withCount('children')->findOrFail($id);
 
             if ($category->children_count > 0) {
@@ -260,8 +230,6 @@ class CategoryService
 
             $deleted = $category->delete();
 
-            $this->clearCategoryCache($category);
-
             Log::info('Categoría eliminada', ['name' => $category->name]);
 
             return $deleted;
@@ -269,35 +237,9 @@ class CategoryService
     }
 
     /**
-     * Limpia el caché relacionado con la categoría
-     */
-    private function clearCategoryCache(?Category $category = null): void
-    {
-        if ($category) {
-            Cache::forget("category_{$category->id}");
-            Cache::forget("category_{$category->id}_total_products");
-
-            if ($category->parent_id) {
-                Cache::forget("category_{$category->parent_id}");
-                Cache::forget("category_{$category->parent_id}_total_products");
-            }
-
-            if ($category->relationLoaded('children')) {
-                foreach ($category->children as $child) {
-                    Cache::forget("category_{$child->id}");
-                    Cache::forget("category_{$child->id}_total_products");
-                }
-            }
-        }
-
-        Cache::forget('categories_tree');
-        Cache::increment('categories_version');
-    }
-
-    /**
      * Obtiene árbol completo de categorías (con caché)
      */
-    public function getCategoryTree(): \Illuminate\Support\Collection
+    public function getCategoryTree()
     {
         return Cache::remember('categories_tree', now()->addDay(), function () {
             return Category::whereNull('parent_id')

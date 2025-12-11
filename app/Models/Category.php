@@ -9,9 +9,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Spatie\Activitylog\Traits\LogsActivity;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+use App\Observers\CategoryObserver;
 use Spatie\Activitylog\LogOptions;
 
+#[ObservedBy([CategoryObserver::class])]
 class Category extends Model
 {
     use HasFactory;

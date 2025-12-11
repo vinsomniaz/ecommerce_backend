@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Categories\StoreCategoryRequest;
 use App\Http\Requests\Categories\UpdateCategoryRequest;
-use App\Http\Resources\CategoryResource;
+use App\Http\Resources\Categories\CategoryCollection;
+use App\Http\Resources\Categories\CategoryResource;
 use App\Models\Category;
+use App\Models\Product;
 use App\Services\CategoryService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -31,36 +33,38 @@ class CategoryController extends Controller
     {
         $categories = $this->categoryService->getCategories($request);
 
-        // Respuesta cuando no hay categorías
         if ($categories->isEmpty()) {
             return response()->json([
                 'success' => true,
                 'message' => 'Aún no se ha creado ninguna categoría',
                 'data' => [],
-                'pagination' => [
-                    'total' => 0,
-                    'per_page' => $request->query('per_page', 20),
-                    'current_page' => 1,
-                    'last_page' => 1,
+                'meta' => [
+                    'pagination' => [
+                        'total' => 0,
+                        'per_page' => $request->query('per_page', 20),
+                        'current_page' => 1,
+                        'last_page' => 1,
+                        'from' => 0,
+                        'to' => 0,
+                    ],
+                    'stats' => [
+                        'total_categories' => Category::count(),
+                        'active_categories' => Category::active()->count(),
+                        'level1_categories' => Category::root()->count(),
+                        'products_with_category' => Product::whereNotNull('category_id')->count(),
+                    ]
                 ]
             ], 200);
         }
 
-        // Respuesta exitosa con Resource
         return response()->json([
             'success' => true,
             'message' => 'Categorías obtenidas correctamente',
-            'data' => CategoryResource::collection($categories->items()),
-            'pagination' => [
-                'total' => $categories->total(),
-                'per_page' => $categories->perPage(),
-                'current_page' => $categories->currentPage(),
-                'last_page' => $categories->lastPage(),
-                'from' => $categories->firstItem(),
-                'to' => $categories->lastItem(),
-            ]
+            'data' => (new CategoryCollection($categories))->toArray($request)['data'],
+            'meta' => (new CategoryCollection($categories))->with($request)['meta'],
         ], 200);
     }
+
 
     /**
      * Mostrar una categoría específica

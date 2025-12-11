@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\EntityController;
 use App\Http\Controllers\Api\SunatController;
 use App\Http\Controllers\Api\AddressController;
+use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\StockManagementController;
 use App\Http\Controllers\Api\EcommerceController;
 use App\Http\Controllers\Api\GeminiController;
@@ -23,14 +24,10 @@ use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SupplierImportController;
 use App\Http\Controllers\Auth\PermissionController;
 use App\Http\Controllers\Api\UserController;
-use App\Http\Controllers\Auth\RegisteredUserController;
-use App\Http\Controllers\Auth\AuthenticatedSessionController;
-use App\Http\Controllers\Auth\VerifyEmailController;
-use App\Http\Controllers\Auth\EmailVerificationNotificationController;
-use App\Http\Controllers\Auth\PasswordResetLinkController;
-use App\Http\Controllers\Auth\NewPasswordController;
-use App\Http\Controllers\Api\CartController;
+use App\Http\Controllers\Api\CountryController;
+use App\Http\Controllers\Api\DocumentTypeController;
 use App\Http\Controllers\Api\ExchangeRateController;
+use App\Http\Controllers\Api\UbigeoController;
 
 /*
 |--------------------------------------------------------------------------
@@ -69,10 +66,6 @@ Route::prefix('ecommerce')->name('ecommerce/')->group(function () {
     Route::get('distribution-list', [EcommerceController::class, 'distributionList'])
         ->name('distribution-list');
 
-    //Cuentas
-    Route::post('register', [RegisteredUserController::class, 'storeCustomer']);
-    Route::post('login', [AuthenticatedSessionController::class, 'store']);
-
     /*
     |--------------------------------------------------------------------------
     | CARRITO DE COMPRAS (Cart) Y CHECKOUT (R1, R2, R3)
@@ -98,35 +91,24 @@ Route::prefix('ecommerce')->name('ecommerce/')->group(function () {
     });
 });
 
-
 /*
 |--------------------------------------------------------------------------
-|AUTENTICACIÓN
+| RUTAS DE PAÍSES Y UBIGEOS (Públicas)
 |--------------------------------------------------------------------------
 |
+| Endpoints para listar países y ubigeos (necesarios para formularios)
+|
 */
-Route::prefix('auth')->group(function () {
-    // --- VERIFICACIÓN DE CORREO ---
-    // Link que llega al correo (Debe estar firmado)
-    Route::get('/verify-email/{id}/{hash}', [VerifyEmailController::class, '__invoke'])
-        ->middleware(['throttle:6,1'])
-        ->name('verification.verify');
-
-    // Reenviar correo de verificación
-    Route::post('/email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
-        ->middleware(['auth:sanctum', 'throttle:6,1'])
-        ->name('verification.send');
-
-    // --- RECUPERACIÓN DE CONTRASEÑA ---
-    // 1. Solicitar link (Forgot Password)
-    Route::post('/forgot-password', [PasswordResetLinkController::class, 'store'])
-        ->name('password.email');
-
-    // 2. Resetear contraseña (usando el token)
-    Route::post('/reset-password', [NewPasswordController::class, 'store'])
-        ->name('password.store');
+Route::prefix('countries')->group(function () {
+    Route::get('/', [CountryController::class, 'index']);
+    Route::get('{code}', [CountryController::class, 'show']);
 });
 
+Route::prefix('ubigeos')->group(function () {
+    Route::get('tree', [UbigeoController::class, 'tree']); // Para Cascader
+    Route::get('/', [UbigeoController::class, 'index']);
+    Route::get('{ubigeo}', [UbigeoController::class, 'show']);
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -481,9 +463,21 @@ Route::middleware('auth:sanctum')->prefix('inventory')->group(function () {
 });
 
 /* ============================================
+   TIPOS DE DOCUMENTO
+   ============================================ */
+Route::prefix('document-types')->group(function () {
+    Route::get('/', [DocumentTypeController::class, 'index']);
+    Route::get('{code}', [DocumentTypeController::class, 'show']);
+});
+
+/* ============================================
    ENTIDADES
    ============================================ */
 Route::middleware('auth:sanctum')->prefix('entities')->group(function () {
+
+    // Statistics endpoint (must be before dynamic routes)
+    Route::get('statistics/global', [EntityController::class, 'globalStatistics'])
+        ->middleware('permission:entities.statistics.global');
 
     Route::get('search', [EntityController::class, 'search'])
         ->middleware('permission:entities.search');

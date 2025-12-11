@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 
 class EntityService
 {
@@ -23,6 +24,9 @@ class EntityService
         // Load relationships if requested
         if (isset($filters['with'])) {
             $query->with($filters['with']);
+        } else {
+            // Siempre cargar documentType por defecto
+            $query->with('documentType');
         }
 
         // Pagination
@@ -40,6 +44,11 @@ class EntityService
     {
         $query = Entity::query();
 
+        // Asegurar que documentType siempre esté incluido
+        if (!in_array('documentType', $relations)) {
+            $relations[] = 'documentType';
+        }
+
         if (!empty($relations)) {
             // Make sure 'country' is included if needed by the resource
             if (!in_array('country', $relations)) {
@@ -47,7 +56,7 @@ class EntityService
             }
             $query->with($relations);
         } else {
-            $query->with('country');
+            $query->with(['country', 'documentType']);
         }
 
         return $query->find($id);
@@ -72,7 +81,7 @@ class EntityService
             // Create entity
             $entity = Entity::create($data);
 
-            return $entity->load(['user', 'ubigeoData']);
+            return $entity->load(['user', 'ubigeoData', 'documentType']);
         });
     }
 
@@ -83,7 +92,7 @@ class EntityService
     {
         return DB::transaction(function () use ($entity, $data) {
             $entity->update($data);
-            return $entity->fresh(['user', 'ubigeoData']);
+            return $entity->fresh(['user', 'ubigeoData', 'documentType']);
         });
     }
 
@@ -134,6 +143,9 @@ class EntityService
         // Apply additional filters
         $this->applyFilters($query, $filters);
 
+        // Cargar documentType
+        $query->with('documentType');
+
         // Pagination
         if (isset($filters['per_page'])) {
             return $query->paginate($filters['per_page']);
@@ -160,14 +172,14 @@ class EntityService
             });
         }
 
-        // === CORRECCIÓN DE LÓGICA DE FILTRADO POR TIPO ===
+        // Filter by type
         if (isset($filters['type'])) {
             $type = $filters['type'];
 
             if ($type === 'customer') {
-                $query->customers(); // Usa el scope para 'customer' y 'both'
+                $query->customers();
             } elseif ($type === 'supplier') {
-                $query->suppliers(); // Usa el scope para 'supplier' y 'both'
+                $query->suppliers();
             }
         }
 
@@ -184,12 +196,32 @@ class EntityService
             $query->where('is_active', filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN));
         }
 
-        // Other filters
+        // Filter by document type
         if (isset($filters['tipo_documento'])) {
             $query->where('tipo_documento', $filters['tipo_documento']);
         }
 
         // Order by
         $query->orderBy('registered_at', 'desc');
+    }
+
+    /**
+     * Get global statistics for entities with caching
+     */
+    public function getGlobalStatistics(): array
+    {
+        $version = Cache::remember('entities_version', now()->addDay(), fn() => 1);
+        $key = "entities_global_stats_v{$version}";
+
+        return Cache::remember($key, now()->addMinutes(5), function () {
+            return [
+                'total_entities' => Entity::count(),
+                'active_entities' => Entity::where('is_active', true)->count(),
+                'inactive_entities' => Entity::where('is_active', false)->count(),
+                'total_customers' => Entity::customers()->count(),
+                'total_suppliers' => Entity::suppliers()->count(),
+                'total_both' => Entity::where('type', 'both')->count(),
+            ];
+        });
     }
 }

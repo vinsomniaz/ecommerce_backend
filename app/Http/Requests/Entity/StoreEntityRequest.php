@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Entity;
 
+use App\Models\DocumentType;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -21,15 +22,14 @@ class StoreEntityRequest extends FormRequest
     public function rules(): array
     {
         $isSupplierOrBoth = in_array($this->type, ['supplier', 'both']);
-        $countryCode = $this->input('country_code', 'PE');
 
         return [
             'type' => 'required|in:customer,supplier,both',
             'tipo_documento' => [
                 'required',
-                'in:01,06',
-                // Regla para asegurar que proveedores solo usen RUC
+                'exists:document_types,code',
                 function ($attribute, $value, $fail) use ($isSupplierOrBoth) {
+                    // Proveedores solo pueden usar RUC
                     if ($isSupplierOrBoth && $value !== '06') {
                         $fail('Los proveedores deben tener RUC (tipo_documento = 06).');
                     }
@@ -37,22 +37,27 @@ class StoreEntityRequest extends FormRequest
             ],
             'numero_documento' => [
                 'required',
-                'numeric',
+                'string',
                 Rule::unique('entities', 'numero_documento')->where(function ($query) {
                     return $query->where('tipo_documento', $this->tipo_documento);
                 }),
                 function ($attribute, $value, $fail) {
-                    if ($this->tipo_documento == '01' && strlen($value) != 8) {
-                        $fail('DNI debe tener 8 dígitos');
+                    $documentType = DocumentType::find($this->tipo_documento);
+                    
+                    if (!$documentType) {
+                        $fail('Tipo de documento no válido');
+                        return;
                     }
-                    if ($this->tipo_documento == '06') {
-                        if (strlen($value) != 11) {
-                            $fail('RUC debe tener 11 dígitos');
-                        }
-                        // Validar que RUC empiece con 10 o 20
-                        if (!str_starts_with($value, '10') && !str_starts_with($value, '20')) {
-                            $fail('RUC debe empezar con 10 o 20');
-                        }
+
+                    // Validar longitud si está definida
+                    if ($documentType->length && strlen($value) != $documentType->length) {
+                        $fail("{$documentType->name} debe tener {$documentType->length} dígitos");
+                        return;
+                    }
+
+                    // Validar patrón si está definido
+                    if ($documentType->validation_pattern && !$documentType->validateDocument($value)) {
+                        $fail("El formato del {$documentType->name} no es válido");
                     }
                 }
             ],
@@ -63,9 +68,9 @@ class StoreEntityRequest extends FormRequest
             'business_name' => 'required_if:tipo_persona,juridica|string|max:200',
             'trade_name' => 'nullable|string|max:100',
 
-            // Campos que son obligatorios para proveedores
+            // Campos obligatorios para proveedores
             'email' => [$isSupplierOrBoth ? 'required' : 'nullable', 'email', 'unique:entities,email', 'max:100'],
-            'phone' => [$isSupplierOrBoth ? 'required' : 'nullable', 'digits:9'],
+            'phone' => [$isSupplierOrBoth ? 'required' : 'nullable', 'string', 'max:20'],
             'address' => [$isSupplierOrBoth ? 'required' : 'nullable', 'string', 'max:250'],
 
             'country_code' => ['nullable', 'string', 'size:2', 'exists:countries,code'],
@@ -87,37 +92,32 @@ class StoreEntityRequest extends FormRequest
     public function messages(): array
     {
         $isSupplierOrBoth = in_array($this->type, ['supplier', 'both']);
+        
         $messages = [
             'type.required' => 'El tipo de entidad es obligatorio',
             'type.in' => 'El tipo debe ser customer, supplier o both',
             'tipo_documento.required' => 'El tipo de documento es obligatorio',
-            'tipo_documento.in' => 'El tipo de documento debe ser 01 (DNI) o 06 (RUC)',
+            'tipo_documento.exists' => 'El tipo de documento no es válido',
             'numero_documento.required' => 'El número de documento es obligatorio',
             'numero_documento.unique' => 'Este número de documento ya está registrado',
-            'numero_documento.numeric' => 'El número de documento debe ser numérico',
             'tipo_persona.required' => 'El tipo de persona es obligatorio',
-            'tipo_persona.in' => 'El tipo de persona debe ser natural o juridica',
             'first_name.required_if' => 'El nombre es obligatorio para personas naturales',
             'last_name.required_if' => 'El apellido es obligatorio para personas naturales',
             'business_name.required_if' => 'La razón social es obligatoria para personas jurídicas',
             'email.email' => 'El email debe ser válido',
             'email.unique' => 'Este email ya está registrado',
-            'phone.digits' => 'El teléfono debe tener 9 dígitos',
+            'phone.max' => 'El teléfono no puede tener más de 20 caracteres',
             'ubigeo.exists' => 'El ubigeo no es válido',
             'ubigeo.size' => 'El ubigeo debe tener 6 caracteres',
             'ubigeo.required_if' => 'El ubigeo es obligatorio para entidades en Perú.',
         ];
 
-        // Se determina dinámicamente el mensaje correcto para 'tipo_persona.in'
         if ($isSupplierOrBoth) {
             $messages['tipo_persona.in'] = 'Para proveedores, el tipo de persona debe ser juridica.';
             $messages['business_name.required_if'] = 'La razón social es obligatoria para proveedores.';
             $messages['email.required'] = 'El email es obligatorio para proveedores.';
             $messages['phone.required'] = 'El teléfono es obligatorio para proveedores.';
             $messages['address.required'] = 'La dirección es obligatoria para proveedores.';
-        } else {
-            $messages['tipo_persona.in'] = 'El tipo de persona debe ser natural o juridica.';
-            $messages['business_name.required_if'] = 'La razón social es obligatoria para personas jurídicas.';
         }
 
         return $messages;
