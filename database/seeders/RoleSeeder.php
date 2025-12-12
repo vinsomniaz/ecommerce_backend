@@ -286,6 +286,16 @@ class RoleSeeder extends Seeder
                 ['name' => 'quotations.manage.own', 'display_name' => 'Gestionar solo sus cotizaciones', 'description' => 'Solo puede editar/eliminar sus propias cotizaciones.'],
             ],
 
+            'Purchases' => [
+                ['name' => 'purchases.index', 'display_name' => 'Listar compras', 'description' => 'Obtiene el listado de compras.'],
+                ['name' => 'purchases.show', 'display_name' => 'Ver compra', 'description' => 'Muestra el detalle de una compra específica.'],
+                ['name' => 'purchases.store', 'display_name' => 'Registrar compra', 'description' => 'Registra una nueva compra e incrementa stock.'],
+            ],
+
+            /* ============================================
+               COMPRAS (PURCHASES) - Arriba
+               ============================================ */
+
             'Supplier Products' => [
                 ['name' => 'supplier-products.index', 'display_name' => 'Listar productos de proveedores', 'description' => 'Lista todos los productos asociados a proveedores.'],
                 ['name' => 'supplier-products.show', 'display_name' => 'Ver producto de proveedor', 'description' => 'Muestra detalle de un producto-proveedor específico.'],

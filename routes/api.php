@@ -27,6 +27,7 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\CountryController;
 use App\Http\Controllers\Api\DocumentTypeController;
 use App\Http\Controllers\Api\ExchangeRateController;
+use App\Http\Controllers\Api\PurchaseController;
 use App\Http\Controllers\Api\UbigeoController;
 use App\Models\Order;
 use App\Services\OrderService;
@@ -730,6 +731,20 @@ Route::middleware('auth:sanctum')->prefix('quotations')->group(function () {
 
     Route::get('/{quotation}/margins-breakdown', [QuotationController::class, 'marginsBreakdown'])
         ->middleware('permission:quotations.margins-breakdown');
+});
+
+/* ============================================
+   COMPRAS (PURCHASES)
+   ============================================ */
+Route::middleware('auth:sanctum')->prefix('purchases')->group(function () {
+    Route::get('/', [PurchaseController::class, 'index'])
+        ->middleware('permission:purchases.index');
+
+    Route::post('/', [PurchaseController::class, 'store'])
+        ->middleware('permission:purchases.store');
+
+    Route::get('/{purchase}', [PurchaseController::class, 'show'])
+        ->middleware('permission:purchases.show');
 });
 
 /* ============================================
