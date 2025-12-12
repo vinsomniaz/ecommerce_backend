@@ -28,7 +28,7 @@ class PurchaseSimulationTest extends TestCase
     protected static $initialized = false;
     protected static $sharedData = []; // Store data per iteration: [1 => ['user' => ...], 2 => ...]
 
-    // CONFIGURATION: Number of iterations
+    // CONFIGURACION: Numero de iteraciones
     const ITERATIONS = 3;
 
     public static function iterationsProvider(): array
@@ -49,13 +49,13 @@ class PurchaseSimulationTest extends TestCase
             $this->artisan('migrate:fresh');
 
             $this->seed([
-                \Database\Seeders\RoleSeeder::class,
-                \Database\Seeders\DefaultSettingsSeeder::class,
+                RoleSeeder::class,
+                DefaultSettingsSeeder::class,
             ]);
 
-            \App\Models\Country::factory()->create(['code' => 'PE', 'name' => 'PERU']);
+            Country::factory()->create(['code' => 'PE', 'name' => 'PERU']);
 
-            \App\Models\Ubigeo::factory()->create([
+            Ubigeo::factory()->create([
                 'ubigeo' => '150101',
                 'departamento' => 'LIMA',
                 'provincia' => 'LIMA',
@@ -63,14 +63,14 @@ class PurchaseSimulationTest extends TestCase
                 'country_code' => 'PE'
             ]);
 
-            $warehouse = \App\Models\Warehouse::factory()->create([
+            $warehouse = Warehouse::factory()->create([
                 'name' => 'Almacén Principal',
                 'is_main' => true,
             ]);
 
             // Create Products & Prices
-            $category = \App\Models\Category::factory()->create();
-            $priceList = \App\Models\PriceList::firstOrCreate(
+            $category = Category::factory()->create();
+            $priceList = PriceList::firstOrCreate(
                 ['code' => 'MINORISTA'],
                 ['name' => 'Lista Minorista', 'is_active' => true]
             );
@@ -86,7 +86,7 @@ class PurchaseSimulationTest extends TestCase
                     ['available_stock' => 500]
                 );
 
-                \App\Models\ProductPrice::create([
+                ProductPrice::create([
                     'product_id' => $product->id,
                     'price_list_id' => $priceList->id,
                     'price' => 100.00,
