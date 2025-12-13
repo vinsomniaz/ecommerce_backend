@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -13,8 +14,10 @@ use App\Observers\EntityObserver;
 #[ObservedBy([EntityObserver::class])]
 class Entity extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
+    // NOTA: Las direcciones y teléfonos NO viven en entities.
+    // La fuente de verdad es addresses (direcciones) y contacts (personas).
     protected $fillable = [
         'type',
         'tipo_documento',
@@ -24,11 +27,6 @@ class Entity extends Model
         'trade_name',
         'first_name',
         'last_name',
-        'address',
-        'ubigeo',
-        'country_code',
-        'phone',
-        'email',
         'estado_sunat',
         'condicion_sunat',
         'user_id',
@@ -41,16 +39,16 @@ class Entity extends Model
         'registered_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'deleted_at' => 'datetime',
     ];
 
     protected $attributes = [
         'type' => 'customer',
         'is_active' => true,
-        'country_code' => 'PE',
     ];
 
     /**
-     * Boot method to set default registered_at
+     * Boot method to set default registered_at and cascade soft deletes
      */
     protected static function boot()
     {
@@ -60,21 +58,21 @@ class Entity extends Model
             if (!$entity->registered_at) {
                 $entity->registered_at = now();
             }
-            // Si el país no es PE, anular ubigeo
-            if ($entity->country_code !== 'PE') {
-                $entity->ubigeo = null;
+        });
+
+        // Cascade soft delete to addresses and contacts
+        static::deleting(function ($entity) {
+            // Only cascade if it's a soft delete (not force delete)
+            if (!$entity->isForceDeleting()) {
+                $entity->addresses()->delete();
+                $entity->contacts()->delete();
             }
         });
 
-        static::updating(function ($entity) {
-            // If country_code is changing to non-PE, or is already non-PE, nullify ubigeo
-            if ($entity->isDirty('country_code') && $entity->country_code !== 'PE') {
-                $entity->ubigeo = null;
-            }
-            // Also handle if country_code remains non-PE and ubigeo is somehow set
-            elseif ($entity->country_code !== 'PE') {
-                $entity->ubigeo = null;
-            }
+        // Cascade restore to addresses and contacts
+        static::restoring(function ($entity) {
+            $entity->addresses()->withTrashed()->restore();
+            $entity->contacts()->withTrashed()->restore();
         });
     }
 
@@ -95,25 +93,9 @@ class Entity extends Model
     }
 
     /**
-     * Get the ubigeo information
+     * Get the primary address for the entity.
      */
-    public function ubigeoData(): BelongsTo
-    {
-        return $this->belongsTo(Ubigeo::class, 'ubigeo', 'ubigeo');
-    }
-
-    /**
-     * Get the country information
-     */
-    public function country(): BelongsTo
-    {
-        return $this->belongsTo(Country::class, 'country_code', 'code');
-    }
-
-    /**
-     * Get the default address for the entity.
-     */
-    public function defaultAddress(): HasOne
+    public function primaryAddress(): HasOne
     {
         return $this->hasOne(Address::class)->where('is_default', true);
     }
@@ -124,6 +106,22 @@ class Entity extends Model
     public function addresses(): HasMany
     {
         return $this->hasMany(Address::class);
+    }
+
+    /**
+     * Get the primary contact for the entity.
+     */
+    public function primaryContact(): HasOne
+    {
+        return $this->hasOne(Contact::class)->where('is_primary', true);
+    }
+
+    /**
+     * Get all contacts for the entity.
+     */
+    public function contacts(): HasMany
+    {
+        return $this->hasMany(Contact::class);
     }
 
     /**
