@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Warehouses\StoreWarehouseRequest;
 use App\Http\Requests\Warehouses\UpdateWarehouseRequest;
 use App\Http\Resources\Warehouses\WarehouseResource;
+use App\Http\Resources\Warehouses\WarehouseCollection;
 use App\Services\WarehouseService;
 use App\Services\PermissionService;
 use Illuminate\Http\JsonResponse;
@@ -28,7 +29,7 @@ class WarehouseController extends Controller
         $user = $request->user();
         $filters = $request->only(['is_active', 'visible_online', 'is_main']);
 
-        // 🔥 SOLO FILTRADO: Si no tiene acceso a todos, agregar filtro
+        // Solo filtrar si no tiene acceso a todos
         if (!$user->hasPermissionTo('warehouses.view.all')) {
             $accessibleWarehouses = $this->permissionService->getAccessibleWarehouses($user);
 
@@ -39,23 +40,45 @@ class WarehouseController extends Controller
 
         $warehouses = $this->warehouseService->list($filters);
 
+        if ($warehouses->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Aún no se ha creado ningún almacén',
+                'data' => [],
+                'meta' => [
+                    'total' => 0,
+                    'global_stats' => $this->warehouseService->getGlobalStatistics(),
+                ],
+            ], 200);
+        }
+
         return response()->json([
             'success' => true,
+            'message' => 'Almacenes obtenidos correctamente',
             'data' => WarehouseResource::collection($warehouses),
             'meta' => [
                 'total' => $warehouses->count(),
+                'page_stats' => [
+                    'active_in_page' => $warehouses->where('is_active', true)->count(),
+                    'inactive_in_page' => $warehouses->where('is_active', false)->count(),
+                    'visible_online_in_page' => $warehouses->where('visible_online', true)->count(),
+                ],
+                'global_stats' => $this->warehouseService->getGlobalStatistics(),
             ],
         ]);
     }
 
     /**
      * Crear almacén
+     *
+     * @group Almacenes
      */
     public function store(StoreWarehouseRequest $request): JsonResponse
     {
-        // ✅ No validar permisos: la ruta ya lo hizo con middleware('permission:warehouses.store')
-
         $warehouse = $this->warehouseService->create($request->validated());
+
+        // Limpiar cache al crear
+        $this->warehouseService->clearCache();
 
         return response()->json([
             'success' => true,
@@ -66,12 +89,14 @@ class WarehouseController extends Controller
 
     /**
      * Ver almacén con validación de acceso
+     *
+     * @group Almacenes
      */
     public function show(Request $request, int $id): JsonResponse
     {
         $user = $request->user();
 
-        // 🔥 SOLO VALIDAR SI NO TIENE ACCESO A TODOS
+        // Solo validar si no tiene acceso a todos
         if (!$user->hasPermissionTo('warehouses.view.all')) {
             if (!$this->permissionService->canAccessWarehouse($user, $id)) {
                 return response()->json([
@@ -85,18 +110,22 @@ class WarehouseController extends Controller
 
         return response()->json([
             'success' => true,
+            'message' => 'Almacén obtenido correctamente',
             'data' => new WarehouseResource($warehouse),
         ]);
     }
 
     /**
      * Actualizar almacén
+     *
+     * @group Almacenes
      */
     public function update(UpdateWarehouseRequest $request, int $id): JsonResponse
     {
-        // ✅ No validar permisos: la ruta ya lo hizo
-
         $warehouse = $this->warehouseService->update($id, $request->validated());
+
+        // Limpiar cache al actualizar
+        $this->warehouseService->clearCache();
 
         return response()->json([
             'success' => true,
@@ -107,16 +136,36 @@ class WarehouseController extends Controller
 
     /**
      * Eliminar almacén
+     *
+     * @group Almacenes
      */
     public function destroy(int $id): JsonResponse
     {
-        // ✅ No validar permisos: la ruta ya lo hizo con middleware('permission:warehouses.destroy')
-
         $this->warehouseService->delete($id);
+
+        // Limpiar cache al eliminar
+        $this->warehouseService->clearCache();
 
         return response()->json([
             'success' => true,
             'message' => 'Almacén eliminado exitosamente',
         ]);
     }
+
+    /**
+     * Estadísticas globales de almacenes
+     *
+     * @group Almacenes
+     */
+    public function globalStatistics(): JsonResponse
+    {
+        $stats = $this->warehouseService->getGlobalStatistics();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Estadísticas obtenidas correctamente',
+            'data' => $stats,
+        ]);
+    }
 }
+
