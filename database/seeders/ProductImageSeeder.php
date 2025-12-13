@@ -121,7 +121,19 @@ class ProductImageSeeder extends Seeder
             }
         }
 
-        $this->command->info("   ✓ " . count($validRows) . " imágenes válidas para procesar");
+        $totalImages = count($validRows);
+        $this->command->info("   ✓ $totalImages imágenes válidas para procesar");
+        
+        // Estimación de tiempo
+        $estimatedSeconds = ceil($totalImages * 0.5); // ~0.5 segundos por imagen
+        $estimatedMinutes = floor($estimatedSeconds / 60);
+        $remainingSeconds = $estimatedSeconds % 60;
+        
+        if ($estimatedMinutes > 0) {
+            $this->command->info("   ⏱️  Tiempo estimado: ~{$estimatedMinutes}m {$remainingSeconds}s");
+        } else {
+            $this->command->info("   ⏱️  Tiempo estimado: ~{$estimatedSeconds}s");
+        }
 
         // 7. ⚡ OPTIMIZACIÓN: Deshabilitar eventos temporalmente
         Product::flushEventListeners();
@@ -130,8 +142,11 @@ class ProductImageSeeder extends Seeder
         $count = 0;
         $errors = 0;
 
-        $this->command->info("🚀 Procesando imágenes...");
+        $this->command->newLine();
+        $startTime = microtime(true);
+        $this->command->info("🚀 Procesando y vinculando imágenes...");
         $progressBar = $this->command->getOutput()->createProgressBar(count($validRows));
+        $progressBar->setFormat(' %current%/%max% [%bar%] %percent:3s%% - %elapsed:6s% / ~%estimated:-6s%');
         $progressBar->start();
 
         DB::transaction(function () use ($validRows, &$count, &$errors, $progressBar) {
@@ -171,14 +186,20 @@ class ProductImageSeeder extends Seeder
 
         $progressBar->finish();
         $this->command->newLine(2);
+        
+        $endTime = microtime(true);
+        $totalTime = round($endTime - $startTime, 2);
+        $avgTimePerImage = $count > 0 ? round($totalTime / $count, 3) : 0;
 
         // 9. Resumen
         $notFound = count($productosCsv) - count($validRows);
 
         $this->command->info("✅ Proceso completado:");
-        $this->command->info("   • Imágenes agregadas: $count");
+        $this->command->info("   • Imágenes vinculadas: $count");
         $this->command->info("   • Imágenes no encontradas: $notFound");
         $this->command->info("   • Errores: $errors");
+        $this->command->info("   • Tiempo total: {$totalTime}s");
+        $this->command->info("   • Promedio por imagen: {$avgTimePerImage}s");
 
         // 10. Opción: Generar conversiones después
         if ($count > 0) {
