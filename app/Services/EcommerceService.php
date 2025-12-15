@@ -252,9 +252,26 @@ class EcommerceService
     {
         $query = Product::query()
             ->with(['category', 'media', 'firstWarehouseInventory'])
-            ->whereNotNull('distribution_price')
-            ->where('distribution_price', '>', 0)
-            ->where('is_active', true);
+            // Filtrar productos que tengan precio en la lista de distribuidor (ID 3)
+            ->whereHas('productPrices', function ($q) {
+                $q->where('price_list_id', 3)
+                    ->where('is_active', true)
+                    ->where('valid_from', '<=', now())
+                    ->where(function ($subQ) {
+                        $subQ->whereNull('valid_to')
+                            ->orWhere('valid_to', '>=', now());
+                    });
+            })
+            ->with(['productPrices' => function ($q) {
+                $q->where('price_list_id', 3)
+                    ->where('is_active', true)
+                    ->where('valid_from', '<=', now())
+                    ->where(function ($subQ) {
+                        $subQ->whereNull('valid_to')
+                            ->orWhere('valid_to', '>=', now());
+                    });
+            }])
+            ->where('products.is_active', true);
 
         // --- Filtros (Se mantienen igual) ---
 
@@ -262,11 +279,11 @@ class EcommerceService
         if (!empty($filters['search'])) {
             $search = $filters['search'];
             $query->where(function ($q) use ($search) {
-                $q->where('primary_name', 'like', "%{$search}%")
-                    ->orWhere('secondary_name', 'like', "%{$search}%")
-                    ->orWhere('sku', 'like', "%{$search}%")
-                    ->orWhere('brand', 'like', "%{$search}%")
-                    ->orWhere('barcode', 'like', "%{$search}%");
+                $q->where('products.primary_name', 'like', "%{$search}%")
+                    ->orWhere('products.secondary_name', 'like', "%{$search}%")
+                    ->orWhere('products.sku', 'like', "%{$search}%")
+                    ->orWhere('products.brand', 'like', "%{$search}%")
+                    ->orWhere('products.barcode', 'like', "%{$search}%");
             });
         }
 
@@ -300,7 +317,12 @@ class EcommerceService
         $sortOrder = $filters['sort_order'] ?? 'asc';
 
         if ($sortBy === 'price') {
-            $query->orderBy('distribution_price', $sortOrder);
+            // Unir con product_prices para ordenar por precio
+            $query->join('product_prices', 'products.id', '=', 'product_prices.product_id')
+                ->where('product_prices.price_list_id', 3)
+                ->where('product_prices.is_active', true)
+                ->orderBy('product_prices.price', $sortOrder)
+                ->select('products.*'); // Importante para no traer campos de product_prices
         } else {
             $allowedSorts = ['primary_name', 'sku', 'brand', 'created_at'];
             if (in_array($sortBy, $allowedSorts)) {

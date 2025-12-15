@@ -60,6 +60,7 @@ class EcommerceProductResource extends JsonResource
 
             // ==================== PRECIOS PÚBLICOS ====================
             'sale_price' => $this->getSalePrice($priceListId, $warehouseId, $exchangeRateFactor),
+            'distribution_price' => $this->getSalePrice(3, $warehouseId, $exchangeRateFactor), // ID 3 = Distribuidor
 
             // Si hay un precio de oferta o cálculo de "mejor precio" público
             'best_price' => $this->when(
