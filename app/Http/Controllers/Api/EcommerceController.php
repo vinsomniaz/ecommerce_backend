@@ -4,13 +4,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Resources\Products\ProductResource;
+use App\Http\Resources\Products\EcommerceProductResource;
+use App\Http\Resources\Categories\EcommerceCategoryResource;
 use App\Services\EcommerceService;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use App\Services\CategoryService;
-use App\Http\Resources\CategoryResource;
 use App\Models\Category;
 use App\Models\ExchangeRate;
 
@@ -55,7 +55,7 @@ class EcommerceController extends Controller
         $perPage = $request->input('per_page', 15);
         $products = $this->ecommerceservice->getFiltered($filters, $perPage);
 
-        return ProductResource::collection($products);
+        return EcommerceProductResource::collection($products);
     }
     /**
      * Crear un nuevo producto (SIN precios - se asignarán con compras)
@@ -71,7 +71,7 @@ class EcommerceController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => new ProductResource($product),
+            'data' => new EcommerceProductResource($product),
         ]);
     }
 
@@ -119,7 +119,7 @@ class EcommerceController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Categorías obtenidas correctamente',
-            'data' => CategoryResource::collection($categories->items()),
+            'data' => EcommerceCategoryResource::collection($categories->items()),
             'pagination' => [
                 'total' => $categories->total(),
                 'per_page' => $categories->perPage(),
@@ -146,7 +146,7 @@ class EcommerceController extends Controller
         // Ya no enviamos per_page
         $products = $this->ecommerceservice->getDistributionList($filters);
 
-        return ProductResource::collection($products);
+        return EcommerceProductResource::collection($products);
     }
 
     /**
@@ -171,7 +171,7 @@ class EcommerceController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Categoría obtenida correctamente',
-            'data' => new CategoryResource($category)
+            'data' => new EcommerceCategoryResource($category)
         ], 200);
     }
 
@@ -191,7 +191,7 @@ class EcommerceController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Árbol de categorías obtenido correctamente',
-            'data' => CategoryResource::collection($categories)
+            'data' => EcommerceCategoryResource::collection($categories)
         ], 200);
     }
 

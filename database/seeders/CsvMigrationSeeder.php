@@ -398,9 +398,9 @@ class CsvMigrationSeeder extends Seeder
 
         // PASO 3: Obtener IDs de listas de precios
         $retailListId = DB::table('price_lists')->where('code', 'RETAIL')->value('id');
-        $wholesaleListId = DB::table('price_lists')->where('code', 'WHOLESALE')->value('id');
+        $distributorListId = DB::table('price_lists')->where('code', 'DISTRIBUTOR')->value('id');
 
-        if (!$retailListId || !$wholesaleListId) {
+        if (!$retailListId || !$distributorListId) {
             $this->command->error('No se encontraron listas de precios. Ejecuta PriceListSeeder primero.');
             throw new \Exception('Listas de precios no encontradas.');
         }
@@ -470,15 +470,15 @@ class CsvMigrationSeeder extends Seeder
             }
 
             // ============================================
-            // PRECIO MAYORISTA (desde productos.csv)
+            // PRECIO DISTRIBUIDOR (desde productos.csv)
             // ============================================
             $distributionPrice = $this->mapProductDistributionPrices[$newProductId] ?? null;
 
             if ($distributionPrice && $distributionPrice > 0) {
-                // UN SOLO precio mayorista (sin escalones)
+                // UN SOLO precio distribuidor (sin escalones)
                 $pricesToInsert[] = [
                     'product_id' => $newProductId,
-                    'price_list_id' => $wholesaleListId,
+                    'price_list_id' => $distributorListId,
                     'warehouse_id' => null, // ← Aplica a todos los almacenes
                     'price' => $distributionPrice,
                     'min_price' => null,
@@ -529,7 +529,7 @@ class CsvMigrationSeeder extends Seeder
             $this->command->info(count($inventoryToInsert) . ' registros de inventario creados.');
         }
 
-        $this->command->info('✅ Importación completada: Lotes, Precios (minorista + mayorista) e Inventario.');
+        $this->command->info('✅ Importación completada: Lotes, Precios (minorista + distribuidor) e Inventario.');
     }
 
     /**

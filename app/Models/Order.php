@@ -29,6 +29,7 @@ class Order extends Model
         'total',
         'order_date',
         'observations',
+        'stock_allocation',
     ];
 
     protected $casts = [
@@ -39,12 +40,13 @@ class Order extends Model
         'shipping_cost' => 'decimal:2',
         'total' => 'decimal:2',
         'order_date' => 'datetime',
+        'stock_allocation' => 'array',
     ];
 
     // Relaciones
     public function customer(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'customer_id');
+        return $this->belongsTo(Entity::class, 'customer_id');
     }
 
     public function warehouse(): BelongsTo
@@ -212,16 +214,21 @@ class Order extends Model
         ];
 
         if (isset($messages[$status])) {
-            Notification::create([
-                'user_id' => $this->customer_id,
-                'type' => "order_{$status}",
-                'title' => "Pedido #{$this->id}",
-                'message' => $messages[$status],
-                'data' => json_encode([
-                    'order_id' => $this->id,
-                    'tracking_code' => $trackingCode,
-                ]),
-            ]);
+            // Resolver User ID real desde la Entidad
+            $userId = $this->customer?->user_id;
+
+            if ($userId) {
+                Notification::create([
+                    'user_id' => $userId,
+                    'type' => "order_{$status}",
+                    'title' => "Pedido #{$this->id}",
+                    'message' => $messages[$status],
+                    'data' => json_encode([
+                        'order_id' => $this->id,
+                        'tracking_code' => $trackingCode,
+                    ]),
+                ]);
+            }
         }
     }
 

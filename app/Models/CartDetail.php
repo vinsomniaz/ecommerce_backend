@@ -34,11 +34,17 @@ class CartDetail extends Model
     // Accessors
     public function getUnitPriceAttribute(): float
     {
-        $inventory = $this->product->inventory()
-            ->whereHas('warehouse', fn($q) => $q->main()->visibleOnline())
-            ->first();
+        // Usar el precio centralizado del Producto (mismo que se ve en el catálogo)
+        // Esto consulta la tabla product_prices en lugar del inventario
+        $price = $this->product->getSalePrice();
 
-        return $inventory ? (float) $inventory->sale_price : 0; // R1.3
+        // Fallback: Si no hay precio en listas, intentar sacar del inventario (legacy)
+        if ($price === null || $price == 0) {
+            $inventory = $this->product->inventory()->first();
+            return $inventory ? (float) $inventory->sale_price : 0.0;
+        }
+
+        return (float) $price;
     }
 
     public function getSubtotalAttribute(): float
