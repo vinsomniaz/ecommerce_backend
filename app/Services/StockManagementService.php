@@ -563,12 +563,13 @@ class StockManagementService
                 $productId = $item['product_id'];
                 $quantity = $item['quantity'];
 
+                // 🔥 CORE FIX: lockForUpdate() para evitar race conditions
                 $inventory = Inventory::where('product_id', $productId)
                     ->where('warehouse_id', $warehouseId)
+                    ->lockForUpdate()
                     ->first();
 
                 if (!$inventory || $inventory->available_stock < $quantity) {
-                    // Esto no debería pasar si validateAllStock se ejecutó, pero es un seguro
                     throw new \Exception("Fallo en reserva: stock insuficiente para producto #{$productId} en almacén #{$warehouseId}.");
                 }
 
@@ -586,17 +587,237 @@ class StockManagementService
                     'quantity' => $quantity,
                     'unit_cost' => $inventory->average_cost,
                     'reference_type' => 'order_reserve',
-                    'reference_id' => null, // El ID de la orden se puede asignar más tarde
+                    'reference_id' => null, // El ID de la orden se puede asignar más tarde o pasar si se tuviera
                     'user_id' => Auth::id(),
                     'notes' => 'Reserva por checkout de ecommerce',
                     'moved_at' => now(),
                 ]);
             }
 
-            Log::info('Soft reserve completada', [
+            Log::info('Soft reserve completada (con lock)', [
                 'warehouse_id' => $warehouseId,
                 'items_count' => count($items),
             ]);
         });
+    }
+
+    /**
+     * Calcula la asignación de stock global entre almacenes disponibles.
+     * Retorna un array con el detalle de cuánto tomar de cada almacén.
+     * Prioriza almacenes visibles online y con stock suficiente.
+     *
+     * @param array $items Array de ['product_id' => int, 'quantity' => int]
+     * @return array Array de items con allocation: ['product_id', 'quantity', 'allocation' => [['warehouse_id' => 1, 'quantity' => 5], ...]]
+     */
+    public function calculateGlobalAllocation(array $items): array
+    {
+        $allocatedItems = [];
+
+        foreach ($items as $item) {
+            $productId = $item['product_id'];
+            $requestedQty = $item['quantity'];
+            $remainingQty = $requestedQty;
+            $allocation = [];
+
+            // Buscar stock en todos los almacenes visibles (o todos si se prefiere)
+            // Priorizamos: Almacén Principal -> Otros Almacenes
+            $inventories = Inventory::where('product_id', $productId)
+                ->where('available_stock', '>', 0)
+                ->with('warehouse')
+                ->get()
+                ->sortByDesc(function ($inv) {
+                    // Prioridad: 1. Main, 2. Visible Online, 3. Cantidad disponible
+                    $isMain = $inv->warehouse->is_main ? 1000 : 0;
+                    $isVisible = $inv->warehouse->visible_online ? 100 : 0;
+                    return $isMain + $isVisible + $inv->available_stock;
+                });
+
+            foreach ($inventories as $inv) {
+                if ($remainingQty <= 0) break;
+
+                $take = min($remainingQty, $inv->available_stock);
+                $allocation[] = [
+                    'warehouse_id' => $inv->warehouse_id,
+                    'warehouse_name' => $inv->warehouse->name,
+                    'quantity' => $take
+                ];
+                $remainingQty -= $take;
+            }
+
+            if ($remainingQty > 0) {
+                // Si no se cubre la demanda globalmente, se lanza excepción aquí o en el controller
+                // Para fines de cálculo, retornamos lo que se pudo (o lanzamos error si es estricto)
+                throw new \Exception("Stock Global insuficiente para producto #{$productId}. Faltan {$remainingQty}");
+            }
+
+            $allocatedItems[] = [
+                'product_id' => $productId,
+                'quantity' => $requestedQty,
+                'allocation' => $allocation
+            ];
+        }
+
+        return $allocatedItems;
+    }
+
+    /**
+     * Reserva stock basado en una asignación pre-calculada (Global Stock)
+     * @param array $allocatedItems Salida de calculateGlobalAllocation
+     */
+    public function softReserveAllocated(array $allocatedItems): void
+    {
+        DB::transaction(function () use ($allocatedItems) {
+            foreach ($allocatedItems as $item) {
+                foreach ($item['allocation'] as $alloc) {
+                    $warehouseId = $alloc['warehouse_id'];
+                    $quantity = $alloc['quantity'];
+                    $productId = $item['product_id'];
+
+                    $inventory = Inventory::where('product_id', $productId)
+                        ->where('warehouse_id', $warehouseId)
+                        ->lockForUpdate()
+                        ->firstOrFail();
+
+                    if ($inventory->available_stock < $quantity) {
+                        throw new \Exception("Stock inconsistente durante reserva en Warehouse {$warehouseId}.");
+                    }
+
+                    $inventory->available_stock -= $quantity;
+                    $inventory->reserved_stock += $quantity;
+                    $inventory->last_movement_at = now();
+                    $inventory->save();
+
+                    StockMovement::create([
+                        'product_id' => $productId,
+                        'warehouse_id' => $warehouseId,
+                        'purchase_batch_id' => null, // Reserva global no asigna lote aún
+                        'type' => 'adjustment',
+                        'quantity' => $quantity,
+                        'unit_cost' => $inventory->average_cost,
+                        'reference_type' => 'order_reserve_global',
+                        'reference_id' => null,
+                        'user_id' => Auth::id(),
+                        'notes' => 'Reserva Global Ecommerce',
+                        'moved_at' => now(),
+                    ]);
+                }
+            }
+        });
+    }
+
+    /**
+     * Confirma la venta descontando del stock RESERVADO usando FIFO de lotes.
+     * Ahora soporta Allocation para saber de qué almacenes descontar.
+     */
+    public function confirmSaleFromReserve(int $mainWarehouseId, array $items, int $saleId, ?array $allocation = null): void
+    {
+        DB::transaction(function () use ($mainWarehouseId, $items, $saleId, $allocation) {
+
+            // Si hay allocation, iteramos sobre la asignación en lugar de asumir todo del mainWarehouse
+            if ($allocation) {
+                foreach ($allocation as $allocItem) {
+                    // $allocItem: ['product_id' => x, 'quantity' => total, 'allocation' => [...]]
+                    foreach ($allocItem['allocation'] as $part) {
+                        $this->confirmSaleForSingleWarehouse(
+                            $part['warehouse_id'],
+                            $allocItem['product_id'],
+                            $part['quantity'],
+                            $saleId
+                        );
+                    }
+                }
+            } else {
+                // Retrocompatibilidad (Checkout simple antiguo o fallback)
+                foreach ($items as $item) {
+                    $this->confirmSaleForSingleWarehouse(
+                        $mainWarehouseId,
+                        $item['product_id'],
+                        $item['quantity'],
+                        $saleId
+                    );
+                }
+            }
+        });
+    }
+
+    /**
+     * Lógica interna para consumir reserva de un almacén específico
+     */
+    private function confirmSaleForSingleWarehouse(int $warehouseId, int $productId, int $quantity, int $saleId): void
+    {
+        $inventory = Inventory::where('product_id', $productId)
+            ->where('warehouse_id', $warehouseId)
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        // 1. Reducir del stock reservado
+        $reservedToDeduct = min($inventory->reserved_stock, $quantity);
+        $inventory->reserved_stock -= $reservedToDeduct;
+
+        if ($reservedToDeduct < $quantity) {
+            $diff = $quantity - $reservedToDeduct;
+            $inventory->available_stock -= $diff;
+        }
+
+        $inventory->last_movement_at = now();
+        $inventory->save();
+
+        // 2. Descontar físicamente de los lotes (FIFO)
+        $remainingQty = $quantity;
+
+        $batches = PurchaseBatch::where('product_id', $productId)
+            ->where('warehouse_id', $warehouseId)
+            ->where('status', 'active')
+            ->where('quantity_available', '>', 0)
+            ->orderBy('purchase_date', 'asc')
+            ->orderBy('id', 'asc')
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($batches as $batch) {
+            if ($remainingQty <= 0) break;
+
+            $qtyToTake = min($remainingQty, $batch->quantity_available);
+
+            $batch->quantity_available -= $qtyToTake;
+            if ($batch->quantity_available == 0) {
+                $batch->status = 'depleted';
+            }
+            $batch->save();
+
+            // Registrar Salida por Venta
+            StockMovement::create([
+                'product_id' => $productId,
+                'warehouse_id' => $warehouseId,
+                'purchase_batch_id' => $batch->id,
+                'type' => 'out',
+                'quantity' => -$qtyToTake,
+                'unit_cost' => $batch->purchase_price,
+                'reference_type' => 'sale',
+                'reference_id' => $saleId,
+                'user_id' => Auth::id() ?? 1,
+                'notes' => "Venta Ecommerce #{$saleId} - Lote {$batch->batch_code}",
+                'moved_at' => now(),
+            ]);
+
+            $remainingQty -= $qtyToTake;
+        }
+
+        if ($remainingQty > 0) {
+            Log::warning("Venta #{$saleId}: Stock físico insuficiente en lotes para Producto {$productId} en Warehouse {$warehouseId}. Faltaron {$remainingQty}");
+            StockMovement::create([
+                'product_id' => $productId,
+                'warehouse_id' => $warehouseId,
+                'purchase_batch_id' => null,
+                'type' => 'out',
+                'quantity' => -$remainingQty,
+                'unit_cost' => $inventory->average_cost,
+                'reference_type' => 'sale',
+                'reference_id' => $saleId,
+                'user_id' => Auth::id() ?? 1,
+                'notes' => "Venta Ecommerce #{$saleId} - Sin lote asignado (Inconsistencia)",
+                'moved_at' => now(),
+            ]);
+        }
     }
 }
