@@ -80,6 +80,7 @@ class RoleSeeder extends Seeder
                 ['name' => 'warehouses.destroy', 'display_name' => 'Eliminar almacén', 'description' => 'Elimina un almacén del sistema.'],
                 ['name' => 'warehouses.inventory', 'display_name' => 'Inventario de almacén', 'description' => 'Consulta el inventario asociado a un almacén específico.'],
                 ['name' => 'warehouses.inventory.statistics', 'display_name' => 'Estadísticas de almacén', 'description' => 'Obtiene estadísticas de inventario por almacén.'],
+                ['name' => 'warehouses.statistics.global', 'display_name' => 'Estadísticas globales', 'description' => 'Obtiene estadísticas globales.'],
             ],
 
             // 🔥 NUEVO: Permisos específicos de acceso a almacenes
@@ -184,6 +185,8 @@ class RoleSeeder extends Seeder
                 ['name' => 'entities.activate', 'display_name' => 'Activar entidad', 'description' => 'Activa una entidad previamente desactivada.'],
                 ['name' => 'entities.search', 'display_name' => 'Buscar entidades', 'description' => 'Permite buscar entidades por texto o filtros.'],
                 ['name' => 'entities.find-by-document', 'display_name' => 'Buscar entidad por documento', 'description' => 'Busca una entidad por su documento (DNI, RUC, etc.).'],
+                ['name' => 'entities.statistics.global', 'display_name' => 'Estadísticas globales de entidades', 'description' => 'Obtiene estadísticas generales de entidades.'],
+                ['name' => 'entities.restore', 'display_name' => 'Restaurar entidad', 'description' => 'Restaura una entidad previamente eliminada (soft delete).'],
             ],
 
             'Addresses' => [
@@ -438,6 +441,7 @@ class RoleSeeder extends Seeder
             'entities.activate',
             'entities.search',
             'entities.find-by-document',
+            'entities.restore',
 
             // ADDRESSES
             'addresses.index',
@@ -580,6 +584,7 @@ class RoleSeeder extends Seeder
             'entities.update',
             'entities.search',
             'entities.find-by-document',
+            'entities.restore',
 
             // ADDRESSES
             'addresses.index',

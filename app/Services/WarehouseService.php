@@ -8,42 +8,49 @@ use App\Exceptions\Warehouses\WarehouseException;
 use App\Models\Inventory;
 use App\Models\Product;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Log;
 
 class WarehouseService
 {
     /**
-     * Listar almacenes con filtros opcionales
+     * Listar almacenes con filtros opcionales y cache
      *
      * @param array $filters
      *  - is_active: bool
      *  - visible_online: bool
      *  - is_main: bool
-     *  - warehouse_ids: array (🔥 NUEVO: filtrar por IDs específicos)
+     *  - warehouse_ids: array (filtrar por IDs específicos)
      */
     public function list(array $filters = []): Collection
     {
-        $query = Warehouse::with('ubigeoData');
+        $version = Cache::remember('warehouses_version', now()->addDay(), fn() => 1);
 
-        // 🔥 FILTRO PRINCIPAL: Restricción por IDs de almacenes accesibles
-        if (isset($filters['warehouse_ids']) && is_array($filters['warehouse_ids'])) {
-            $query->whereIn('id', $filters['warehouse_ids']);
-        }
+        $cacheKey = "warehouses_v{$version}_" . md5(serialize($filters));
 
-        if (isset($filters['is_active'])) {
-            $query->where('is_active', $filters['is_active']);
-        }
+        return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($filters) {
+            $query = Warehouse::with('ubigeoData');
 
-        if (isset($filters['visible_online'])) {
-            $query->where('visible_online', $filters['visible_online']);
-        }
+            // Restricción por IDs de almacenes accesibles
+            if (isset($filters['warehouse_ids']) && is_array($filters['warehouse_ids'])) {
+                $query->whereIn('id', $filters['warehouse_ids']);
+            }
 
-        if (isset($filters['is_main'])) {
-            $query->where('is_main', $filters['is_main']);
-        }
+            if (isset($filters['is_active'])) {
+                $query->where('is_active', $filters['is_active']);
+            }
 
-        return $query->orderedByPriority()->get();
+            if (isset($filters['visible_online'])) {
+                $query->where('visible_online', $filters['visible_online']);
+            }
+
+            if (isset($filters['is_main'])) {
+                $query->where('is_main', $filters['is_main']);
+            }
+
+            return $query->orderedByPriority()->get();
+        });
     }
 
     /**
@@ -217,5 +224,39 @@ class WarehouseService
     public function getMainWarehouse(): ?Warehouse
     {
         return Warehouse::main()->with('ubigeoData')->first();
+    }
+
+    /**
+     * Estadísticas globales de almacenes con cache
+     */
+    public function getGlobalStatistics(): array
+    {
+        $version = Cache::remember('warehouses_version', now()->addDay(), fn() => 1);
+        $key = "warehouses_global_stats_v{$version}";
+
+        return Cache::remember($key, now()->addMinutes(5), function () {
+            $mainWarehouse = Warehouse::where('is_main', true)->first();
+
+            return [
+                'total_warehouses' => Warehouse::count(),
+                'active_warehouses' => Warehouse::where('is_active', true)->count(),
+                'inactive_warehouses' => Warehouse::where('is_active', false)->count(),
+                'visible_online' => Warehouse::where('visible_online', true)->count(),
+                'with_inventory' => Warehouse::whereHas('inventories')->count(),
+                'main_warehouse' => $mainWarehouse ? [
+                    'id' => $mainWarehouse->id,
+                    'name' => $mainWarehouse->name,
+                ] : null,
+            ];
+        });
+    }
+
+    /**
+     * Limpiar cache de almacenes
+     */
+    public function clearCache(): void
+    {
+        Cache::forget('warehouses_version');
+        Cache::put('warehouses_version', now()->timestamp, now()->addDay());
     }
 }

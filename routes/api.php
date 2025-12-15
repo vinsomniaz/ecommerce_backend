@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\EntityController;
 use App\Http\Controllers\Api\SunatController;
 use App\Http\Controllers\Api\AddressController;
 use App\Http\Controllers\Api\CartController;
+use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\StockManagementController;
 use App\Http\Controllers\Api\EcommerceController;
 use App\Http\Controllers\Api\GeminiController;
@@ -210,6 +211,10 @@ Route::prefix('categories')->middleware(['auth:sanctum'])->group(function () {
    ALMACENES
    ============================================ */
 Route::prefix('warehouses')->middleware(['auth:sanctum'])->group(function () {
+
+    // Ruta de estadísticas globales (antes de rutas con parámetros)
+    Route::get('statistics/global', [WarehouseController::class, 'globalStatistics'])
+        ->middleware('permission:warehouses.statistics.global');
 
     Route::get('/', [WarehouseController::class, 'index'])
         ->middleware('permission:warehouses.index');
@@ -475,22 +480,24 @@ Route::prefix('document-types')->group(function () {
    ============================================ */
 Route::middleware('auth:sanctum')->prefix('entities')->group(function () {
 
-    // Statistics endpoint (must be before dynamic routes)
+    // 🔥 RUTAS ESPECÍFICAS PRIMERO (antes de rutas con parámetros dinámicos)
     Route::get('statistics/global', [EntityController::class, 'globalStatistics'])
         ->middleware('permission:entities.statistics.global');
-
-    Route::get('search', [EntityController::class, 'search'])
-        ->middleware('permission:entities.search');
 
     Route::get('find-by-document', [EntityController::class, 'findByDocument'])
         ->middleware('permission:entities.find-by-document');
 
+    // 🔥 RUTAS CON PARÁMETROS DINÁMICOS
     Route::patch('{entity}/deactivate', [EntityController::class, 'deactivate'])
         ->middleware('permission:entities.deactivate');
 
     Route::patch('{entity}/activate', [EntityController::class, 'activate'])
         ->middleware('permission:entities.activate');
 
+    Route::post('{id}/restore', [EntityController::class, 'restore'])
+        ->middleware('permission:entities.restore');
+
+    // 🔥 CRUD BÁSICO (index incluye search integrado)
     Route::get('/', [EntityController::class, 'index'])
         ->middleware('permission:entities.index');
 
@@ -506,13 +513,22 @@ Route::middleware('auth:sanctum')->prefix('entities')->group(function () {
     Route::delete('{entity}', [EntityController::class, 'destroy'])
         ->middleware('permission:entities.destroy');
 
+    // 🔥 ADDRESSES ANIDADAS
     Route::prefix('{entity}/addresses')->group(function () {
-
         Route::get('/', [AddressController::class, 'index'])
             ->middleware('permission:addresses.index');
 
         Route::post('/', [AddressController::class, 'store'])
             ->middleware('permission:addresses.store');
+    });
+
+    // 🔥 CONTACTS ANIDADOS
+    Route::prefix('{entity}/contacts')->group(function () {
+        Route::get('/', [ContactController::class, 'index'])
+            ->middleware('permission:contacts.index');
+
+        Route::post('/', [ContactController::class, 'store'])
+            ->middleware('permission:contacts.store');
     });
 });
 
@@ -559,6 +575,23 @@ Route::middleware('auth:sanctum')->prefix('addresses')->group(function () {
 
     Route::delete('{address}', [AddressController::class, 'destroy'])
         ->middleware('permission:addresses.destroy');
+});
+
+/* ============================================
+   CONTACTOS
+   ============================================ */
+Route::middleware('auth:sanctum')->prefix('contacts')->group(function () {
+    Route::patch('{contact}/set-primary', [ContactController::class, 'setPrimary'])
+        ->middleware('permission:contacts.set-primary');
+
+    Route::get('{contact}', [ContactController::class, 'show'])
+        ->middleware('permission:contacts.show');
+
+    Route::match(['put', 'patch'], '{contact}', [ContactController::class, 'update'])
+        ->middleware('permission:contacts.update');
+
+    Route::delete('{contact}', [ContactController::class, 'destroy'])
+        ->middleware('permission:contacts.destroy');
 });
 
 /* ============================================

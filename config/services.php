@@ -35,8 +35,18 @@ return [
         ],
     ],
 
+    'document_validation' => [
+        'provider' => env('DOCUMENT_VALIDATION_PROVIDER', 'decolecta'),
+    ],
+
     'apisperu' => [
         'token' => env('APISPERU_TOKEN'),
+        'base_url' => 'https://dniruc.apisperu.com/api/v1',
+    ],
+
+    'decolecta' => [
+        'token' => env('DECOLECTA_TOKEN'),
+        'base_url' => env('DECOLECTA_BASE_URL', 'https://api.decolecta.com'),
     ],
 
     'gemini' => [

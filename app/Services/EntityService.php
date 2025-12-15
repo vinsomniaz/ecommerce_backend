@@ -49,14 +49,18 @@ class EntityService
             $relations[] = 'documentType';
         }
 
+        // Asegurar que primaryAddress y primaryContact estén incluidos
+        if (!in_array('primaryAddress', $relations) && !in_array('primaryAddress.ubigeoData', $relations)) {
+            $relations[] = 'primaryAddress.ubigeoData';
+        }
+        if (!in_array('primaryContact', $relations)) {
+            $relations[] = 'primaryContact';
+        }
+
         if (!empty($relations)) {
-            // Make sure 'country' is included if needed by the resource
-            if (!in_array('country', $relations)) {
-                $relations[] = 'country';
-            }
             $query->with($relations);
         } else {
-            $query->with(['country', 'documentType']);
+            $query->with(['primaryAddress.ubigeoData', 'primaryContact', 'documentType']);
         }
 
         return $query->find($id);
@@ -68,20 +72,43 @@ class EntityService
     public function create(array $data): Entity
     {
         return DB::transaction(function () use ($data) {
+            // Extraer datos de entity
+            $entityData = $data['entity'] ?? $data;
+            
             // Set user_id from authenticated user if not provided
-            if (!isset($data['user_id']) && Auth::check()) {
-                $data['user_id'] = Auth::id();
+            if (!isset($entityData['user_id']) && Auth::check()) {
+                $entityData['user_id'] = Auth::id();
             }
 
             // Set registered_at if not provided
-            if (!isset($data['registered_at'])) {
-                $data['registered_at'] = now();
+            if (!isset($entityData['registered_at'])) {
+                $entityData['registered_at'] = now();
             }
 
             // Create entity
-            $entity = Entity::create($data);
+            $entity = Entity::create($entityData);
 
-            return $entity->load(['user', 'ubigeoData', 'documentType']);
+            // Create addresses
+            if (isset($data['addresses']) && is_array($data['addresses'])) {
+                foreach ($data['addresses'] as $addressData) {
+                    $entity->addresses()->create($addressData);
+                }
+            }
+
+            // Create contacts
+            if (isset($data['contacts']) && is_array($data['contacts'])) {
+                foreach ($data['contacts'] as $contactData) {
+                    $entity->contacts()->create($contactData);
+                }
+            }
+
+            return $entity->load([
+                'addresses',
+                'contacts',
+                'primaryAddress.ubigeoData',
+                'primaryContact',
+                'documentType'
+            ]);
         });
     }
 
@@ -91,17 +118,93 @@ class EntityService
     public function update(Entity $entity, array $data): Entity
     {
         return DB::transaction(function () use ($entity, $data) {
-            $entity->update($data);
-            return $entity->fresh(['user', 'ubigeoData', 'documentType']);
+            // Update entity data if provided
+            if (isset($data['entity'])) {
+                $entity->update($data['entity']);
+            }
+
+            // Update addresses (Smart Sync)
+            if (isset($data['addresses']) && is_array($data['addresses'])) {
+                $currentIds = $entity->addresses()->pluck('id')->toArray();
+                $incomingIds = [];
+
+                foreach ($data['addresses'] as $addressData) {
+                    if (isset($addressData['id']) && in_array($addressData['id'], $currentIds)) {
+                        // Update existing - remove 'id' from update data
+                        $addressId = $addressData['id'];
+                        unset($addressData['id']);
+                        $incomingIds[] = $addressId;
+                        
+                        // Only update if there's data to update
+                        if (!empty($addressData)) {
+                            $entity->addresses()->where('id', $addressId)->update($addressData);
+                        }
+                    } elseif (!isset($addressData['id'])) {
+                        // Create new only if no ID was provided
+                        $newAddress = $entity->addresses()->create($addressData);
+                        $incomingIds[] = $newAddress->id;
+                    }
+                    // If ID is provided but not found in currentIds, skip (invalid ID)
+                }
+
+                // Delete missing (Soft Delete)
+                $toDelete = array_diff($currentIds, $incomingIds);
+                if (!empty($toDelete)) {
+                    $entity->addresses()->whereIn('id', $toDelete)->delete();
+                }
+            }
+
+            // Update contacts (Smart Sync)
+            if (isset($data['contacts']) && is_array($data['contacts'])) {
+                $currentIds = $entity->contacts()->pluck('id')->toArray();
+                $incomingIds = [];
+
+                foreach ($data['contacts'] as $contactData) {
+                    if (isset($contactData['id']) && in_array($contactData['id'], $currentIds)) {
+                        // Update existing - remove 'id' from update data
+                        $contactId = $contactData['id'];
+                        unset($contactData['id']);
+                        $incomingIds[] = $contactId;
+                        
+                        // Only update if there's data to update
+                        if (!empty($contactData)) {
+                            $entity->contacts()->where('id', $contactId)->update($contactData);
+                        }
+                    } elseif (!isset($contactData['id'])) {
+                        // Create new only if no ID was provided
+                        $newContact = $entity->contacts()->create($contactData);
+                        $incomingIds[] = $newContact->id;
+                    }
+                    // If ID is provided but not found in currentIds, skip (invalid ID)
+                }
+
+                // Delete missing (Soft Delete)
+                $toDelete = array_diff($currentIds, $incomingIds);
+                if (!empty($toDelete)) {
+                    $entity->contacts()->whereIn('id', $toDelete)->delete();
+                }
+            }
+
+            // Refresh and load relationships
+            $entity->refresh();
+            $entity->load([
+                'addresses',
+                'contacts',
+                'primaryAddress.ubigeoData',
+                'primaryContact',
+                'documentType'
+            ]);
+            
+            return $entity;
         });
     }
 
     /**
-     * Delete an entity (logical delete).
+     * Delete an entity (soft delete).
      */
     public function delete(Entity $entity): bool
     {
-        return $entity->update(['is_active' => false]);
+        return $entity->delete();
     }
 
     /**
@@ -110,7 +213,8 @@ class EntityService
     public function deactivate(Entity $entity): Entity
     {
         $entity->update(['is_active' => false]);
-        return $entity->fresh();
+        $entity->refresh();
+        return $entity;
     }
 
     /**
@@ -119,7 +223,30 @@ class EntityService
     public function activate(Entity $entity): Entity
     {
         $entity->update(['is_active' => true]);
-        return $entity->fresh();
+        $entity->refresh();
+        return $entity;
+    }
+
+    /**
+     * Restore a soft-deleted entity
+     */
+    public function restore(int $id): ?Entity
+    {
+        $entity = Entity::withTrashed()->find($id);
+        
+        if (!$entity || !$entity->trashed()) {
+            return null;
+        }
+        
+        $entity->restore();
+        
+        return $entity->load([
+            'addresses',
+            'contacts',
+            'primaryAddress.ubigeoData',
+            'primaryContact',
+            'documentType'
+        ]);
     }
 
     /**
@@ -136,15 +263,18 @@ class EntityService
                 ->orWhere('trade_name', 'like', "%{$term}%")
                 ->orWhere('first_name', 'like', "%{$term}%")
                 ->orWhere('last_name', 'like', "%{$term}%")
-                ->orWhere('email', 'like', "%{$term}%")
-                ->orWhereRaw("first_name || ' ' || last_name LIKE ?", ["%{$term}%"]);
+                ->orWhereRaw("first_name || ' ' || last_name LIKE ?", ["%{$term}%"])
+                // Buscar en email de contacto principal
+                ->orWhereHas('primaryContact', function($q) use ($term) {
+                    $q->where('email', 'like', "%{$term}%");
+                });
         });
 
         // Apply additional filters
         $this->applyFilters($query, $filters);
 
-        // Cargar documentType
-        $query->with('documentType');
+        // Cargar relaciones
+        $query->with(['documentType', 'primaryAddress', 'primaryContact']);
 
         // Pagination
         if (isset($filters['per_page'])) {
@@ -167,8 +297,11 @@ class EntityService
                     ->orWhere('business_name', 'like', "%{$term}%")
                     ->orWhere('first_name', 'like', "%{$term}%")
                     ->orWhere('last_name', 'like', "%{$term}%")
-                    ->orWhere('email', 'like', "%{$term}%")
-                    ->orWhereRaw("first_name || ' ' || last_name LIKE ?", ["%{$term}%"]);
+                    ->orWhereRaw("first_name || ' ' || last_name LIKE ?", ["%{$term}%"])
+                    // Buscar en email de contacto principal
+                    ->orWhereHas('primaryContact', function($q) use ($term) {
+                        $q->where('email', 'like', "%{$term}%");
+                    });
             });
         }
 
