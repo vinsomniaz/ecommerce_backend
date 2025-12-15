@@ -31,10 +31,7 @@ class EntityFactory extends Factory
             'last_name' => $isNatural ? $this->faker->lastName() : null,
             'business_name' => $isNatural ? null : $this->faker->company() . ' S.A.C.',
             'trade_name' => $isNatural ? null : $this->faker->company(),
-            'email' => $this->faker->unique()->safeEmail(),
-            'phone' => $this->faker->numerify('9########'),
-            'address' => $this->faker->address(),
-            'ubigeo' => null, // Dejamos null para no depender de ubigeos
+            // NOTA: email, phone, address ahora viven en contacts y addresses
             'user_id' => User::factory(), // Crea un usuario asociado
             'is_active' => true,
             'registered_at' => now(),

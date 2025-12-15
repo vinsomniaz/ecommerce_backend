@@ -34,8 +34,8 @@ return new class extends Migration
             $table->string('email', 100)->nullable();
 
             // SUNAT status
-            $table->enum('estado_sunat', ['activo', 'baja', 'suspendido'])->nullable();
-            $table->enum('condicion_sunat', ['habido', 'no_habido'])->nullable();
+            $table->enum('estado_sunat', ['ACTIVO', 'BAJA', 'SUSPENDIDO'])->nullable();
+            $table->enum('condicion_sunat', ['HABIDO', 'NO HABIDO'])->nullable();
 
             // Relations and metadata
             $table->foreignId('user_id')->nullable()->constrained('users')->onDelete('set null');

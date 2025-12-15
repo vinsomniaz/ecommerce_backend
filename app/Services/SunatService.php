@@ -2,13 +2,38 @@
 
 namespace App\Services;
 
+use App\Contracts\DocumentValidationInterface;
+use App\Services\Adapters\ApisPeruAdapter;
+use App\Services\Adapters\DecolectaAdapter;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Http\Client\ConnectionException;
 
 class SunatService
 {
+    protected ?DocumentValidationInterface $adapter;
+
+    public function __construct()
+    {
+        $this->adapter = $this->resolveAdapter();
+    }
+
+    /**
+     * Resolve the appropriate adapter based on configuration.
+     */
+    private function resolveAdapter(): DocumentValidationInterface
+    {
+        $provider = config('services.document_validation.provider', 'decolecta');
+
+        return match($provider) {
+            'apisperu' => new ApisPeruAdapter(),
+            'decolecta' => new DecolectaAdapter(),
+            default => throw new \Exception("Invalid document validation provider: {$provider}. Use 'apisperu' or 'decolecta'.")
+        };
+    }
+
+    /**
+     * Validate a document (DNI or RUC) using the configured provider.
+     */
     public function validateDocument(string $tipo, string $numero)
     {
         $cacheKey = "sunat_validation_{$tipo}_{$numero}";
@@ -19,77 +44,51 @@ class SunatService
         }
 
         try {
-            $token = config('services.apisperu.token');
-            if (!$token) {
-                Log::error('APISPERU_TOKEN no está configurado.');
-                return ['success' => false, 'status' => 503, 'message' => 'Servicio no configurado.'];
+            // Delegate to the appropriate adapter method
+            if ($tipo == '01') {
+                $result = $this->adapter->validateDni($numero);
+            } elseif ($tipo == '06') {
+                $result = $this->adapter->validateRuc($numero);
+            } else {
+                return ['success' => false, 'status' => 400, 'message' => 'Tipo de documento no válido.'];
             }
 
-            $apiUrl = $tipo == '01'
-                ? "https://dniruc.apisperu.com/api/v1/dni/{$numero}?token={$token}"
-                : "https://dniruc.apisperu.com/api/v1/ruc/{$numero}?token={$token}";
-
-            $response = Http::timeout(8)->get($apiUrl);
-
-            if ($response->successful()) {
-                $data = $response->json();
-
-                // Formatear la respuesta para que coincida con lo que el frontend espera
-                $formattedData = $this->formatResponse($tipo, $data);
-
-                // Guardar en caché por 30 días
-                Cache::put($cacheKey, $formattedData, now()->addDays(30));
-
-                return $formattedData;
+            // Cache successful results for 30 days
+            if ($result['success'] ?? false) {
+                Cache::put($cacheKey, $result, now()->addDays(30));
             }
 
-            // Manejo de errores comunes de la API
-            if ($response->status() == 404) {
-                return ['success' => false, 'status' => 404, 'message' => 'Documento no encontrado.'];
-            }
-
-            return ['success' => false, 'status' => $response->status(), 'message' => 'No se pudo validar el documento.'];
-        } catch (ConnectionException $e) {
-            Log::error("Error de conexión validando documento {$tipo}-{$numero}: " . $e->getMessage());
-            return ['success' => false, 'status' => 503, 'message' => 'Servicio no disponible. Puede continuar con el registro manual.'];
+            return $result;
         } catch (\Exception $e) {
-            Log::error("Error general validando documento {$tipo}-{$numero}: " . $e->getMessage());
+            Log::error("Error validando documento {$tipo}-{$numero}: " . $e->getMessage());
             return ['success' => false, 'status' => 500, 'message' => 'Ocurrió un error inesperado.'];
         }
     }
 
-    private function formatResponse(string $tipo, array $data): array
+    /**
+     * Validate RUC with advanced information (only available with Decolecta).
+     */
+    public function validateRucAdvanced(string $numero)
     {
-        if ($tipo == '01') { // DNI
-            return [
-                'success' => true,
-                'data' => [
-                    'tipo_documento' => '01',
-                    'numero_documento' => $data['dni'] ?? null,
-                    'nombres' => $data['nombres'] ?? null,
-                    'apellido_paterno' => $data['apellidoPaterno'] ?? null,
-                    'apellido_materno' => $data['apellidoMaterno'] ?? null,
-                    'nombre_completo' => trim(($data['nombres'] ?? '') . ' ' . ($data['apellidoPaterno'] ?? '') . ' ' . ($data['apellidoMaterno'] ?? ''))
-                ]
-            ];
+        $cacheKey = "sunat_validation_ruc_advanced_{$numero}";
+
+        // Intentar obtener de la caché primero
+        if (Cache::has($cacheKey)) {
+            return Cache::get($cacheKey);
         }
 
-        // RUC
-        return [
-            'success' => true,
-            'data' => [
-                'tipo_documento' => '06',
-                'numero_documento' => $data['ruc'] ?? null,
-                'razon_social' => $data['razonSocial'] ?? null,
-                'nombre_comercial' => $data['nombreComercial'] ?? null,
-                'direccion' => $data['direccion'] ?? null,
-                'ubigeo' => $data['ubigeo'] ?? null,
-                'departamento' => $data['departamento'] ?? null,
-                'provincia' => $data['provincia'] ?? null,
-                'distrito' => $data['distrito'] ?? null,
-                'estado' => $data['estado'] ?? null,
-                'condicion' => $data['condicion'] ?? null,
-            ]
-        ];
+        try {
+            $result = $this->adapter->validateRuc($numero, true);
+
+            // Cache successful results for 30 days
+            if ($result['success'] ?? false) {
+                Cache::put($cacheKey, $result, now()->addDays(30));
+            }
+
+            return $result;
+        } catch (\Exception $e) {
+            Log::error("Error validando RUC avanzado {$numero}: " . $e->getMessage());
+            return ['success' => false, 'status' => 500, 'message' => 'Ocurrió un error inesperado.'];
+        }
     }
 }

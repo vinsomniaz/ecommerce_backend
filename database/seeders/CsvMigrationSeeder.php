@@ -134,10 +134,32 @@ class CsvMigrationSeeder extends Seeder
                 'type' => 'supplier',
                 'tipo_persona' => 'juridica',
                 'business_name' => 'PROVEEDOR GENÉRICO DE MIGRACIÓN',
-                'address' => 'S/N',
                 'user_id' => $firstUser->id,
             ]
         );
+
+        // Crear dirección principal si no existe
+        if (!$supplier->primaryAddress) {
+            $supplier->addresses()->create([
+                'address' => 'Dirección de Migración S/N',
+                'ubigeo' => '150101',
+                'country_code' => 'PE',
+                'phone' => '999999999',
+                'is_default' => true,
+                'label' => 'Oficina Principal',
+            ]);
+        }
+
+        // Crear contacto principal si no existe
+        if (!$supplier->primaryContact) {
+            $supplier->contacts()->create([
+                'full_name' => 'Contacto de Migración',
+                'position' => 'Administrador',
+                'email' => 'migracion@proveedor.com',
+                'phone' => '999999999',
+                'is_primary' => true,
+            ]);
+        }
 
         $dummyPurchase = Purchase::create([
             'warehouse_id' => $firstWarehouseId,
