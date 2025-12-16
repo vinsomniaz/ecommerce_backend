@@ -770,6 +770,9 @@ Route::middleware('auth:sanctum')->prefix('quotations')->group(function () {
    COMPRAS (PURCHASES)
    ============================================ */
 Route::middleware('auth:sanctum')->prefix('purchases')->group(function () {
+    Route::get('/statistics/global', [PurchaseController::class, 'statistics'])
+        ->middleware('permission:purchases.statistics'); // Ensure permission exists or create it
+
     Route::get('/', [PurchaseController::class, 'index'])
         ->middleware('permission:purchases.index');
 
@@ -778,6 +781,15 @@ Route::middleware('auth:sanctum')->prefix('purchases')->group(function () {
 
     Route::get('/{purchase}', [PurchaseController::class, 'show'])
         ->middleware('permission:purchases.show');
+
+    Route::match(['put', 'patch'], '/{purchase}', [PurchaseController::class, 'update'])
+        ->middleware('permission:purchases.update');
+
+    Route::delete('/{purchase}', [PurchaseController::class, 'destroy'])
+        ->middleware('permission:purchases.destroy');
+
+    Route::post('/{purchase}/payments', [PurchaseController::class, 'registerPayment'])
+        ->middleware('permission:purchases.payments.create');
 });
 
 /* ============================================
