@@ -175,6 +175,11 @@ class Product extends Model implements HasMedia
         return $this->hasMany(SaleDetail::class);
     }
 
+    public function supplierProducts(): HasMany
+    {
+        return $this->hasMany(SupplierProduct::class);
+    }
+
     public function isInStock(): bool
     {
         return $this->inventory->sum('available_stock') > 0;

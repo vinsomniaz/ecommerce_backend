@@ -570,6 +570,18 @@ Route::middleware('auth:sanctum')->prefix('contacts')->group(function () {
 Route::middleware('auth:sanctum')->prefix('quotations')->group(function () {
 
     // ============================================================================
+    // QUOTATION BUILDER - Filtrado de productos
+    // ============================================================================
+
+    // Obtener productos para el builder con filtros
+    Route::get('/builder/products', [QuotationController::class, 'getProducts'])
+        ->middleware('permission:quotations.store');
+
+    // Obtener opciones de filtro (almacenes, familias, proveedores)
+    Route::get('/builder/filters', [QuotationController::class, 'getFilterOptions'])
+        ->middleware('permission:quotations.store');
+
+    // ============================================================================
     // CRUD BÁSICO
     // ============================================================================
 
