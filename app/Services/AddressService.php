@@ -41,6 +41,7 @@ class AddressService
 
         $data['is_default'] = $isDefault;
         $data['entity_id'] = $entity->id;
+        $data['user_id'] = $entity->user_id;
 
         $address = DB::transaction(function () use ($data, $isDefault, $entity) {
             $address = Address::create($data);

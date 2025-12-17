@@ -18,7 +18,7 @@ class AddressResource extends JsonResource
             'id' => $this->id,
             'entity_id' => $this->entity_id,
             'address' => $this->address,
-            
+
             'country_code' => $this->country_code, // NUEVO
             'country' => $this->whenLoaded('country', [ // NUEVO
                 'code' => $this->country->code,
@@ -29,7 +29,8 @@ class AddressResource extends JsonResource
             'departamento' => $this->whenLoaded('ubigeoData', $this->ubigeoData->departamento ?? null),
             'provincia' => $this->whenLoaded('ubigeoData', $this->ubigeoData->provincia ?? null),
             'distrito' => $this->whenLoaded('ubigeoData', $this->ubigeoData->distrito ?? null),
-            
+            'postcode' => $this->postcode,
+
             'reference' => $this->reference,
             'phone' => $this->phone,
             'label' => $this->label,
