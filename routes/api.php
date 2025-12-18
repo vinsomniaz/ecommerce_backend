@@ -747,10 +747,10 @@ Route::middleware('auth:sanctum')->prefix('quotations')->group(function () {
 });
 
 /* ============================================
-   SCRAPPER
+   SCRAPPER (Legacy endpoint - busca supplier por slug)
    ============================================ */
 Route::post('/scraper/import', [ScraperController::class, 'import'])
-    ->middleware(['throttle:60,1', 'scraper.token']); // Rate limit: 60 requests por minuto
+    ->middleware(['throttle:60,1', 'verify.scraper.token']); // Rate limit + Token verification
 
 /* ============================================
    SUPPLIER PRODUCTS (Productos de Proveedores)
