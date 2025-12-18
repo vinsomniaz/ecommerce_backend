@@ -10,7 +10,7 @@ use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use App\Services\CategoryService;
-use App\Http\Resources\CategoryResource;
+use App\Http\Resources\Categories\CategoryResource;
 use App\Models\Category;
 
 class EcommerceController extends Controller
