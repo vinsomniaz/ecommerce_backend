@@ -33,6 +33,8 @@ use App\Http\Controllers\Api\PurchaseController;
 use App\Http\Controllers\Api\UbigeoController;
 use App\Models\Order;
 use App\Services\OrderService;
+use App\Http\Controllers\Api\OrderController;
+
 
 /*
 |--------------------------------------------------------------------------
@@ -804,6 +806,27 @@ Route::middleware('auth:sanctum')->prefix('purchases')->group(function () {
     Route::post('/{purchase}/payments', [PurchaseController::class, 'registerPayment'])
         ->middleware('permission:purchases.payments.create');
 });
+
+/* ============================================
+   PEDIDOS (ORDERS) - ERP
+   ============================================ */
+Route::middleware('auth:sanctum')->prefix('orders')->group(function () {
+    Route::get('/', [OrderController::class, 'index'])
+        ->middleware('permission:orders.index');
+
+    Route::post('/', [OrderController::class, 'store'])
+        ->middleware('permission:orders.store');
+
+    Route::get('/{order}', [OrderController::class, 'show'])
+        ->middleware('permission:orders.show');
+
+    Route::match(['put', 'patch'], '/{order}', [OrderController::class, 'update'])
+        ->middleware('permission:orders.update');
+
+    Route::delete('/{order}', [OrderController::class, 'destroy'])
+        ->middleware('permission:orders.destroy');
+});
+
 
 /* ============================================
    SCRAPPER (Legacy endpoint - busca supplier por slug)

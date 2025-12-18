@@ -30,7 +30,7 @@ class RoleSeeder extends Seeder
 
             $this->command->info('🔄 Sincronizando permisos con roles...');
 
-            $superAdmin->syncPermissions(Permission::all());
+            $superAdmin->syncPermissions(Permission::where('guard_name', 'sanctum')->get());
             $this->command->info("✅ Super-Admin: " . $superAdmin->permissions->count() . " permisos");
 
             $adminPermissions = $this->getAdminPermissions();
@@ -295,6 +295,14 @@ class RoleSeeder extends Seeder
                 ['name' => 'purchases.store', 'display_name' => 'Registrar compra', 'description' => 'Registra una nueva compra e incrementa stock.'],
             ],
 
+            'Orders' => [
+                ['name' => 'orders.index', 'display_name' => 'Listar pedidos', 'description' => 'Obtiene el listado de todos los pedidos.'],
+                ['name' => 'orders.store', 'display_name' => 'Crear pedido', 'description' => 'Registra un nuevo pedido.'],
+                ['name' => 'orders.show', 'display_name' => 'Ver pedido', 'description' => 'Muestra el detalle de un pedido específico.'],
+                ['name' => 'orders.update', 'display_name' => 'Actualizar pedido', 'description' => 'Actualiza el estado o información de un pedido.'],
+                ['name' => 'orders.destroy', 'display_name' => 'Eliminar pedido', 'description' => 'Cancela o elimina un pedido del sistema.'],
+            ],
+
             /* ============================================
                COMPRAS (PURCHASES) - Arriba
                ============================================ */
@@ -481,6 +489,13 @@ class RoleSeeder extends Seeder
             'ecommerce.categories.list',
             'ecommerce.categories.tree',
             'ecommerce.categories.show',
+
+            // ORDERS
+            'orders.index',
+            'orders.store',
+            'orders.show',
+            'orders.update',
+            'orders.destroy',
 
             // 🔥 QUOTATIONS - Acceso completo
             'quotations.view.all',
