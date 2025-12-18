@@ -13,11 +13,21 @@ class SupplierProduct extends Model
         'supplier_id',
         'product_id',
         'supplier_sku',
+        'supplier_name',
+        'brand',
+        'location',
+        'source_url',
+        'image_url',
+        'supplier_category',
+        'category_suggested',
         'purchase_price',
-        'distribution_price',
+        'sale_price',
         'currency',
         'available_stock',
+        'stock_text',
         'is_available',
+        'last_seen_at',
+        'last_import_id',
         'delivery_days',
         'min_order_quantity',
         'priority',
@@ -28,13 +38,14 @@ class SupplierProduct extends Model
 
     protected $casts = [
         'purchase_price' => 'decimal:2',
-        'distribution_price' => 'decimal:2',
+        'sale_price' => 'decimal:2',
         'available_stock' => 'integer',
         'delivery_days' => 'integer',
         'min_order_quantity' => 'integer',
         'priority' => 'integer',
         'is_available' => 'boolean',
         'is_active' => 'boolean',
+        'last_seen_at' => 'datetime',
         'price_updated_at' => 'datetime',
     ];
 
@@ -64,7 +75,7 @@ class SupplierProduct extends Model
     public function scopeAvailable($query)
     {
         return $query->where('is_available', true)
-                     ->where('available_stock', '>', 0);
+            ->where('available_stock', '>', 0);
     }
 
     public function scopeBySupplier($query, int $supplierId)
@@ -91,6 +102,15 @@ class SupplierProduct extends Model
     // MÉTODOS
     // ============================================================================
 
+    /**
+     * Mutator: La disponibilidad se calcula automáticamente según el stock
+     */
+    protected function setAvailableStockAttribute($value): void
+    {
+        $this->attributes['available_stock'] = $value;
+        $this->attributes['is_available'] = ($value > 0);
+    }
+
     public function updatePrice(float $price): void
     {
         $this->update([
@@ -103,7 +123,7 @@ class SupplierProduct extends Model
     {
         $this->update([
             'available_stock' => $stock,
-            'is_available' => $stock > 0,
+            // is_available se calcula automáticamente por el mutator
         ]);
     }
 }
