@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use App\Models\OrderDetail;
+use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class OrderController extends Controller
 {
@@ -50,21 +53,92 @@ class OrderController extends Controller
             'customer_id' => 'required|exists:entities,id',
             'warehouse_id' => 'required|exists:warehouses,id',
             'order_date' => 'required|date',
+            'currency' => 'required|string|size:3',
+            'status' => 'required|string',
+            'payment_status' => 'nullable|string',
+            'notes' => 'nullable|string',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.discount' => 'nullable|numeric|min:0|max:100',
         ]);
 
-        // Logic to create order would go here. 
-        // For now, focusing on connection.
-        // Assuming simple creation for now if needed.
+        try {
+            DB::beginTransaction();
 
-        // Use a service or logic similar to Cart checkout. 
-        // Leaving placeholder as this might be complex (stock, prices).
-        // If user wants to create orders from ERP manually, we might need OrderService create method.
+            // 1. Calculate Totals (Back-end validation recommended)
+            $subtotal = 0;
+            $itemsData = [];
 
-        return response()->json(['message' => 'Manual order creation not fully implemented yet'], 501);
+            foreach ($validated['items'] as $item) {
+                $quantity = $item['quantity'];
+                $price = $item['unit_price'];
+                $discountPercent = $item['discount'] ?? 0;
+
+                $lineTotal = $quantity * $price;
+                $discountAmount = ($lineTotal * $discountPercent) / 100;
+                $lineSubtotal = $lineTotal - $discountAmount;
+
+                $subtotal += $lineSubtotal;
+
+                // Prepare detail data
+                $itemsData[] = [
+                    'product_id' => $item['product_id'],
+                    'product_name' => \App\Models\Product::find($item['product_id'])->primary_name ?? 'Producto', // Fallback or Eager load
+                    'quantity' => $quantity,
+                    'unit_price' => $price,
+                    'discount' => $discountPercent,
+                    'subtotal' => $lineSubtotal,
+                    // Tax per line if needed, or global. Assuming global logic for simplicity
+                    'tax_amount' => 0, // Placeholder
+                    'total' => $lineSubtotal // Placeholder
+                ];
+            }
+
+            // Global Tax (e.g. IGV 18% in Peru if not included)
+            // Assuming prices exclude tax for calculation base, or following frontend logic
+            // Frontend: subtotal / 1.18 = base.
+            // Let's trust frontend totals or recalculate simple logic:
+            // If we follow frontend logic:
+            // Total = Subtotal (calculated above which is effectively Total to Pay)
+            // Base = Total / 1.18
+            // Tax = Total - Base
+
+            $total = $subtotal;
+            $tax = $total - ($total / 1.18);
+            $base = $total / 1.18;
+
+            // 2. Create Order
+            $order = Order::create([
+                'customer_id' => $validated['customer_id'],
+                'warehouse_id' => $validated['warehouse_id'],
+                'order_date' => Carbon::parse($validated['order_date']),
+                'currency' => $validated['currency'],
+                'status' => $validated['status'],
+                'subtotal' => $base,
+                'tax' => $tax,
+                'total' => $total,
+                'observations' => $validated['notes'] ?? null,
+                'is_fully_paid' => ($validated['payment_status'] ?? 'pending') === 'paid',
+                'total_paid' => ($validated['payment_status'] ?? 'pending') === 'paid' ? $total : 0,
+            ]);
+
+            // 3. Create Details
+            foreach ($itemsData as $data) {
+                $order->details()->create($data);
+            }
+
+            // 4. Update Stock?
+            // If status is completed or depending on logic. keeping simple for now.
+
+            DB::commit();
+
+            return response()->json($order->load(['customer', 'details']), 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Error al crear el pedido: ' . $e->getMessage()], 500);
+        }
     }
 
     /**
