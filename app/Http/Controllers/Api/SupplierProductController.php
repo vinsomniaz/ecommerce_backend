@@ -37,11 +37,13 @@ class SupplierProductController extends Controller
     {
         $validated = $request->validate([
             'supplier_id' => 'required|exists:entities,id',
-            'product_id' => 'required|exists:products,id',
-            'supplier_sku' => 'nullable|string|max:100',
-            'purchase_price' => 'required|numeric|min:0',
-            'distribution_price' => 'nullable|numeric|min:0',
-            'currency' => 'required|in:PEN,USD',
+            'product_id' => 'nullable|exists:products,id',
+            'supplier_sku' => 'required|string|max:160',
+            'supplier_name' => 'nullable|string|max:255',
+            'brand' => 'nullable|string|max:100',
+            'purchase_price' => 'nullable|numeric|min:0',
+            'sale_price' => 'nullable|numeric|min:0',
+            'currency' => 'required|in:PEN,USD,EUR',
             'available_stock' => 'nullable|integer|min:0',
             'delivery_days' => 'nullable|integer|min:0',
             'min_order_quantity' => 'nullable|integer|min:1',
@@ -69,10 +71,11 @@ class SupplierProductController extends Controller
     public function update(Request $request, SupplierProduct $supplierProduct): JsonResponse
     {
         $validated = $request->validate([
-            'supplier_sku' => 'nullable|string|max:100',
+            'supplier_sku' => 'nullable|string|max:160',
+            'supplier_name' => 'nullable|string|max:255',
             'purchase_price' => 'sometimes|numeric|min:0',
-            'distribution_price' => 'nullable|numeric|min:0',
-            'currency' => 'sometimes|in:PEN,USD',
+            'sale_price' => 'nullable|numeric|min:0',
+            'currency' => 'sometimes|in:PEN,USD,EUR',
             'available_stock' => 'nullable|integer|min:0',
             'is_available' => 'sometimes|boolean',
             'delivery_days' => 'nullable|integer|min:0',

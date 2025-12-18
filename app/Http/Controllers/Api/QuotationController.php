@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Exceptions\InsufficientStockException;
 use App\Exceptions\LowMarginException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Quotation\GetQuotationProductsRequest;
 use App\Http\Requests\Quotation\StoreQuotationRequest;
 use App\Http\Requests\Quotation\UpdateQuotationRequest;
+use App\Http\Resources\Quotation\QuotationProductCollection;
 use App\Services\MarginCalculatorService;
 use App\Services\SettingService;
 use App\Http\Requests\Quotation\AddItemRequest;
@@ -17,6 +19,7 @@ use App\Models\Inventory;
 use App\Models\Quotation;
 use App\Models\SupplierProduct;
 use App\Models\User;
+use App\Models\Warehouse;
 use App\Services\QuotationService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -1253,5 +1256,65 @@ class QuotationController extends Controller
         }
 
         return response()->json(['data' => $breakdown]);
+    }
+
+    // ============================================================================
+    // QUOTATION BUILDER - Filtrado de productos
+    // ============================================================================
+
+    /**
+     * Obtener productos para el constructor de cotizaciones con filtros
+     * 
+     * Filtros disponibles:
+     * - warehouse_id (required): Filtrar por almacén con stock
+     * - supplier_id (optional): Filtrar por productos del proveedor
+     * - family_id (optional): Filtrar por familia de categoría
+     * - search (optional): Búsqueda por SKU/nombre/marca
+     */
+    public function getProducts(GetQuotationProductsRequest $request): JsonResponse
+    {
+        $filters = $request->validated();
+        
+        $products = $this->quotationService->getProductsForQuotation($filters);
+        $globalStats = $this->quotationService->getBuilderStats($filters['warehouse_id']);
+        
+        $collection = (new QuotationProductCollection($products))
+            ->setFilters($filters)
+            ->setGlobalStats($globalStats);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Productos obtenidos exitosamente',
+            ...$collection->toResponse($request)->getData(true),
+        ]);
+    }
+
+    /**
+     * Obtener opciones de filtro para el builder de cotizaciones
+     * 
+     * Retorna:
+     * - warehouses: Lista de almacenes activos
+     * - suppliers: Proveedores con productos asociados
+     */
+    public function getFilterOptions(Request $request): JsonResponse
+    {
+        $warehouseId = $request->get('warehouse_id');
+        
+        $warehouses = Warehouse::where('is_active', true)
+            ->select('id', 'name', 'is_main')
+            ->orderBy('is_main', 'desc')
+            ->orderBy('name')
+            ->get();
+        
+        $suppliers = $this->quotationService->getSuppliersWithProducts($warehouseId);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Opciones de filtro obtenidas exitosamente',
+            'data' => [
+                'warehouses' => $warehouses,
+                'suppliers' => $suppliers,
+            ],
+        ]);
     }
 }

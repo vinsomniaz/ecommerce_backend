@@ -125,6 +125,14 @@ class Entity extends Model
     }
 
     /**
+     * Get all supplier products for this supplier entity.
+     */
+    public function supplierProducts(): HasMany
+    {
+        return $this->hasMany(SupplierProduct::class, 'supplier_id');
+    }
+
+    /**
      * Scope to filter customers only
      */
     public function scopeCustomers($query)
