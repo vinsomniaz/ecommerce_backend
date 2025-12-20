@@ -41,6 +41,13 @@ return new class extends Migration
             $table->string('supplier_category')->nullable();
             $table->string('category_suggested')->nullable();
 
+            // Override manual de categoría (cuando el scraper sugiere mal)
+            $table->foreignId('category_id')
+                ->nullable()
+                ->constrained('categories')
+                ->nullOnDelete()
+                ->comment('Override manual cuando category_suggested es incorrecto');
+
             // Precios (pueden venir null)
             $table->decimal('purchase_price', 10, 2)->nullable()->comment('Precio de compra al proveedor (supplier_price)');
             $table->decimal('sale_price', 10, 2)->nullable()->comment('Precio sugerido de venta (price_suggested)');

@@ -92,10 +92,10 @@ class SupplierImportService
     {
         return SupplierImport::create([
             'supplier_id' => $payload['supplier_id'],
-            'raw_data' => $payload, // Guarda todo el payload
+            'raw_data' => $payload, // Laravel lo convierte a JSON automáticamente por el cast
             'fetched_at' => $payload['fetched_at'],
             'margin_percent' => $payload['margin_percent'] ?? null,
-            'source_totals' => $payload['source_totals'] ?? null,
+            'source_totals' => $payload['source_totals'] ?? null, // También se convierte a JSON por cast
             'items_count' => count($payload['items']),
             'status' => 'pending',
             'total_products' => count($payload['items']),
@@ -239,7 +239,24 @@ class SupplierImportService
      */
     protected function clearSupplierCache(int $supplierId): void
     {
-        Cache::tags(['supplier_products', "supplier_{$supplierId}"])->flush();
+        try {
+            // Solo usar tags si el driver lo soporta (Redis, Memcached, Array)
+            // Database y File NO soportan tags
+            $store = Cache::getStore();
+
+            if (method_exists($store, 'tags')) {
+                Cache::tags(['supplier_products', "supplier_{$supplierId}"])->flush();
+            } else {
+                // Fallback: limpiar keys específicas sin tags
+                Cache::forget("supplier_products_{$supplierId}");
+                Cache::forget("supplier_{$supplierId}_stats");
+            }
+        } catch (\Exception $e) {
+            // Si falla el cache, solo logear pero no detener el proceso
+            Log::warning("Error limpiando cache de proveedor {$supplierId}", [
+                'error' => $e->getMessage()
+            ]);
+        }
     }
 
     /**

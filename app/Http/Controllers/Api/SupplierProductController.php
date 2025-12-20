@@ -73,6 +73,8 @@ class SupplierProductController extends Controller
         $validated = $request->validate([
             'supplier_sku' => 'nullable|string|max:160',
             'supplier_name' => 'nullable|string|max:255',
+            'product_id' => 'nullable|exists:products,id', // Vincular a producto interno
+            'category_id' => 'nullable|exists:categories,id', // Override manual de categoría
             'purchase_price' => 'sometimes|numeric|min:0',
             'sale_price' => 'nullable|numeric|min:0',
             'currency' => 'sometimes|in:PEN,USD,EUR',
@@ -164,6 +166,101 @@ class SupplierProductController extends Controller
         return response()->json([
             'message' => "Se actualizaron {$updated} precios exitosamente",
             'updated_count' => $updated,
+        ]);
+    }
+
+    /**
+     * Asignación masiva de categoría a productos sin categoría del proveedor
+     */
+    public function bulkUpdateCategories(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'product_ids' => 'required|array|min:1',
+            'product_ids.*' => 'exists:supplier_products,id',
+            'category_id' => 'required|exists:categories,id',
+        ]);
+
+        $updated = SupplierProduct::whereIn('id', $validated['product_ids'])
+            ->update(['category_id' => $validated['category_id']]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Se asignó categoría a {$updated} productos exitosamente",
+            'data' => [
+                'updated_count' => $updated,
+                'category_id' => $validated['category_id'],
+            ],
+        ]);
+    }
+
+    /**
+     * Productos sin categorizar o vincular
+     */
+    public function uncategorized(Request $request): JsonResponse
+    {
+        $query = SupplierProduct::with(['supplier', 'product'])
+            ->when($request->supplier_id, fn($q) => $q->where('supplier_id', $request->supplier_id))
+            ->where(function ($q) {
+                // Productos que necesitan atención
+                $q->whereNull('product_id'); // No vinculados a producto interno
+            });
+
+        // Filtrar por estado de asignación de categoría
+        if ($request->has('has_category_id') && $request->has_category_id === 'true') {
+            $query->whereNotNull('category_id'); // Solo productos YA asignados
+        } else {
+            $query->whereNull('category_id'); // Solo productos PENDIENTES
+        }
+
+        $query->active()->latest();
+
+        $products = $query->paginate($request->per_page ?? 15);
+
+        return response()->json([
+            'success' => true,
+            'data' => SupplierProductResource::collection($products),
+            'meta' => [
+                'current_page' => $products->currentPage(),
+                'last_page' => $products->lastPage(),
+                'per_page' => $products->perPage(),
+                'total' => $products->total(),
+            ],
+        ]);
+    }
+
+    /**
+     * Estadísticas de productos de proveedores
+     */
+    public function statistics(Request $request): JsonResponse
+    {
+        $query = SupplierProduct::query();
+
+        if ($request->supplier_id) {
+            $query->where('supplier_id', $request->supplier_id);
+        }
+
+        $total = $query->count();
+        $active = (clone $query)->where('is_active', true)->count();
+        $linked = (clone $query)->whereNotNull('product_id')->count();
+        $unlinked = (clone $query)->whereNull('product_id')->count();
+        $available = (clone $query)->where('is_available', true)->count();
+        $withCategory = (clone $query)->whereNotNull('supplier_category')->count();
+        $withoutCategory = (clone $query)->whereNull('supplier_category')->count();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'total' => $total,
+                'active' => $active,
+                'inactive' => $total - $active,
+                'linked_to_products' => $linked,
+                'unlinked' => $unlinked,
+                'available' => $available,
+                'unavailable' => $total - $available,
+                'with_supplier_category' => $withCategory,
+                'without_supplier_category' => $withoutCategory,
+                'linking_rate' => $total > 0 ? round(($linked / $total) * 100, 2) : 0,
+            ],
         ]);
     }
 }

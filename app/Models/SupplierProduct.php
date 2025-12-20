@@ -12,6 +12,7 @@ class SupplierProduct extends Model
     protected $fillable = [
         'supplier_id',
         'product_id',
+        'category_id', // Override manual de categoría
         'supplier_sku',
         'supplier_name',
         'brand',
@@ -61,6 +62,49 @@ class SupplierProduct extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function category()
+    {
+        return $this->belongsTo(Category::class);
+    }
+
+    /**
+     * Obtiene la categoría resuelta con prioridad:
+     * 1. category_id (override manual)
+     * 2. CategoryMap por supplier_category
+     * 3. CategoryMap por category_suggested
+     */
+    public function getResolvedCategoryIdAttribute(): ?int
+    {
+        // 1. Override manual tiene prioridad
+        if ($this->category_id) {
+            return $this->category_id;
+        }
+
+        // 2. Buscar mapeo por supplier_category
+        if ($this->supplier_category) {
+            $map = SupplierCategoryMap::where('supplier_id', $this->supplier_id)
+                ->where('supplier_category', $this->supplier_category)
+                ->whereNotNull('category_id')
+                ->first();
+            if ($map) {
+                return $map->category_id;
+            }
+        }
+
+        // 3. Buscar mapeo por category_suggested
+        if ($this->category_suggested) {
+            $map = SupplierCategoryMap::where('supplier_id', $this->supplier_id)
+                ->where('supplier_category', $this->category_suggested)
+                ->whereNotNull('category_id')
+                ->first();
+            if ($map) {
+                return $map->category_id;
+            }
+        }
+
+        return null;
     }
 
     // ============================================================================

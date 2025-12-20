@@ -18,24 +18,6 @@ class SupplierImportController extends Controller
     ) {}
 
     /**
-     * Endpoint principal para scrapers: POST /api/suppliers/{supplierId}/sync
-     */
-    public function sync(SupplierSyncRequest $request): JsonResponse
-    {
-        $result = $this->importService->processSync($request->validated());
-
-        return response()->json([
-            'success' => true,
-            'message' => $result['message'],
-            'data' => [
-                'import_id' => $result['import_id'],
-                'changed' => $result['changed'],
-                'stats' => $result['stats'] ?? null,
-            ],
-        ], $result['status']);
-    }
-
-    /**
      * Listar importaciones
      */
     public function index(Request $request): JsonResponse

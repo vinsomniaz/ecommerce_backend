@@ -299,13 +299,27 @@ class RoleSeeder extends Seeder
                 ['name' => 'supplier-products.by-product', 'display_name' => 'Proveedores por producto', 'description' => 'Lista todos los proveedores de un producto.'],
                 ['name' => 'supplier-products.by-supplier', 'display_name' => 'Productos por proveedor', 'description' => 'Lista todos los productos de un proveedor.'],
                 ['name' => 'supplier-products.compare-prices', 'display_name' => 'Comparar precios entre proveedores', 'description' => 'Compara precios de un producto entre proveedores.'],
+                ['name' => 'supplier-products.statistics', 'display_name' => 'Estadísticas de productos', 'description' => 'Consulta estadísticas de productos de proveedores.'],
             ],
 
             'Supplier Imports' => [
                 ['name' => 'supplier-imports.index', 'display_name' => 'Listar importaciones', 'description' => 'Lista historial de importaciones desde scrapers.'],
                 ['name' => 'supplier-imports.show', 'display_name' => 'Ver importación', 'description' => 'Muestra detalle de una importación específica.'],
+                ['name' => 'supplier-imports.items', 'display_name' => 'Ver items de importación', 'description' => 'Muestra los productos importados en una importación.'],
                 ['name' => 'supplier-imports.reprocess', 'display_name' => 'Reprocesar importación', 'description' => 'Reintenta procesar una importación fallida.'],
+                ['name' => 'supplier-imports.destroy', 'display_name' => 'Eliminar importación', 'description' => 'Elimina una importación completada o fallida.'],
                 ['name' => 'supplier-imports.statistics', 'display_name' => 'Estadísticas de importaciones', 'description' => 'Consulta estadísticas de importaciones.'],
+            ],
+
+            'Supplier Category Maps' => [
+                ['name' => 'supplier-category-maps.index', 'display_name' => 'Listar mapeos de categorías', 'description' => 'Lista mapeos entre categorías de proveedores y categorías internas.'],
+                ['name' => 'supplier-category-maps.show', 'display_name' => 'Ver mapeo de categoría', 'description' => 'Muestra detalle de un mapeo específico.'],
+                ['name' => 'supplier-category-maps.store', 'display_name' => 'Crear mapeo de categoría', 'description' => 'Crea un nuevo mapeo manual de categoría.'],
+                ['name' => 'supplier-category-maps.update', 'display_name' => 'Actualizar mapeo de categoría', 'description' => 'Actualiza un mapeo de categoría existente.'],
+                ['name' => 'supplier-category-maps.destroy', 'display_name' => 'Eliminar mapeo de categoría', 'description' => 'Elimina un mapeo de categoría.'],
+                ['name' => 'supplier-category-maps.bulk-map', 'display_name' => 'Mapeo masivo de categorías', 'description' => 'Mapea múltiples categorías de proveedor a la vez.'],
+                ['name' => 'supplier-category-maps.unmapped', 'display_name' => 'Ver categorías sin mapear', 'description' => 'Lista categorías de proveedores que no tienen mapeo.'],
+                ['name' => 'supplier-category-maps.statistics', 'display_name' => 'Estadísticas de mapeos', 'description' => 'Consulta estadísticas de mapeos de categorías.'],
             ],
 
             'Settings' => [
@@ -514,12 +528,25 @@ class RoleSeeder extends Seeder
             'supplier-products.by-product',
             'supplier-products.by-supplier',
             'supplier-products.compare-prices',
+            'supplier-products.statistics',
 
             // SUPPLIER IMPORTS
             'supplier-imports.index',
             'supplier-imports.show',
+            'supplier-imports.items',
             'supplier-imports.reprocess',
+            'supplier-imports.destroy',
             'supplier-imports.statistics',
+
+            // SUPPLIER CATEGORY MAPS
+            'supplier-category-maps.index',
+            'supplier-category-maps.show',
+            'supplier-category-maps.store',
+            'supplier-category-maps.update',
+            'supplier-category-maps.destroy',
+            'supplier-category-maps.bulk-map',
+            'supplier-category-maps.unmapped',
+            'supplier-category-maps.statistics',
 
             // SETTINGS
             'settings.index',
@@ -640,6 +667,19 @@ class RoleSeeder extends Seeder
             'supplier-products.by-product',
             'supplier-products.by-supplier',
             'supplier-products.compare-prices',
+            'supplier-products.statistics',
+
+            // SUPPLIER IMPORTS (solo consulta)
+            'supplier-imports.index',
+            'supplier-imports.show',
+            'supplier-imports.items',
+            'supplier-imports.statistics',
+
+            // SUPPLIER CATEGORY MAPS (solo consulta)
+            'supplier-category-maps.index',
+            'supplier-category-maps.show',
+            'supplier-category-maps.unmapped',
+            'supplier-category-maps.statistics',
         ];
     }
 

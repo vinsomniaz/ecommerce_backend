@@ -17,6 +17,8 @@ class SupplierImportResource extends JsonResource
                 'business_name' => $this->supplier->business_name,
                 'trade_name' => $this->supplier->trade_name,
                 'document_number' => $this->supplier->numero_documento,
+                'estado_sunat' => $this->supplier->estado_sunat,
+                'condicion_sunat' => $this->supplier->condicion_sunat,
             ],
 
             // Metadata del scraping
