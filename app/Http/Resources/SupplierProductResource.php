@@ -29,6 +29,8 @@ class SupplierProductResource extends JsonResource
                     'document_number' => $this->supplier->numero_documento,
                     'phone' => $this->supplier->phone,
                     'email' => $this->supplier->email,
+                    'estado_sunat' => $this->supplier->estado_sunat,
+                    'condicion_sunat' => $this->supplier->condicion_sunat,
                 ];
             }),
 
@@ -53,6 +55,15 @@ class SupplierProductResource extends JsonResource
             // Categorías
             'supplier_category' => $this->supplier_category,
             'category_suggested' => $this->category_suggested,
+            'category_id' => $this->category_id, // Override manual
+            'resolved_category_id' => $this->resolved_category_id, // Categoría resuelta con prioridad
+            'category' => $this->whenLoaded('category', function () {
+                return [
+                    'id' => $this->category->id,
+                    'name' => $this->category->name,
+                    'full_path' => $this->category->full_path ?? $this->category->name,
+                ];
+            }),
 
             // Precios y disponibilidad
             'purchase_price' => $this->purchase_price ? (float) $this->purchase_price : null,

@@ -28,6 +28,7 @@ use App\Http\Controllers\Auth\PermissionController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\CountryController;
 use App\Http\Controllers\Api\DocumentTypeController;
+use App\Http\Controllers\Api\SupplierCategoryMapController;
 use App\Http\Controllers\Api\ExchangeRateController;
 use App\Http\Controllers\Api\PurchaseController;
 use App\Http\Controllers\Api\UbigeoController;
@@ -617,6 +618,11 @@ Route::middleware('auth:sanctum')->prefix('quotations')->group(function () {
     Route::get('/builder/filters', [QuotationController::class, 'getFilterOptions'])
         ->middleware('permission:quotations.store');
 
+    // Búsqueda unificada de productos (inventario + proveedores)
+    Route::get('/builder/unified-products', [QuotationController::class, 'getUnifiedProducts'])
+        ->middleware('permission:quotations.store');
+
+
     // ============================================================================
     // CRUD BÁSICO
     // ============================================================================
@@ -829,10 +835,15 @@ Route::middleware('auth:sanctum')->prefix('orders')->group(function () {
 
 
 /* ============================================
-   SCRAPPER (Legacy endpoint - busca supplier por slug)
+   SCRAPER ENDPOINTS (Importación de productos)
    ============================================ */
+// Legacy: Busca supplier por slug
 Route::post('/scraper/import', [ScraperController::class, 'import'])
-    ->middleware(['throttle:60,1', 'verify.scraper.token']); // Rate limit + Token verification
+    ->middleware(['throttle:60,1', 'verify.scraper.token']);
+
+// Moderno: Usa ID directo del supplier
+Route::post('/scraper/sync/{supplierId}', [ScraperController::class, 'syncById'])
+    ->middleware(['throttle:60,1', 'verify.scraper.token']);
 
 /* ============================================
    SUPPLIER PRODUCTS (Productos de Proveedores)
@@ -845,6 +856,9 @@ Route::middleware('auth:sanctum')->prefix('supplier-products')->group(function (
     Route::post('bulk-update-prices', [SupplierProductController::class, 'bulkUpdatePrices'])
         ->middleware('permission:supplier-products.bulk-update-prices');
 
+    Route::post('bulk-update-categories', [SupplierProductController::class, 'bulkUpdateCategories'])
+        ->middleware('permission:supplier-products.update');
+
     Route::get('product/{productId}', [SupplierProductController::class, 'byProduct'])
         ->middleware('permission:supplier-products.by-product');
 
@@ -853,6 +867,10 @@ Route::middleware('auth:sanctum')->prefix('supplier-products')->group(function (
 
     Route::get('product/{productId}/compare-prices', [SupplierProductController::class, 'comparePrices'])
         ->middleware('permission:supplier-products.compare-prices');
+
+    Route::get('uncategorized', [SupplierProductController::class, 'uncategorized'])
+        ->middleware('permission:supplier-products.index'); // Reusa el mismo permiso de index
+
 
     // CRUD básico
     Route::get('/', [SupplierProductController::class, 'index'])
@@ -898,12 +916,38 @@ Route::middleware('auth:sanctum')->prefix('supplier-imports')->group(function ()
         ->middleware('permission:supplier-imports.destroy');
 });
 
-// ============================================================================
-// ENDPOINT PÚBLICO PARA SCRAPERS (sin auth:sanctum)
-// ============================================================================
-Route::post('/suppliers/{supplierId}/sync', [SupplierImportController::class, 'sync'])
-    ->middleware(['throttle:60,1', 'verify.scraper.token']); // Rate limit + Token verification
+/* ============================================
+   SUPPLIER CATEGORY MAPS (Mapeo de Categorías)
+   ============================================ */
+Route::middleware('auth:sanctum')->prefix('supplier-category-maps')->group(function () {
+    // Estadísticas
+    Route::get('statistics', [SupplierCategoryMapController::class, 'statistics'])
+        ->middleware('permission:supplier-category-maps.statistics');
 
+    // Categorías sin mapear
+    Route::get('unmapped', [SupplierCategoryMapController::class, 'unmapped'])
+        ->middleware('permission:supplier-category-maps.unmapped');
+
+    // Mapeo masivo
+    Route::post('bulk-map', [SupplierCategoryMapController::class, 'bulkMap'])
+        ->middleware('permission:supplier-category-maps.bulk-map');
+
+    // CRUD básico
+    Route::get('/', [SupplierCategoryMapController::class, 'index'])
+        ->middleware('permission:supplier-category-maps.index');
+
+    Route::post('/', [SupplierCategoryMapController::class, 'store'])
+        ->middleware('permission:supplier-category-maps.store');
+
+    Route::get('{map}', [SupplierCategoryMapController::class, 'show'])
+        ->middleware('permission:supplier-category-maps.show');
+
+    Route::match(['put', 'patch'], '{map}', [SupplierCategoryMapController::class, 'update'])
+        ->middleware('permission:supplier-category-maps.update');
+
+    Route::delete('{map}', [SupplierCategoryMapController::class, 'destroy'])
+        ->middleware('permission:supplier-category-maps.destroy');
+});
 
 /* ============================================
    SETTINGS (Configuraciones del Sistema)

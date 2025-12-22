@@ -114,6 +114,7 @@ class Product extends Model implements HasMedia
             ->format('webp')
             ->quality(85)
             ->background('rgba(0, 0, 0, 0)')
+            ->nonQueued()
             ->performOnCollections('images');
     }
 

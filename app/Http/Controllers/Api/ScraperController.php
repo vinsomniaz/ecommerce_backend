@@ -81,4 +81,46 @@ class ScraperController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Endpoint moderno para scrapers: POST /api/scraper/sync/{supplierId}
+     * 
+     * Este endpoint permite identificar al supplier directamente por ID.
+     * Más rápido y directo que buscar por slug.
+     */
+    public function syncById(int $supplierId, SupplierSyncRequest $request): JsonResponse
+    {
+        // Verificar que el supplier existe
+        $supplier = Entity::where('type', 'supplier')
+            ->where('id', $supplierId)
+            ->first();
+
+        if (!$supplier) {
+            return response()->json([
+                'success' => false,
+                'message' => "Proveedor con ID {$supplierId} no encontrado",
+            ], 404);
+        }
+
+        // Procesar la sincronización
+        try {
+            $result = $this->importService->processSync($request->validated());
+
+            return response()->json([
+                'success' => true,
+                'message' => $result['message'],
+                'data' => [
+                    'import_id' => $result['import_id'],
+                    'changed' => $result['changed'],
+                    'stats' => $result['stats'] ?? null,
+                ],
+            ], $result['status']);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error procesando importación',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
 }

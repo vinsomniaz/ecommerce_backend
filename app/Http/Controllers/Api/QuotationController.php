@@ -485,21 +485,23 @@ class QuotationController extends Controller
      */
     public function generatePdf(Quotation $quotation): JsonResponse
     {
-        $this->authorize('view', $quotation);
+        try {
+            $path = $this->quotationService->generatePdf($quotation);
 
-        if (!auth()->user()->can('quotations.generate-pdf')) {
             return response()->json([
-                'error' => 'forbidden',
-                'message' => 'No tiene permisos para generar PDFs',
-            ], 403);
+                'success' => true,
+                'message' => 'PDF generado exitosamente',
+                'data' => [
+                    'pdf_path' => $path,
+                    'download_url' => route('quotations.download-pdf', $quotation->id),
+                ],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al generar el PDF: ' . $e->getMessage(),
+            ], 500);
         }
-
-        // TODO: Implementar generación de PDF
-
-        return response()->json([
-            'message' => 'PDF generado exitosamente',
-            'pdf_url' => $quotation->pdf_path ? url($quotation->pdf_path) : null,
-        ]);
     }
 
     /**
@@ -507,19 +509,18 @@ class QuotationController extends Controller
      */
     public function downloadPdf(Quotation $quotation)
     {
-        $this->authorize('view', $quotation);
+        try {
+            $pdfContent = $this->quotationService->getPdfContent($quotation);
 
-        if (!$quotation->pdf_path || !file_exists(storage_path('app/' . $quotation->pdf_path))) {
+            return response($pdfContent, 200)
+                ->header('Content-Type', 'application/pdf')
+                ->header('Content-Disposition', "attachment; filename=\"Cotizacion-{$quotation->quotation_code}.pdf\"");
+        } catch (\Exception $e) {
             return response()->json([
-                'error' => 'pdf_not_found',
-                'message' => 'El PDF no existe o no ha sido generado',
-            ], 404);
+                'error' => 'pdf_error',
+                'message' => 'Error al obtener el PDF: ' . $e->getMessage(),
+            ], 500);
         }
-
-        return response()->download(
-            storage_path('app/' . $quotation->pdf_path),
-            "Cotizacion-{$quotation->quotation_code}.pdf"
-        );
     }
 
     /**
@@ -1274,14 +1275,14 @@ class QuotationController extends Controller
     public function getProducts(GetQuotationProductsRequest $request): JsonResponse
     {
         $filters = $request->validated();
-        
+
         $products = $this->quotationService->getProductsForQuotation($filters);
         $globalStats = $this->quotationService->getBuilderStats($filters['warehouse_id']);
-        
+
         $collection = (new QuotationProductCollection($products))
             ->setFilters($filters)
             ->setGlobalStats($globalStats);
-        
+
         return response()->json([
             'success' => true,
             'message' => 'Productos obtenidos exitosamente',
@@ -1299,15 +1300,15 @@ class QuotationController extends Controller
     public function getFilterOptions(Request $request): JsonResponse
     {
         $warehouseId = $request->get('warehouse_id');
-        
+
         $warehouses = Warehouse::where('is_active', true)
             ->select('id', 'name', 'is_main')
             ->orderBy('is_main', 'desc')
             ->orderBy('name')
             ->get();
-        
+
         $suppliers = $this->quotationService->getSuppliersWithProducts($warehouseId);
-        
+
         return response()->json([
             'success' => true,
             'message' => 'Opciones de filtro obtenidas exitosamente',
@@ -1315,6 +1316,44 @@ class QuotationController extends Controller
                 'warehouses' => $warehouses,
                 'suppliers' => $suppliers,
             ],
+        ]);
+    }
+
+    /**
+     * Búsqueda unificada de productos (inventario + proveedores)
+     * 
+     * Retorna productos de ambas fuentes con formato consistente:
+     * - source_type: 'inventory' o 'supplier'
+     * - Incluye proveedor, precios, stock de cada fuente
+     * 
+     * Filtros disponibles:
+     * - search: Búsqueda por nombre/SKU/marca
+     * - category_id: Filtrar por categoría (incluye subcategorías)
+     * - supplier_id: Filtrar solo productos de un proveedor
+     * - warehouse_id: Filtrar solo inventario de un almacén
+     * - source_type: 'inventory', 'supplier' o null (ambos)
+     * - per_page: Resultados por página (default: 20)
+     * - page: Página actual
+     */
+    public function getUnifiedProducts(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'search' => 'nullable|string|max:100',
+            'category_id' => 'nullable|exists:categories,id',
+            'supplier_id' => 'nullable|exists:entities,id',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
+            'source_type' => 'nullable|in:inventory,supplier',
+            'per_page' => 'nullable|integer|min:1|max:100',
+            'page' => 'nullable|integer|min:1',
+        ]);
+
+        $result = $this->quotationService->searchUnifiedProducts($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Productos obtenidos exitosamente',
+            'data' => $result['data'],
+            'meta' => $result['meta'],
         ]);
     }
 }

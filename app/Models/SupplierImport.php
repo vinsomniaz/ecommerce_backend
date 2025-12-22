@@ -23,6 +23,7 @@ class SupplierImport extends Model
     ];
 
     protected $casts = [
+        'raw_data' => 'array',  // ← CRÍTICO: Convierte array PHP ↔ JSON
         'fetched_at' => 'datetime',
         'margin_percent' => 'decimal:2',
         'source_totals' => 'array',

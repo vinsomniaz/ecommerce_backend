@@ -31,8 +31,8 @@ class SupplierSyncRequest extends FormRequest
             'items.*.supplier_category' => 'nullable|string|max:160',
             'items.*.category_suggested' => 'nullable|string|max:160',
             'items.*.location' => 'nullable|string|max:100',
-            'items.*.url' => 'nullable|url|max:500',
-            'items.*.image_url' => 'nullable|url|max:500',
+            'items.*.url' => 'nullable|string|max:500',  // Cambiado de 'url' a 'string'
+            'items.*.image_url' => 'nullable|string|max:500',  // Cambiado de 'url' a 'string'
             'items.*.stock_qty' => 'nullable|integer|min:0',
             'items.*.stock_text' => 'nullable|string|max:255',
             'items.*.is_available' => 'nullable|boolean',
