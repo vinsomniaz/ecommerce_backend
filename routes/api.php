@@ -583,6 +583,11 @@ Route::middleware('auth:sanctum')->prefix('quotations')->group(function () {
     Route::get('/builder/filters', [QuotationController::class, 'getFilterOptions'])
         ->middleware('permission:quotations.store');
 
+    // Búsqueda unificada de productos (inventario + proveedores)
+    Route::get('/builder/unified-products', [QuotationController::class, 'getUnifiedProducts'])
+        ->middleware('permission:quotations.store');
+
+
     // ============================================================================
     // CRUD BÁSICO
     // ============================================================================
