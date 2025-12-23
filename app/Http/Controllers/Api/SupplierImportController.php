@@ -1,73 +1,39 @@
 <?php
+
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\SupplierImport;
-use App\Models\Entity;
-use App\Jobs\ProcessSupplierImportJob;
+use App\Http\Requests\SupplierSyncRequest;
+use App\Http\Resources\SupplierImportResource;
+use App\Http\Resources\SupplierImportCollection;
+use App\Services\SupplierImportService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
 class SupplierImportController extends Controller
 {
+    public function __construct(
+        protected SupplierImportService $importService
+    ) {}
+
     /**
-     * Endpoint público para scrapers
+     * Listar importaciones
      */
-    public function import(Request $request, string $slug): JsonResponse
-    {
-        $supplier = Entity::where('type', 'supplier')
-            ->where(function($q) use ($slug) {
-                $q->whereRaw("LOWER(trade_name) = ?", [strtolower($slug)])
-                  ->orWhereRaw("LOWER(business_name) = ?", [strtolower($slug)]);
-            })
-            ->first();
-
-        if (!$supplier) {
-            return response()->json([
-                'error' => 'supplier_not_found',
-                'message' => "Proveedor '{$slug}' no encontrado",
-            ], 404);
-        }
-
-        $validated = $request->validate([
-            'products' => 'required|array|min:1',
-            'products.*.supplier_sku' => 'required|string',
-            'products.*.name' => 'required|string',
-            'products.*.price' => 'required|numeric|min:0',
-            'products.*.stock' => 'nullable|integer|min:0',
-            'products.*.currency' => 'nullable|string|in:PEN,USD',
-            'products.*.url' => 'nullable|url',
-        ]);
-
-        $import = SupplierImport::create([
-            'supplier_id' => $supplier->id,
-            'raw_data' => json_encode($validated['products']),
-            'status' => 'pending',
-            'total_products' => count($validated['products']),
-        ]);
-
-        // Despachar job para procesar en background
-        ProcessSupplierImportJob::dispatch($import->id);
-
-        return response()->json([
-            'message' => 'Importación recibida exitosamente',
-            'import_id' => $import->id,
-            'total_products' => count($validated['products']),
-            'status' => 'pending',
-        ], 202);
-    }
-
     public function index(Request $request): JsonResponse
     {
         $query = SupplierImport::with('supplier')
             ->when($request->supplier_id, fn($q) => $q->where('supplier_id', $request->supplier_id))
             ->when($request->status, fn($q) => $q->where('status', $request->status))
+            ->when($request->from_date, fn($q) => $q->whereDate('created_at', '>=', $request->from_date))
+            ->when($request->to_date, fn($q) => $q->whereDate('created_at', '<=', $request->to_date))
             ->latest();
 
         $imports = $query->paginate($request->per_page ?? 15);
 
         return response()->json([
-            'data' => $imports->items(),
+            'success' => true,
+            'data' => SupplierImportResource::collection($imports),
             'meta' => [
                 'current_page' => $imports->currentPage(),
                 'last_page' => $imports->lastPage(),
@@ -77,45 +43,94 @@ class SupplierImportController extends Controller
         ]);
     }
 
+    /**
+     * Ver detalle de importación
+     */
     public function show(SupplierImport $import): JsonResponse
     {
         $import->load('supplier');
 
         return response()->json([
-            'data' => $import,
+            'success' => true,
+            'data' => new SupplierImportResource($import),
         ]);
     }
 
+    /**
+     * Reprocesar importación fallida
+     */
     public function reprocess(SupplierImport $import): JsonResponse
     {
-        if ($import->status !== 'failed') {
+        try {
+            $this->importService->retryImport($import);
+
             return response()->json([
-                'error' => 'invalid_status',
-                'message' => 'Solo se pueden reprocesar importaciones fallidas',
+                'success' => true,
+                'message' => 'Importación reencolada para reprocesamiento',
+                'data' => [
+                    'import_id' => $import->id,
+                    'status' => 'pending',
+                ],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Estadísticas de importaciones
+     */
+    public function statistics(Request $request): JsonResponse
+    {
+        $stats = $this->importService->getStatistics($request->supplier_id);
+
+        return response()->json([
+            'success' => true,
+            'data' => $stats,
+        ]);
+    }
+
+    /**
+     * Eliminar importación
+     */
+    public function destroy(SupplierImport $import): JsonResponse
+    {
+        // Solo permitir eliminar importaciones fallidas o completadas
+        if (in_array($import->status, ['pending', 'processing'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No se pueden eliminar importaciones en proceso',
             ], 422);
         }
 
-        $import->update(['status' => 'pending', 'error_message' => null]);
-        ProcessSupplierImportJob::dispatch($import->id);
+        $import->delete();
 
         return response()->json([
-            'message' => 'Importación reencolada para reprocesamiento',
-            'import_id' => $import->id,
+            'success' => true,
+            'message' => 'Importación eliminada exitosamente',
         ]);
     }
 
-    public function statistics(): JsonResponse
+    /**
+     * Ver items de una importación
+     */
+    public function items(SupplierImport $import): JsonResponse
     {
-        $stats = [
-            'total_imports' => SupplierImport::count(),
-            'pending' => SupplierImport::where('status', 'pending')->count(),
-            'processing' => SupplierImport::where('status', 'processing')->count(),
-            'completed' => SupplierImport::where('status', 'completed')->count(),
-            'failed' => SupplierImport::where('status', 'failed')->count(),
-            'total_products_imported' => SupplierImport::sum('total_products'),
-            'total_products_processed' => SupplierImport::sum('processed_products'),
-        ];
+        $rawData = is_string($import->raw_data)
+            ? json_decode($import->raw_data, true)
+            : $import->raw_data;
 
-        return response()->json(['data' => $stats]);
+        $items = $rawData['items'] ?? [];
+
+        return response()->json([
+            'success' => true,
+            'data' => $items,
+            'meta' => [
+                'total' => count($items),
+            ],
+        ]);
     }
 }

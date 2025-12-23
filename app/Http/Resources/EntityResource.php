@@ -21,13 +21,17 @@ class EntityResource extends JsonResource
             'tipo_persona' => $this->tipo_persona,
             'full_name' => $this->full_name,
             'trade_name' => $this->when($this->tipo_persona === 'juridica', $this->trade_name),
-            
+
+            // Campos SUNAT (solo para suppliers)
+            'estado_sunat' => $this->when($this->type === 'supplier', $this->estado_sunat),
+            'condicion_sunat' => $this->when($this->type === 'supplier', $this->condicion_sunat),
+
             // NOTA: email, phone, address ahora vienen de primaryContact y primaryAddress
             // Se mantienen en el root para compatibilidad con frontend
             'email' => $this->primaryContact?->email,
             'phone' => $this->primaryAddress?->phone ?? $this->primaryContact?->phone,
             'address' => $this->primaryAddress?->address,
-            
+
             // País y Ubigeo de la dirección principal
             'country_code' => $this->primaryAddress?->country_code,
             'country_name' => $this->whenLoaded('primaryAddress.country', $this->primaryAddress?->country?->name),
@@ -58,7 +62,7 @@ class EntityResource extends JsonResource
                     'label' => $this->primaryAddress->label,
                 ];
             }),
-            
+
             'primary_contact' => $this->whenLoaded('primaryContact', function () {
                 if (!$this->primaryContact) return null;
                 return [
@@ -71,7 +75,7 @@ class EntityResource extends JsonResource
                 ];
             }),
             'user_id' => $this->whenLoaded('user', $this->user_id),
-            
+
             // Información completa del tipo de documento (opcional, para casos detallados)
             'document_type' => $this->whenLoaded('documentType', function () {
                 return $this->documentType ? [

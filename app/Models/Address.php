@@ -17,6 +17,7 @@ class Address extends Model
         'address',
         'ubigeo',
         'country_code', // NUEVO
+        'postcode',
         'reference',
         'phone',
         'label',

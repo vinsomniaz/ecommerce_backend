@@ -65,6 +65,11 @@ class Purchase extends Model
         return $this->hasMany(PurchaseBatch::class);
     }
 
+    public function payments()
+    {
+        return $this->hasMany(Payment::class);
+    }
+
     // ==================== SCOPES ====================
 
     public function scopePending($query)

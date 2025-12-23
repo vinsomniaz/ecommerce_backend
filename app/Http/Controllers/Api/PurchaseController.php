@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Purchase\StorePurchaseRequest;
+use App\Http\Requests\Purchase\UpdatePurchaseRequest;
+use App\Http\Requests\Purchase\RegisterPaymentRequest;
 use App\Services\PurchaseService;
 use App\Models\Purchase;
 use Illuminate\Http\JsonResponse;
@@ -14,6 +16,26 @@ class PurchaseController extends Controller
     public function __construct(
         protected PurchaseService $purchaseService
     ) {}
+
+    /**
+     * Listar compras
+     */
+    public function statistics(): JsonResponse
+    {
+        try {
+            $stats = $this->purchaseService->getStatistics();
+            return response()->json([
+                'success' => true,
+                'data' => $stats
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al obtener estadísticas',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 
     /**
      * Listar compras
@@ -42,7 +64,16 @@ class PurchaseController extends Controller
 
         $purchases = $query->paginate($request->per_page ?? 15);
 
-        return response()->json($purchases);
+        return response()->json([
+            'success' => true,
+            'data' => $purchases->items(),
+            'meta' => [
+                'current_page' => $purchases->currentPage(),
+                'per_page' => $purchases->perPage(),
+                'total' => $purchases->total(),
+                'last_page' => $purchases->lastPage()
+            ]
+        ]);
     }
 
     /**
@@ -54,11 +85,13 @@ class PurchaseController extends Controller
             $purchase = $this->purchaseService->createPurchase($request->validated());
 
             return response()->json([
+                'success' => true,
                 'message' => 'Compra registrada exitosamente',
                 'data' => $purchase
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Error al registrar la compra',
                 'error' => $e->getMessage()
             ], 500);
@@ -72,6 +105,74 @@ class PurchaseController extends Controller
     {
         $purchase->load(['details.product', 'batches', 'supplier', 'warehouse', 'user']);
 
-        return response()->json($purchase);
+        return response()->json([
+            'success' => true,
+            'data' => $purchase
+        ]);
+    }
+
+    /**
+     * Actualizar compra
+     */
+    public function update(UpdatePurchaseRequest $request, Purchase $purchase): JsonResponse
+    {
+        try {
+            $purchase = $this->purchaseService->updatePurchase($purchase, $request->validated());
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Compra actualizada exitosamente',
+                'data' => $purchase
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al actualizar la compra',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Eliminar compra
+     */
+    public function destroy(Purchase $purchase): JsonResponse
+    {
+        try {
+            $this->purchaseService->deletePurchase($purchase);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Compra eliminada exitosamente'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al eliminar la compra',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Registrar pago
+     */
+    public function registerPayment(RegisterPaymentRequest $request, Purchase $purchase): JsonResponse
+    {
+        try {
+            $payment = $this->purchaseService->registerPayment($purchase, $request->validated());
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Pago registrado exitosamente',
+                'data' => $payment
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al registrar el pago',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }

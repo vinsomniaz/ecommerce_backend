@@ -4,6 +4,7 @@
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ProductAttributeController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\ScraperController;
 use App\Http\Controllers\Api\SupplierProductController;
 use App\Http\Controllers\Api\WarehouseController;
 use App\Http\Controllers\Api\InventoryController; // NUEVO
@@ -27,11 +28,14 @@ use App\Http\Controllers\Auth\PermissionController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\CountryController;
 use App\Http\Controllers\Api\DocumentTypeController;
+use App\Http\Controllers\Api\SupplierCategoryMapController;
 use App\Http\Controllers\Api\ExchangeRateController;
 use App\Http\Controllers\Api\PurchaseController;
 use App\Http\Controllers\Api\UbigeoController;
 use App\Models\Order;
 use App\Services\OrderService;
+use App\Http\Controllers\Api\OrderController;
+
 
 /*
 |--------------------------------------------------------------------------
@@ -603,6 +607,23 @@ Route::middleware('auth:sanctum')->prefix('contacts')->group(function () {
 Route::middleware('auth:sanctum')->prefix('quotations')->group(function () {
 
     // ============================================================================
+    // QUOTATION BUILDER - Filtrado de productos
+    // ============================================================================
+
+    // Obtener productos para el builder con filtros
+    Route::get('/builder/products', [QuotationController::class, 'getProducts'])
+        ->middleware('permission:quotations.store');
+
+    // Obtener opciones de filtro (almacenes, familias, proveedores)
+    Route::get('/builder/filters', [QuotationController::class, 'getFilterOptions'])
+        ->middleware('permission:quotations.store');
+
+    // Búsqueda unificada de productos (inventario + proveedores)
+    Route::get('/builder/unified-products', [QuotationController::class, 'getUnifiedProducts'])
+        ->middleware('permission:quotations.store');
+
+
+    // ============================================================================
     // CRUD BÁSICO
     // ============================================================================
 
@@ -770,6 +791,9 @@ Route::middleware('auth:sanctum')->prefix('quotations')->group(function () {
    COMPRAS (PURCHASES)
    ============================================ */
 Route::middleware('auth:sanctum')->prefix('purchases')->group(function () {
+    Route::get('/statistics/global', [PurchaseController::class, 'statistics'])
+        ->middleware('permission:purchases.statistics'); // Ensure permission exists or create it
+
     Route::get('/', [PurchaseController::class, 'index'])
         ->middleware('permission:purchases.index');
 
@@ -778,103 +802,188 @@ Route::middleware('auth:sanctum')->prefix('purchases')->group(function () {
 
     Route::get('/{purchase}', [PurchaseController::class, 'show'])
         ->middleware('permission:purchases.show');
+
+    Route::match(['put', 'patch'], '/{purchase}', [PurchaseController::class, 'update'])
+        ->middleware('permission:purchases.update');
+
+    Route::delete('/{purchase}', [PurchaseController::class, 'destroy'])
+        ->middleware('permission:purchases.destroy');
+
+    Route::post('/{purchase}/payments', [PurchaseController::class, 'registerPayment'])
+        ->middleware('permission:purchases.payments.create');
 });
+
+/* ============================================
+   PEDIDOS (ORDERS) - ERP
+   ============================================ */
+Route::middleware('auth:sanctum')->prefix('orders')->group(function () {
+    Route::get('/', [OrderController::class, 'index'])
+        ->middleware('permission:orders.index');
+
+    Route::post('/', [OrderController::class, 'store'])
+        ->middleware('permission:orders.store');
+
+    Route::get('/{order}', [OrderController::class, 'show'])
+        ->middleware('permission:orders.show');
+
+    Route::match(['put', 'patch'], '/{order}', [OrderController::class, 'update'])
+        ->middleware('permission:orders.update');
+
+    Route::delete('/{order}', [OrderController::class, 'destroy'])
+        ->middleware('permission:orders.destroy');
+});
+
+
+/* ============================================
+   SCRAPER ENDPOINTS (Importación de productos)
+   ============================================ */
+// Legacy: Busca supplier por slug
+Route::post('/scraper/import', [ScraperController::class, 'import'])
+    ->middleware(['throttle:60,1', 'verify.scraper.token']);
+
+// Moderno: Usa ID directo del supplier
+Route::post('/scraper/sync/{supplierId}', [ScraperController::class, 'syncById'])
+    ->middleware(['throttle:60,1', 'verify.scraper.token']);
 
 /* ============================================
    SUPPLIER PRODUCTS (Productos de Proveedores)
    ============================================ */
 Route::middleware('auth:sanctum')->prefix('supplier-products')->group(function () {
+    // Rutas especiales primero
+    Route::get('statistics', [SupplierProductController::class, 'statistics'])
+        ->middleware('permission:supplier-products.statistics');
 
-    // Listar productos de proveedores
+    Route::post('bulk-update-prices', [SupplierProductController::class, 'bulkUpdatePrices'])
+        ->middleware('permission:supplier-products.bulk-update-prices');
+
+    Route::post('bulk-update-categories', [SupplierProductController::class, 'bulkUpdateCategories'])
+        ->middleware('permission:supplier-products.update');
+
+    Route::get('product/{productId}', [SupplierProductController::class, 'byProduct'])
+        ->middleware('permission:supplier-products.by-product');
+
+    Route::get('supplier/{supplierId}', [SupplierProductController::class, 'bySupplier'])
+        ->middleware('permission:supplier-products.by-supplier');
+
+    Route::get('product/{productId}/compare-prices', [SupplierProductController::class, 'comparePrices'])
+        ->middleware('permission:supplier-products.compare-prices');
+
+    Route::get('uncategorized', [SupplierProductController::class, 'uncategorized'])
+        ->middleware('permission:supplier-products.index'); // Reusa el mismo permiso de index
+
+
+    // CRUD básico
     Route::get('/', [SupplierProductController::class, 'index'])
         ->middleware('permission:supplier-products.index');
 
-    // Crear relación producto-proveedor
     Route::post('/', [SupplierProductController::class, 'store'])
         ->middleware('permission:supplier-products.store');
 
-    // Ver detalle
-    Route::get('/{supplierProduct}', [SupplierProductController::class, 'show'])
+    Route::get('{supplierProduct}', [SupplierProductController::class, 'show'])
         ->middleware('permission:supplier-products.show');
 
-    // Actualizar precio/stock
-    Route::match(['put', 'patch'], '/{supplierProduct}', [SupplierProductController::class, 'update'])
+    Route::match(['put', 'patch'], '{supplierProduct}', [SupplierProductController::class, 'update'])
         ->middleware('permission:supplier-products.update');
 
-    // Eliminar
-    Route::delete('/{supplierProduct}', [SupplierProductController::class, 'destroy'])
+    Route::delete('{supplierProduct}', [SupplierProductController::class, 'destroy'])
         ->middleware('permission:supplier-products.destroy');
-
-    // Actualización masiva de precios
-    Route::post('/bulk-update-prices', [SupplierProductController::class, 'bulkUpdatePrices'])
-        ->middleware('permission:supplier-products.bulk-update-prices');
-
-    // Por producto (todos los proveedores que lo tienen)
-    Route::get('/by-product/{productId}', [SupplierProductController::class, 'byProduct'])
-        ->middleware('permission:supplier-products.by-product');
-
-    // Por proveedor (todos sus productos)
-    Route::get('/by-supplier/{supplierId}', [SupplierProductController::class, 'bySupplier'])
-        ->middleware('permission:supplier-products.by-supplier');
-
-    // Comparar precios entre proveedores
-    Route::get('/compare-prices/{productId}', [SupplierProductController::class, 'comparePrices'])
-        ->middleware('permission:supplier-products.compare-prices');
 });
 
 /* ============================================
    SUPPLIER IMPORTS (Importación desde Scrapers)
    ============================================ */
 Route::middleware('auth:sanctum')->prefix('supplier-imports')->group(function () {
+    // Estadísticas
+    Route::get('statistics', [SupplierImportController::class, 'statistics'])
+        ->middleware('permission:supplier-imports.statistics');
 
-    // Listar importaciones
+    // Reprocesar importación fallida
+    Route::post('{import}/reprocess', [SupplierImportController::class, 'reprocess'])
+        ->middleware('permission:supplier-imports.reprocess');
+
+    // Ver items de una importación
+    Route::get('{import}/items', [SupplierImportController::class, 'items'])
+        ->middleware('permission:supplier-imports.items');
+
+    // CRUD básico
     Route::get('/', [SupplierImportController::class, 'index'])
         ->middleware('permission:supplier-imports.index');
 
-    // Ver detalle de importación
-    Route::get('/{import}', [SupplierImportController::class, 'show'])
+    Route::get('{import}', [SupplierImportController::class, 'show'])
         ->middleware('permission:supplier-imports.show');
 
-    // Reprocesar importación fallida
-    Route::post('/{import}/reprocess', [SupplierImportController::class, 'reprocess'])
-        ->middleware('permission:supplier-imports.reprocess');
-
-    // Estadísticas de importaciones
-    Route::get('/statistics/summary', [SupplierImportController::class, 'statistics'])
-        ->middleware('permission:supplier-imports.statistics');
+    Route::delete('{import}', [SupplierImportController::class, 'destroy'])
+        ->middleware('permission:supplier-imports.destroy');
 });
 
-// ============================================================================
-// ENDPOINT PÚBLICO PARA SCRAPERS (sin auth:sanctum)
-// ============================================================================
-Route::post('/suppliers/{slug}/import', [SupplierImportController::class, 'import'])
-    ->middleware('throttle:60,1'); // Rate limit: 60 requests por minuto
+/* ============================================
+   SUPPLIER CATEGORY MAPS (Mapeo de Categorías)
+   ============================================ */
+Route::middleware('auth:sanctum')->prefix('supplier-category-maps')->group(function () {
+    // Estadísticas
+    Route::get('statistics', [SupplierCategoryMapController::class, 'statistics'])
+        ->middleware('permission:supplier-category-maps.statistics');
+
+    // Categorías sin mapear
+    Route::get('unmapped', [SupplierCategoryMapController::class, 'unmapped'])
+        ->middleware('permission:supplier-category-maps.unmapped');
+
+    // Mapeo masivo
+    Route::post('bulk-map', [SupplierCategoryMapController::class, 'bulkMap'])
+        ->middleware('permission:supplier-category-maps.bulk-map');
+
+    // CRUD básico
+    Route::get('/', [SupplierCategoryMapController::class, 'index'])
+        ->middleware('permission:supplier-category-maps.index');
+
+    Route::post('/', [SupplierCategoryMapController::class, 'store'])
+        ->middleware('permission:supplier-category-maps.store');
+
+    Route::get('{map}', [SupplierCategoryMapController::class, 'show'])
+        ->middleware('permission:supplier-category-maps.show');
+
+    Route::match(['put', 'patch'], '{map}', [SupplierCategoryMapController::class, 'update'])
+        ->middleware('permission:supplier-category-maps.update');
+
+    Route::delete('{map}', [SupplierCategoryMapController::class, 'destroy'])
+        ->middleware('permission:supplier-category-maps.destroy');
+});
 
 /* ============================================
    SETTINGS (Configuraciones del Sistema)
    ============================================ */
-Route::middleware(['auth:sanctum', 'role:super-admin'])->prefix('settings')->group(function () {
+/* ============================================
+   SETTINGS (Configuraciones del Sistema)
+   ============================================ */
+Route::middleware('auth:sanctum')->prefix('settings')->group(function () {
 
     // Listar todas las configuraciones
-    Route::get('/', [SettingController::class, 'index']);
+    Route::get('/', [SettingController::class, 'index'])
+        ->middleware('permission:settings.index');
 
     // Obtener por grupo
-    Route::get('/group/{group}', [SettingController::class, 'getGroup']);
+    Route::get('/group/{group}', [SettingController::class, 'getGroup'])
+        ->middleware('permission:settings.index');
 
     // Obtener configuración específica
-    Route::get('/{group}/{key}', [SettingController::class, 'get']);
+    Route::get('/{group}/{key}', [SettingController::class, 'get'])
+        ->middleware('permission:settings.show');
 
     // Crear/actualizar configuración
-    Route::post('/', [SettingController::class, 'set']);
+    Route::post('/', [SettingController::class, 'set'])
+        ->middleware('permission:settings.store');
 
     // Actualizar múltiples configuraciones
-    Route::post('/bulk-update', [SettingController::class, 'bulkUpdate']);
+    Route::post('/bulk-update', [SettingController::class, 'bulkUpdate'])
+        ->middleware('permission:settings.bulk-update');
 
     // Eliminar configuración
-    Route::delete('/{group}/{key}', [SettingController::class, 'delete']);
+    Route::delete('/{group}/{key}', [SettingController::class, 'delete'])
+        ->middleware('permission:settings.destroy');
 
     // Restaurar configuraciones por defecto
-    Route::post('/restore-defaults', [SettingController::class, 'restoreDefaults']);
+    Route::post('/restore-defaults', [SettingController::class, 'restoreDefaults'])
+        ->middleware('permission:settings.restore-defaults');
 });
 
 /* ============================================

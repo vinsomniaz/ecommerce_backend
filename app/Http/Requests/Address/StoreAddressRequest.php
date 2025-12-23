@@ -16,12 +16,13 @@ class StoreAddressRequest extends FormRequest
             'address' => ['required', 'string', 'max:250'],
             'country_code' => ['nullable', 'string', 'size:2', 'exists:countries,code'],
             'ubigeo' => [
-                'nullable', 
+                'nullable',
                 'required_if:country_code,PE', // Solo requerido si es Perú
-                'string', 
-                'size:6', 
+                'string',
+                'size:6',
                 'exists:ubigeos,ubigeo'
             ],
+            'postcode' => ['nullable', 'string', 'max:20'],
             'reference' => ['nullable', 'string', 'max:200'],
             'phone' => ['nullable', 'string', 'max:20'],
             'label' => ['nullable', 'string', 'max:50'],

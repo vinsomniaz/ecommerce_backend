@@ -13,6 +13,7 @@ class Payment extends Model
     use HasFactory, LogsActivity;
 
     protected $fillable = [
+        'purchase_id',
         'order_id',
         'sale_id',
         'payment_method',
@@ -42,6 +43,11 @@ class Payment extends Model
         return $this->belongsTo(Sale::class);
     }
 
+    public function purchase(): BelongsTo
+    {
+        return $this->belongsTo(Purchase::class);
+    }
+
     // Scopes
     public function scopeCompleted($query)
     {
@@ -66,7 +72,7 @@ class Payment extends Model
     // Accessors
     public function getPaymentMethodNameAttribute(): string
     {
-        return match($this->payment_method) {
+        return match ($this->payment_method) {
             'cash' => 'Efectivo',
             'card' => 'Tarjeta',
             'transfer' => 'Transferencia',
@@ -80,7 +86,7 @@ class Payment extends Model
 
     public function getStatusNameAttribute(): string
     {
-        return match($this->status) {
+        return match ($this->status) {
             'pending' => 'Pendiente',
             'completed' => 'Completado',
             'failed' => 'Fallido',

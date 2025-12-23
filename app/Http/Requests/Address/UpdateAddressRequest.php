@@ -24,6 +24,10 @@ class UpdateAddressRequest extends FormRequest
         // 2. El país actual es PE Y se está actualizando el address (dirección física)
         $requiresUbigeo = false;
 
+        if ($this->has('postcode') && trim((string) $this->input('postcode')) === '') {
+            $this->merge(['postcode' => null]);
+        }
+
         if ($this->has('country_code')) {
             // Si se está enviando country_code en la petición
             $requiresUbigeo = $countryCode === 'PE';
@@ -42,6 +46,7 @@ class UpdateAddressRequest extends FormRequest
                 'size:6',
                 'exists:ubigeos,ubigeo'
             ],
+            'postcode' => ['sometimes', 'nullable', 'string', 'max:20'],
             'reference' => ['nullable', 'string', 'max:200'],
             'phone' => ['nullable', 'string', 'max:20'],
             'label' => ['nullable', 'string', 'max:50'],

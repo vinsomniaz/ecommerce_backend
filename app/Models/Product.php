@@ -114,6 +114,7 @@ class Product extends Model implements HasMedia
             ->format('webp')
             ->quality(85)
             ->background('rgba(0, 0, 0, 0)')
+            ->nonQueued()
             ->performOnCollections('images');
     }
 
@@ -173,6 +174,11 @@ class Product extends Model implements HasMedia
     public function saleDetails(): HasMany
     {
         return $this->hasMany(SaleDetail::class);
+    }
+
+    public function supplierProducts(): HasMany
+    {
+        return $this->hasMany(SupplierProduct::class);
     }
 
     public function isInStock(): bool
