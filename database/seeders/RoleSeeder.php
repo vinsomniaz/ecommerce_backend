@@ -6,12 +6,13 @@ use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
 use Illuminate\Support\Facades\DB;
+use Spatie\Permission\PermissionRegistrar;
 
 class RoleSeeder extends Seeder
 {
     public function run(): void
     {
-        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        app()[PermissionRegistrar::class]->forgetCachedPermissions();
 
         $this->command->info('🔄 Iniciando creación de roles y permisos...');
 
@@ -293,6 +294,10 @@ class RoleSeeder extends Seeder
                 ['name' => 'purchases.index', 'display_name' => 'Listar compras', 'description' => 'Obtiene el listado de compras.'],
                 ['name' => 'purchases.show', 'display_name' => 'Ver compra', 'description' => 'Muestra el detalle de una compra específica.'],
                 ['name' => 'purchases.store', 'display_name' => 'Registrar compra', 'description' => 'Registra una nueva compra e incrementa stock.'],
+                ['name' => 'purchases.update', 'display_name' => 'Actualizar compra', 'description' => 'Actualiza la información de una compra existente.'],
+                ['name' => 'purchases.destroy', 'display_name' => 'Eliminar compra', 'description' => 'Elimina (o anula) una compra del sistema.'],
+                ['name' => 'purchases.statistics', 'display_name' => 'Estadísticas de compras', 'description' => 'Consulta estadísticas generales de compras.'],
+                ['name' => 'purchases.payments.create', 'display_name' => 'Registrar pago de compra', 'description' => 'Registra un pago asociado a una compra.'],
             ],
 
             'Orders' => [
@@ -580,6 +585,15 @@ class RoleSeeder extends Seeder
             'settings.destroy',
             'settings.bulk-update',
             'settings.restore-defaults',
+
+            // PURCHASES
+            'purchases.index',
+            'purchases.show',
+            'purchases.store',
+            'purchases.update',
+            'purchases.destroy',
+            'purchases.statistics',
+            'purchases.payments.create',
         ];
     }
 

@@ -952,28 +952,38 @@ Route::middleware('auth:sanctum')->prefix('supplier-category-maps')->group(funct
 /* ============================================
    SETTINGS (Configuraciones del Sistema)
    ============================================ */
-Route::middleware(['auth:sanctum', 'role:super-admin'])->prefix('settings')->group(function () {
+/* ============================================
+   SETTINGS (Configuraciones del Sistema)
+   ============================================ */
+Route::middleware('auth:sanctum')->prefix('settings')->group(function () {
 
     // Listar todas las configuraciones
-    Route::get('/', [SettingController::class, 'index']);
+    Route::get('/', [SettingController::class, 'index'])
+        ->middleware('permission:settings.index');
 
     // Obtener por grupo
-    Route::get('/group/{group}', [SettingController::class, 'getGroup']);
+    Route::get('/group/{group}', [SettingController::class, 'getGroup'])
+        ->middleware('permission:settings.index');
 
     // Obtener configuración específica
-    Route::get('/{group}/{key}', [SettingController::class, 'get']);
+    Route::get('/{group}/{key}', [SettingController::class, 'get'])
+        ->middleware('permission:settings.show');
 
     // Crear/actualizar configuración
-    Route::post('/', [SettingController::class, 'set']);
+    Route::post('/', [SettingController::class, 'set'])
+        ->middleware('permission:settings.store');
 
     // Actualizar múltiples configuraciones
-    Route::post('/bulk-update', [SettingController::class, 'bulkUpdate']);
+    Route::post('/bulk-update', [SettingController::class, 'bulkUpdate'])
+        ->middleware('permission:settings.bulk-update');
 
     // Eliminar configuración
-    Route::delete('/{group}/{key}', [SettingController::class, 'delete']);
+    Route::delete('/{group}/{key}', [SettingController::class, 'delete'])
+        ->middleware('permission:settings.destroy');
 
     // Restaurar configuraciones por defecto
-    Route::post('/restore-defaults', [SettingController::class, 'restoreDefaults']);
+    Route::post('/restore-defaults', [SettingController::class, 'restoreDefaults'])
+        ->middleware('permission:settings.restore-defaults');
 });
 
 /* ============================================
