@@ -18,7 +18,7 @@ class OrderController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Order::with(['customer', 'details', 'statusHistory']);
+        $query = Order::with(['customer', 'details', 'statusHistory', 'payments']);
 
         if ($request->has('status')) {
             $query->where('status', $request->status);
@@ -149,7 +149,7 @@ class OrderController extends Controller
      */
     public function show(Order $order): JsonResponse
     {
-        $order->load(['customer', 'details', 'statusHistory', 'shippingAddress']);
+        $order->load(['customer', 'details', 'statusHistory', 'shippingAddress', 'payments']);
         return response()->json($order);
     }
 
