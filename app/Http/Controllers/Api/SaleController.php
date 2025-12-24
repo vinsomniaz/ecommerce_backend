@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
+use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -16,7 +17,7 @@ class SaleController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Order::with(['customer', 'items', 'statusHistory']);
+        $query = Order::with(['customer', 'details', 'statusHistory']);
 
         // Apply filters similar to OrderController but tailored for Sales view
         if ($request->has('search')) {
@@ -108,11 +109,19 @@ class SaleController extends Controller
                 $lineTotal = $quantity * $price;
                 $subtotal += $lineTotal; // Ignoring explicit discount logic for simplicity unless passed
 
+                $product = Product::find($item['product_id']);
+
+                $itemBase = $lineTotal / 1.18;
+                $itemTax = $lineTotal - $itemBase;
+
                 $itemsData[] = [
                     'product_id' => $item['product_id'],
+                    'product_name' => $product ? $product->primary_name : 'Producto Desconocido',
                     'quantity' => $quantity,
                     'unit_price' => $price,
-                    'subtotal' => $lineTotal,
+                    'discount' => 0,
+                    'subtotal' => $itemBase,
+                    'tax_amount' => $itemTax,
                     'total' => $lineTotal,
                 ];
             }
@@ -127,20 +136,22 @@ class SaleController extends Controller
                 'warehouse_id' => $validated['warehouse_id'],
                 'order_date' => Carbon::parse($validated['date']),
                 'currency' => $validated['currency'],
-                'status' => 'completed', // Sales created directly are usually completed/confirmed
+                'status' => 'entregado', // Sales created directly are usually completed/confirmed
                 'subtotal' => $base,
                 'tax' => $tax,
                 'total' => $total,
+                'discount' => 0,
+                'shipping_cost' => 0,
                 'shipping_address_id' => \App\Models\Entity::find($validated['customer_id'])->addresses()->first()?->id ?? 1,
             ]);
 
             foreach ($itemsData as $data) {
-                $order->items()->create($data); // Assuming relationship is 'items' or 'details'
+                $order->details()->create($data); // Assuming relationship is 'items' or 'details'
             }
 
             DB::commit();
 
-            return response()->json(['success' => true, 'data' => $order->load(['customer', 'items'])], 201);
+            return response()->json(['success' => true, 'data' => $order->load(['customer', 'details'])], 201);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['success' => false, 'message' => 'Error al registrar venta: ' . $e->getMessage()], 500);
@@ -152,7 +163,7 @@ class SaleController extends Controller
      */
     public function show($id): JsonResponse
     {
-        $order = Order::with(['customer', 'items', 'statusHistory'])->find($id);
+        $order = Order::with(['customer', 'details', 'statusHistory'])->find($id);
 
         if (!$order) {
             return response()->json(['success' => false, 'message' => 'Venta no encontrada'], 404);
@@ -240,6 +251,11 @@ class SaleController extends Controller
             'notes' => 'nullable|string',
             'payment_status' => 'sometimes|string',
         ]);
+
+        // Map common English status to Spanish DB enum
+        if (isset($validated['status']) && $validated['status'] === 'completed') {
+            $validated['status'] = 'entregado';
+        }
 
         $order->update($validated);
 
