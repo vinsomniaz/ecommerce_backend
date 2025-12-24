@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\UbigeoController;
 use App\Models\Order;
 use App\Services\OrderService;
 use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\SaleController;
 
 
 /*
@@ -785,6 +786,32 @@ Route::middleware('auth:sanctum')->prefix('quotations')->group(function () {
 
     Route::get('/{quotation}/margins-breakdown', [QuotationController::class, 'marginsBreakdown'])
         ->middleware('permission:quotations.margins-breakdown');
+});
+
+/* ============================================
+   VENTAS (SALES)
+   ============================================ */
+Route::middleware('auth:sanctum')->prefix('sales')->group(function () {
+    Route::get('/statistics/global', [SaleController::class, 'globalStatistics'])
+        ->middleware('permission:sales.statistics');
+
+    Route::get('/', [SaleController::class, 'index'])
+        ->middleware('permission:sales.index');
+
+    Route::post('/', [SaleController::class, 'store'])
+        ->middleware('permission:sales.store');
+
+    Route::get('/{id}', [SaleController::class, 'show'])
+        ->middleware('permission:sales.show');
+
+    Route::put('/{id}', [SaleController::class, 'update'])
+        ->middleware('permission:sales.update');
+
+    Route::delete('/{id}', [SaleController::class, 'destroy'])
+        ->middleware('permission:sales.destroy');
+
+    Route::post('/from-quotation/{id}', [SaleController::class, 'fromQuotation'])
+        ->middleware('permission:sales.from-quotation');
 });
 
 /* ============================================

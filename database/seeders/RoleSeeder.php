@@ -308,6 +308,16 @@ class RoleSeeder extends Seeder
                 ['name' => 'orders.destroy', 'display_name' => 'Eliminar pedido', 'description' => 'Cancela o elimina un pedido del sistema.'],
             ],
 
+            'Sales' => [
+                ['name' => 'sales.index', 'display_name' => 'Listar ventas', 'description' => 'Obtiene el listado de ventas.'],
+                ['name' => 'sales.show', 'display_name' => 'Ver venta', 'description' => 'Muestra el detalle de una venta específica.'],
+                ['name' => 'sales.store', 'display_name' => 'Crear venta', 'description' => 'Registra una nueva venta manual.'],
+                ['name' => 'sales.update', 'display_name' => 'Actualizar venta', 'description' => 'Actualiza una venta existente.'],
+                ['name' => 'sales.destroy', 'display_name' => 'Eliminar venta', 'description' => 'Elimina una venta del sistema.'],
+                ['name' => 'sales.statistics', 'display_name' => 'Estadísticas de ventas', 'description' => 'Consulta estadísticas de ventas.'],
+                ['name' => 'sales.from-quotation', 'display_name' => 'Crear venta desde cotización', 'description' => 'Convierte una cotización en venta.'],
+            ],
+
             /* ============================================
                COMPRAS (PURCHASES) - Arriba
                ============================================ */
@@ -548,6 +558,15 @@ class RoleSeeder extends Seeder
             'quotations.duplicate',
             'quotations.calculate-totals',
 
+            // SALES
+            'sales.index',
+            'sales.show',
+            'sales.store',
+            'sales.update',
+            'sales.destroy',
+            'sales.statistics',
+            'sales.from-quotation',
+
             // SUPPLIER PRODUCTS
             'supplier-products.index',
             'supplier-products.show',
@@ -666,6 +685,14 @@ class RoleSeeder extends Seeder
             // USERS
             'users.show',
             'users.update',
+
+            // SALES
+            'sales.index',
+            'sales.show',
+            'sales.store',
+            'sales.update',
+            'sales.statistics',
+            'sales.from-quotation',
 
             // ECOMMERCE
             'ecommerce.products.index',
