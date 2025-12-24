@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\SupplierImport;
-use App\Http\Requests\SupplierSyncRequest;
 use App\Http\Resources\SupplierImportResource;
 use App\Http\Resources\SupplierImportCollection;
 use App\Services\SupplierImportService;
@@ -18,28 +17,18 @@ class SupplierImportController extends Controller
     ) {}
 
     /**
-     * Listar importaciones
+     * Listar importaciones (usando Service y Collection)
      */
     public function index(Request $request): JsonResponse
     {
-        $query = SupplierImport::with('supplier')
-            ->when($request->supplier_id, fn($q) => $q->where('supplier_id', $request->supplier_id))
-            ->when($request->status, fn($q) => $q->where('status', $request->status))
-            ->when($request->from_date, fn($q) => $q->whereDate('created_at', '>=', $request->from_date))
-            ->when($request->to_date, fn($q) => $q->whereDate('created_at', '<=', $request->to_date))
-            ->latest();
-
-        $imports = $query->paginate($request->per_page ?? 15);
+        $imports = $this->importService->getImports($request);
+        $collection = new SupplierImportCollection($imports);
 
         return response()->json([
             'success' => true,
-            'data' => SupplierImportResource::collection($imports),
-            'meta' => [
-                'current_page' => $imports->currentPage(),
-                'last_page' => $imports->lastPage(),
-                'per_page' => $imports->perPage(),
-                'total' => $imports->total(),
-            ],
+            'message' => 'Importaciones obtenidas correctamente',
+            'data' => $collection->toArray($request)['data'],
+            'meta' => $collection->with($request)['meta'],
         ]);
     }
 
@@ -119,11 +108,7 @@ class SupplierImportController extends Controller
      */
     public function items(SupplierImport $import): JsonResponse
     {
-        $rawData = is_string($import->raw_data)
-            ? json_decode($import->raw_data, true)
-            : $import->raw_data;
-
-        $items = $rawData['items'] ?? [];
+        $items = $import->raw_data['items'] ?? [];
 
         return response()->json([
             'success' => true,

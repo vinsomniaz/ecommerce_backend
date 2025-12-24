@@ -20,8 +20,6 @@ class ProductPrice extends Model
         'min_price',
         'currency',
         'min_quantity',
-        'valid_from',
-        'valid_to',
         'is_active',
     ];
 
@@ -29,8 +27,6 @@ class ProductPrice extends Model
         'price' => 'decimal:2',
         'min_price' => 'decimal:2',
         'min_quantity' => 'integer',
-        'valid_from' => 'datetime',
-        'valid_to' => 'datetime',
         'is_active' => 'boolean',
     ];
 
@@ -69,17 +65,6 @@ class ProductPrice extends Model
         return $query->where('is_active', true);
     }
 
-    public function scopeCurrent($query)
-    {
-        $now = now();
-        return $query->where('is_active', true)
-            ->where('valid_from', '<=', $now)
-            ->where(function ($q) use ($now) {
-                $q->whereNull('valid_to')
-                  ->orWhere('valid_to', '>=', $now);
-            });
-    }
-
     public function scopeForPriceList($query, int $priceListId)
     {
         return $query->where('price_list_id', $priceListId);
@@ -103,44 +88,16 @@ class ProductPrice extends Model
         return $query->whereNotNull('warehouse_id');
     }
 
-    public function scopeExpired($query)
+    /**
+     * Scope para precios promocionales
+     */
+    public function scopePromo($query)
     {
-        return $query->where('is_active', true)
-            ->whereNotNull('valid_to')
-            ->where('valid_to', '<', now());
+        return $query->whereHas('priceList', fn($q) => $q->where('code', 'PROMO'))
+            ->where('is_active', true);
     }
 
     // ==================== MÉTODOS DE INSTANCIA ====================
-
-    /**
-     * Verificar si el precio está vigente actualmente
-     */
-    public function isCurrentlyValid(): bool
-    {
-        if (!$this->is_active) {
-            return false;
-        }
-
-        $now = now();
-
-        if ($this->valid_from && $this->valid_from > $now) {
-            return false;
-        }
-
-        if ($this->valid_to && $this->valid_to < $now) {
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * Verificar si el precio ha expirado
-     */
-    public function isExpired(): bool
-    {
-        return $this->valid_to && $this->valid_to < now();
-    }
 
     /**
      * Calcular margen de ganancia

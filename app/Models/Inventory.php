@@ -4,6 +4,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 
 class Inventory extends Model
 {
@@ -42,7 +43,7 @@ class Inventory extends Model
     }
 
     /**
-     * ✅ NUEVA: Relación con precios por lista de precios
+     * Relación con precios por lista de precios
      */
     public function productPrices()
     {
@@ -58,14 +59,13 @@ class Inventory extends Model
     }
 
     /**
-     * ✅ NUEVO: Obtener precio de venta según lista de precios activa
+     * Obtener precio de venta según lista de precios activa
      *
      * @param int|null $priceListId ID de lista de precios (null = lista por defecto)
      * @return float|null
      */
     public function getSalePrice(?int $priceListId = null): ?float
     {
-        // Si no se especifica lista, usar la lista por defecto del sistema
         if ($priceListId === null) {
             $priceListId = $this->getDefaultPriceListId();
         }
@@ -74,14 +74,9 @@ class Inventory extends Model
             ->where('price_list_id', $priceListId)
             ->where(function ($q) {
                 $q->whereNull('warehouse_id')
-                  ->orWhere('warehouse_id', $this->warehouse_id);
+                    ->orWhere('warehouse_id', $this->warehouse_id);
             })
             ->where('is_active', true)
-            ->where('valid_from', '<=', now())
-            ->where(function ($q) {
-                $q->whereNull('valid_to')
-                  ->orWhere('valid_to', '>=', now());
-            })
             ->orderBy('warehouse_id', 'desc') // Priorizar precio específico de almacén
             ->first();
 
@@ -89,7 +84,7 @@ class Inventory extends Model
     }
 
     /**
-     * ✅ NUEVO: Obtener precio mínimo según lista de precios
+     * Obtener precio mínimo según lista de precios
      */
     public function getMinSalePrice(?int $priceListId = null): ?float
     {
@@ -101,14 +96,9 @@ class Inventory extends Model
             ->where('price_list_id', $priceListId)
             ->where(function ($q) {
                 $q->whereNull('warehouse_id')
-                  ->orWhere('warehouse_id', $this->warehouse_id);
+                    ->orWhere('warehouse_id', $this->warehouse_id);
             })
             ->where('is_active', true)
-            ->where('valid_from', '<=', now())
-            ->where(function ($q) {
-                $q->whereNull('valid_to')
-                  ->orWhere('valid_to', '>=', now());
-            })
             ->orderBy('warehouse_id', 'desc')
             ->first();
 
@@ -116,45 +106,33 @@ class Inventory extends Model
     }
 
     /**
-     * ✅ NUEVO: Obtener margen de ganancia según lista de precios
+     * Obtener margen de ganancia según lista de precios
      */
     public function getProfitMargin(?int $priceListId = null): ?float
     {
-        if ($priceListId === null) {
-            $priceListId = $this->getDefaultPriceListId();
+        $salePrice = $this->getSalePrice($priceListId);
+
+        if (!$salePrice || $this->average_cost <= 0) {
+            return null;
         }
 
-        $productPrice = ProductPrice::where('product_id', $this->product_id)
-            ->where('price_list_id', $priceListId)
-            ->where(function ($q) {
-                $q->whereNull('warehouse_id')
-                  ->orWhere('warehouse_id', $this->warehouse_id);
-            })
-            ->where('is_active', true)
-            ->where('valid_from', '<=', now())
-            ->where(function ($q) {
-                $q->whereNull('valid_to')
-                  ->orWhere('valid_to', '>=', now());
-            })
-            ->orderBy('warehouse_id', 'desc')
-            ->first();
-
-        return $productPrice?->profit_margin;
+        return round((($salePrice - $this->average_cost) / $this->average_cost) * 100, 2);
     }
 
     /**
-     * ✅ NUEVO: Obtener ID de lista de precios por defecto
+     * Obtener ID de lista de precios por defecto (cacheado)
      */
     private function getDefaultPriceListId(): int
     {
-        // Puedes cachear esto para mejor rendimiento
-        return \App\Models\PriceList::where('is_active', true)
-            ->orderBy('id')
-            ->value('id') ?? 1;
+        return Cache::remember('default_price_list_id', 3600, function () {
+            return PriceList::where('is_active', true)
+                ->orderBy('id')
+                ->value('id') ?? 1;
+        });
     }
 
     /**
-     * ✅ ACTUALIZADO: Verificar si hay precio configurado
+     * Verificar si hay precio configurado
      */
     public function hasPriceConfigured(?int $priceListId = null): bool
     {
@@ -162,14 +140,14 @@ class Inventory extends Model
     }
 
     /**
-     * ✅ NUEVO: Obtener todos los precios disponibles para este inventario
+     * Obtener todos los precios disponibles para este inventario
      */
     public function getAllPrices(): array
     {
         $prices = ProductPrice::where('product_id', $this->product_id)
             ->where(function ($q) {
                 $q->whereNull('warehouse_id')
-                  ->orWhere('warehouse_id', $this->warehouse_id);
+                    ->orWhere('warehouse_id', $this->warehouse_id);
             })
             ->where('is_active', true)
             ->with('priceList:id,code,name')
@@ -181,7 +159,6 @@ class Inventory extends Model
                 'price_list_name' => $price->priceList->name,
                 'price' => $price->price,
                 'min_price' => $price->min_price,
-                'profit_margin' => $price->profit_margin,
                 'is_warehouse_specific' => $price->warehouse_id !== null,
             ];
         })->toArray();

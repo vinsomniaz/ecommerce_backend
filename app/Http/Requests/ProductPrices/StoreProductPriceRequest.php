@@ -24,9 +24,6 @@ class StoreProductPriceRequest extends FormRequest
             'min_price' => 'nullable|numeric|min:0',
             'currency' => 'nullable|string|in:PEN,USD',
             'min_quantity' => 'nullable|integer|min:1',
-
-            'valid_from' => 'nullable|date',
-            'valid_to' => 'nullable|date|after:valid_from',
             'is_active' => 'boolean',
         ];
     }
@@ -46,8 +43,6 @@ class StoreProductPriceRequest extends FormRequest
 
             'min_price.numeric' => 'El precio mínimo debe ser un número',
             'min_price.min' => 'El precio mínimo debe ser mayor o igual a 0',
-
-            'valid_to.after' => 'La fecha de fin debe ser posterior a la fecha de inicio',
         ];
     }
 
@@ -79,7 +74,6 @@ class StoreProductPriceRequest extends FormRequest
             'currency' => $this->input('currency', 'PEN'),
             'min_quantity' => $this->input('min_quantity', 1),
             'is_active' => $this->boolean('is_active', true),
-            'valid_from' => $this->input('valid_from', now()),
         ]);
     }
 }

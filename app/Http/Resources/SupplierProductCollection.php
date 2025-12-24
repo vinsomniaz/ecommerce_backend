@@ -4,31 +4,72 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\ResourceCollection;
+use App\Models\SupplierProduct;
+use Illuminate\Support\Facades\Cache;
 
 class SupplierProductCollection extends ResourceCollection
 {
+    /**
+     * Transform the resource collection into an array.
+     */
     public function toArray(Request $request): array
     {
         return [
-            'data' => $this->collection,
+            'data' => SupplierProductResource::collection($this->collection),
+        ];
+    }
+
+    /**
+     * Evita que Laravel agregue meta/links duplicados automáticamente.
+     */
+    public function paginationInformation(Request $request, array $paginated, array $default): array
+    {
+        return [];
+    }
+
+    /**
+     * Data adicional global (paginación + estadísticas).
+     */
+    public function with(Request $request): array
+    {
+        $supplierId = $request->supplier_id;
+
+        // Estadísticas calculadas en tiempo real (sin cache)
+        // Universo: sin product_id, sin supplier_category, con category_suggested
+        $query = SupplierProduct::query()
+            ->whereNull('product_id')
+            ->whereNull('supplier_category')
+            ->whereNotNull('category_suggested');
+
+        if ($supplierId) {
+            $query->where('supplier_id', $supplierId);
+        }
+
+        $total = $query->count();
+        $mapped = (clone $query)->whereNotNull('category_id')->count();
+        $unmapped = (clone $query)->whereNull('category_id')->count();
+        $active = (clone $query)->where('is_active', true)->count();
+        $inactive = (clone $query)->where('is_active', false)->count();
+
+        $stats = [
+            'total' => $total,
+            'mapped' => $mapped,
+            'unmapped' => $unmapped,
+            'active' => $active,
+            'inactive' => $inactive,
+            'mapping_rate' => $total > 0 ? round(($mapped / $total) * 100, 2) : 0,
+        ];
+
+        return [
             'meta' => [
-                'total' => $this->total(),
-                'per_page' => $this->perPage(),
                 'current_page' => $this->currentPage(),
+                'per_page' => $this->perPage(),
+                'total' => $this->total(),
                 'last_page' => $this->lastPage(),
                 'from' => $this->firstItem(),
                 'to' => $this->lastItem(),
+                'stats' => $stats,
             ],
-            'statistics' => $this->when($request->boolean('include_stats'), function () {
-                return [
-                    'total_products' => $this->collection->count(),
-                    'available' => $this->collection->where('is_available', true)->count(),
-                    'active' => $this->collection->where('is_active', true)->count(),
-                    'with_stock' => $this->collection->where('available_stock', '>', 0)->count(),
-                    'average_price' => $this->collection->avg('purchase_price'),
-                    'total_stock' => $this->collection->sum('available_stock'),
-                ];
-            }),
         ];
     }
 }

@@ -61,7 +61,7 @@ class PriceList extends Model
         if ($warehouseId !== null) {
             $query->where(function ($q) use ($warehouseId) {
                 $q->whereNull('warehouse_id')
-                  ->orWhere('warehouse_id', $warehouseId);
+                    ->orWhere('warehouse_id', $warehouseId);
             });
         }
 
@@ -76,15 +76,10 @@ class PriceList extends Model
         return $this->productPrices()
             ->where('product_id', $productId)
             ->where('is_active', true)
-            ->where('valid_from', '<=', now())
-            ->where(function ($q) {
-                $q->whereNull('valid_to')
-                  ->orWhere('valid_to', '>=', now());
-            })
             ->where(function ($q) use ($warehouseId) {
                 if ($warehouseId !== null) {
                     $q->whereNull('warehouse_id')
-                      ->orWhere('warehouse_id', $warehouseId);
+                        ->orWhere('warehouse_id', $warehouseId);
                 } else {
                     $q->whereNull('warehouse_id');
                 }

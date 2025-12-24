@@ -192,10 +192,10 @@ class Quotation extends Model
 
     public function scopeSearch($query, string $search)
     {
-        return $query->where(function($q) use ($search) {
+        return $query->where(function ($q) use ($search) {
             $q->where('quotation_code', 'like', "%{$search}%")
-              ->orWhere('customer_name', 'like', "%{$search}%")
-              ->orWhere('customer_document', 'like', "%{$search}%");
+                ->orWhere('customer_name', 'like', "%{$search}%")
+                ->orWhere('customer_document', 'like', "%{$search}%");
         });
     }
 
@@ -205,8 +205,8 @@ class Quotation extends Model
 
     public function getIsExpiredAttribute(): bool
     {
-        return $this->valid_until < now()->toDateString() && 
-               $this->status !== 'converted';
+        return $this->valid_until < now()->toDateString() &&
+            $this->status !== 'converted';
     }
 
     public function getIsEditableAttribute(): bool
@@ -216,8 +216,8 @@ class Quotation extends Model
 
     public function getCanBeSentAttribute(): bool
     {
-        return in_array($this->status, ['draft', 'sent']) && 
-               $this->details()->count() > 0;
+        return in_array($this->status, ['draft', 'sent']) &&
+            $this->details()->count() > 0;
     }
 
     public function getCanBeConvertedAttribute(): bool
@@ -267,6 +267,28 @@ class Quotation extends Model
         $this->update(['commission_paid' => true]);
     }
 
+    /**
+     * Verifica que la cotización esté en estado draft, o lanza excepción
+     * 
+     * @throws \App\Exceptions\QuotationNotEditableException
+     */
+    public function ensureDraft(): void
+    {
+        if ($this->status !== 'draft') {
+            throw new \App\Exceptions\QuotationNotEditableException(
+                'Solo se pueden modificar cotizaciones en estado borrador'
+            );
+        }
+    }
+
+    /**
+     * Verifica si la cotización está expirada
+     */
+    public function isExpired(): bool
+    {
+        return $this->valid_until < now()->toDateString() && $this->status !== 'converted';
+    }
+
     // ============================================================================
     // ACTIVITY LOG (Spatie)
     // ============================================================================
@@ -275,8 +297,13 @@ class Quotation extends Model
     {
         return LogOptions::defaults()
             ->logOnly([
-                'status', 'total', 'total_margin', 'commission_amount',
-                'sent_at', 'converted_at', 'commission_paid'
+                'status',
+                'total',
+                'total_margin',
+                'commission_amount',
+                'sent_at',
+                'converted_at',
+                'commission_paid'
             ])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs();

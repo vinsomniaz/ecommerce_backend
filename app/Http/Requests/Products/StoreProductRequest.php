@@ -52,8 +52,6 @@ class StoreProductRequest extends FormRequest
             'prices.*.min_price' => 'nullable|numeric|min:0|lte:prices.*.price',
             'prices.*.currency' => 'nullable|string|in:PEN,USD',
             'prices.*.min_quantity' => 'nullable|integer|min:1',
-            'prices.*.valid_from' => 'nullable|date',
-            'prices.*.valid_to' => 'nullable|date|after:prices.*.valid_from',
             'prices.*.is_active' => 'nullable|boolean',
         ];
     }
@@ -92,7 +90,6 @@ class StoreProductRequest extends FormRequest
             'prices.*.min_price.lte' => 'El precio mínimo no puede ser mayor al precio normal',
             'prices.*.currency.in' => 'La moneda debe ser PEN o USD',
             'prices.*.min_quantity.min' => 'La cantidad mínima debe ser al menos 1',
-            'prices.*.valid_to.after' => 'La fecha de fin debe ser posterior a la fecha de inicio',
         ];
     }
 
@@ -126,7 +123,6 @@ class StoreProductRequest extends FormRequest
                 return array_merge([
                     'currency' => 'PEN',
                     'min_quantity' => 1,
-                    'valid_from' => now()->toDateTimeString(),
                     'is_active' => true,
                 ], $price);
             })->toArray();
