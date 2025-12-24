@@ -18,7 +18,7 @@ class OrderController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Order::with(['customer', 'details', 'statusHistory']);
+        $query = Order::with(['customer', 'details', 'statusHistory', 'payments']);
 
         if ($request->has('status')) {
             $query->where('status', $request->status);
@@ -117,6 +117,7 @@ class OrderController extends Controller
                 'order_date' => Carbon::parse($validated['order_date']),
                 'currency' => $validated['currency'],
                 'status' => $validated['status'],
+                'payment_status' => $validated['payment_status'] ?? 'pending',
                 'shipping_address_id' => Entity::find($validated['customer_id'])->addresses()->first()?->id ?? \App\Models\Address::first()?->id ?? 1, // Fallback to avoid 500 if no address exists
                 'subtotal' => $base,
                 'tax' => $tax,
@@ -148,7 +149,7 @@ class OrderController extends Controller
      */
     public function show(Order $order): JsonResponse
     {
-        $order->load(['customer', 'details', 'statusHistory', 'shippingAddress']);
+        $order->load(['customer', 'details', 'statusHistory', 'shippingAddress', 'payments']);
         return response()->json($order);
     }
 
@@ -160,6 +161,8 @@ class OrderController extends Controller
         // Mostly for status updates or admin overrides
         $validated = $request->validate([
             'status' => 'sometimes|string|in:pendiente,confirmado,preparando,enviado,entregado,cancelado',
+            'payment_status' => 'nullable|string',
+            'payment_method' => 'nullable|string',
             'notes' => 'nullable|string',
             'tracking_code' => 'nullable|string',
         ]);
@@ -171,6 +174,36 @@ class OrderController extends Controller
                 $validated['tracking_code'] ?? null
             );
         }
+
+        if (isset($validated['payment_status'])) {
+            $order->payment_status = $validated['payment_status'];
+
+            if ($validated['payment_status'] === 'paid' && !empty($validated['payment_method'])) {
+                $payment = $order->payments()->first();
+                if ($payment) {
+                    $payment->update([
+                        'payment_method' => $validated['payment_method'],
+                    ]);
+                } elseif ($order->remaining_balance > 0) {
+                    $order->payments()->create([
+                        'amount' => $order->remaining_balance,
+                        'payment_method' => $validated['payment_method'],
+                        'status' => 'completed',
+                        'currency' => $order->currency,
+                        'paid_at' => now(),
+                    ]);
+                }
+            }
+        }
+
+        if (array_key_exists('notes', $validated)) {
+            $order->observations = $validated['notes'];
+        }
+
+        $order->save();
+
+
+
 
         // Can add logic to update other fields if needed
 
