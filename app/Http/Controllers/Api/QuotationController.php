@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Exceptions\InsufficientStockException;
 use App\Exceptions\LowMarginException;
+use App\Exceptions\QuotationNotEditableException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Quotation\GetQuotationProductsRequest;
 use App\Http\Requests\Quotation\StoreQuotationRequest;
@@ -24,6 +25,7 @@ use App\Services\QuotationService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class QuotationController extends Controller
@@ -53,6 +55,7 @@ class QuotationController extends Controller
         $quotations = $query->paginate($request->per_page ?? 15);
 
         return response()->json([
+            'success' => true,
             'data' => QuotationResource::collection($quotations->items()),
             'meta' => [
                 'current_page' => $quotations->currentPage(),
@@ -75,11 +78,13 @@ class QuotationController extends Controller
             );
 
             return response()->json([
+                'success' => true,
                 'message' => 'Cotización creada exitosamente',
                 'data' => new QuotationResource($quotation),
             ], 201);
         } catch (LowMarginException $e) {
             return response()->json([
+                'success' => false,
                 'error' => 'low_margin',
                 'message' => $e->getMessage(),
             ], 422);
@@ -150,10 +155,13 @@ class QuotationController extends Controller
      */
     public function addItem(AddItemRequest $request, Quotation $quotation): JsonResponse
     {
-        if ($quotation->status !== 'draft') {
+        try {
+            $quotation->ensureDraft();
+        } catch (QuotationNotEditableException $e) {
             return response()->json([
+                'success' => false,
                 'error' => 'invalid_status',
-                'message' => 'Solo se pueden agregar items a cotizaciones en borrador',
+                'message' => $e->getMessage(),
             ], 422);
         }
 
@@ -162,16 +170,19 @@ class QuotationController extends Controller
             $this->quotationService->recalculateTotals($quotation);
 
             return response()->json([
+                'success' => true,
                 'message' => 'Producto agregado exitosamente',
                 'data' => new QuotationResource($quotation->fresh(['details'])),
             ]);
         } catch (InsufficientStockException $e) {
             return response()->json([
+                'success' => false,
                 'error' => 'insufficient_stock',
                 'message' => $e->getMessage(),
             ], 422);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'error' => 'server_error',
                 'message' => 'Error al agregar el producto: ' . $e->getMessage(),
             ], 500);
@@ -183,10 +194,13 @@ class QuotationController extends Controller
      */
     public function removeItem(Quotation $quotation, int $detailId): JsonResponse
     {
-        if ($quotation->status !== 'draft') {
+        try {
+            $quotation->ensureDraft();
+        } catch (QuotationNotEditableException $e) {
             return response()->json([
+                'success' => false,
                 'error' => 'invalid_status',
-                'message' => 'Solo se pueden eliminar items de cotizaciones en borrador',
+                'message' => $e->getMessage(),
             ], 422);
         }
 
@@ -194,6 +208,7 @@ class QuotationController extends Controller
 
         if (!$detail) {
             return response()->json([
+                'success' => false,
                 'error' => 'not_found',
                 'message' => 'Item no encontrado',
             ], 404);
@@ -203,6 +218,7 @@ class QuotationController extends Controller
         $this->quotationService->recalculateTotals($quotation);
 
         return response()->json([
+            'success' => true,
             'message' => 'Producto eliminado exitosamente',
             'data' => new QuotationResource($quotation->fresh(['details'])),
         ]);
@@ -327,20 +343,23 @@ class QuotationController extends Controller
     {
         $userId = $request->user_id ?? $request->user()->id;
 
-        $stats = [
-            'total' => Quotation::where('user_id', $userId)->count(),
-            'draft' => Quotation::where('user_id', $userId)->where('status', 'draft')->count(),
-            'sent' => Quotation::where('user_id', $userId)->where('status', 'sent')->count(),
-            'accepted' => Quotation::where('user_id', $userId)->where('status', 'accepted')->count(),
-            'converted' => Quotation::where('user_id', $userId)->where('status', 'converted')->count(),
-            'total_amount' => Quotation::where('user_id', $userId)->sum('total'),
-            'total_margin' => Quotation::where('user_id', $userId)->sum('total_margin'),
-            'pending_commission' => Quotation::where('user_id', $userId)
-                ->where('commission_paid', false)
-                ->sum('commission_amount'),
-        ];
+        // ✅ Cache de estadísticas por 5 minutos
+        $stats = Cache::remember("quotation_stats_{$userId}", now()->addMinutes(5), function () use ($userId) {
+            return [
+                'total' => Quotation::where('user_id', $userId)->count(),
+                'draft' => Quotation::where('user_id', $userId)->where('status', 'draft')->count(),
+                'sent' => Quotation::where('user_id', $userId)->where('status', 'sent')->count(),
+                'accepted' => Quotation::where('user_id', $userId)->where('status', 'accepted')->count(),
+                'converted' => Quotation::where('user_id', $userId)->where('status', 'converted')->count(),
+                'total_amount' => Quotation::where('user_id', $userId)->sum('total'),
+                'total_margin' => Quotation::where('user_id', $userId)->sum('total_margin'),
+                'pending_commission' => Quotation::where('user_id', $userId)
+                    ->where('commission_paid', false)
+                    ->sum('commission_amount'),
+            ];
+        });
 
-        return response()->json(['data' => $stats]);
+        return response()->json(['success' => true, 'data' => $stats]);
     }
 
     /**
@@ -348,10 +367,13 @@ class QuotationController extends Controller
      */
     public function updateItem(UpdateItemRequest $request, Quotation $quotation, int $detailId): JsonResponse
     {
-        if ($quotation->status !== 'draft') {
+        try {
+            $quotation->ensureDraft();
+        } catch (QuotationNotEditableException $e) {
             return response()->json([
+                'success' => false,
                 'error' => 'invalid_status',
-                'message' => 'Solo se pueden actualizar items de cotizaciones en borrador',
+                'message' => $e->getMessage(),
             ], 422);
         }
 
@@ -359,39 +381,44 @@ class QuotationController extends Controller
 
         if (!$detail) {
             return response()->json([
+                'success' => false,
                 'error' => 'not_found',
                 'message' => 'Item no encontrado',
             ], 404);
         }
 
         try {
-            $detail->update($request->validated());
+            return DB::transaction(function () use ($request, $quotation, $detail) {
+                $detail->update($request->validated());
 
-            // Recalcular márgenes si cambió cantidad o precio
-            if ($request->has(['quantity', 'unit_price'])) {
-                $margins = app(MarginCalculatorService::class)->calculate($detail);
-                $detail->update($margins);
+                // Recalcular márgenes si cambió cantidad o precio
+                if ($request->has(['quantity', 'unit_price'])) {
+                    $margins = app(MarginCalculatorService::class)->calculate($detail);
+                    $detail->update($margins);
 
-                // Recalcular subtotal, tax, total
-                $subtotal = ($detail->unit_price * $detail->quantity) - ($detail->discount ?? 0);
-                $taxAmount = $subtotal * 0.18;
-                $total = $subtotal + $taxAmount;
+                    // Recalcular subtotal, tax, total
+                    $subtotal = ($detail->unit_price * $detail->quantity) - ($detail->discount ?? 0);
+                    $taxAmount = $subtotal * 0.18;
+                    $total = $subtotal + $taxAmount;
 
-                $detail->update([
-                    'subtotal' => $subtotal,
-                    'tax_amount' => $taxAmount,
-                    'total' => $total,
+                    $detail->update([
+                        'subtotal' => $subtotal,
+                        'tax_amount' => $taxAmount,
+                        'total' => $total,
+                    ]);
+                }
+
+                $this->quotationService->recalculateTotals($quotation);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Item actualizado exitosamente',
+                    'data' => new QuotationResource($quotation->fresh(['details'])),
                 ]);
-            }
-
-            $this->quotationService->recalculateTotals($quotation);
-
-            return response()->json([
-                'message' => 'Item actualizado exitosamente',
-                'data' => new QuotationResource($quotation->fresh(['details'])),
-            ]);
+            });
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'error' => 'server_error',
                 'message' => 'Error al actualizar el item: ' . $e->getMessage(),
             ], 500);

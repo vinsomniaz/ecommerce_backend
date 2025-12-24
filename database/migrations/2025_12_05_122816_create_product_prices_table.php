@@ -39,21 +39,12 @@ return new class extends Migration
             // ESCALONADO / MAYORISTA
             $table->integer('min_quantity')->default(1);
 
-            // VIGENCIA
-            $table->dateTime('valid_from')->default(DB::raw('CURRENT_TIMESTAMP'));
-            $table->dateTime('valid_to')->nullable();
-
             $table->boolean('is_active')->default(true);
             $table->timestamps();
 
             $table->index(
                 ['product_id', 'price_list_id', 'warehouse_id', 'is_active'],
                 'pp_prod_list_wh_active_idx'
-            );
-
-            $table->index(
-                ['valid_from', 'valid_to'],
-                'pp_valid_range_idx'
             );
 
             // 🚀 UNICOS

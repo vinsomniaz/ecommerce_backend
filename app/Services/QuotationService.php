@@ -64,30 +64,32 @@ class QuotationService
 
     public function addItem(Quotation $quotation, array $itemData): QuotationDetail
     {
-        $detail = $quotation->details()->create([
-            'product_id' => $itemData['product_id'],
-            'product_name' => $itemData['product_name'],
-            'product_sku' => $itemData['product_sku'] ?? null,
-            'product_brand' => $itemData['product_brand'] ?? null,
-            'quantity' => $itemData['quantity'],
-            'unit_price' => $itemData['unit_price'],
-            'discount' => $itemData['discount'] ?? 0,
-            'source_type' => $itemData['source_type'] ?? 'warehouse',
-            'warehouse_id' => $itemData['warehouse_id'] ?? null,
-            'supplier_id' => $itemData['supplier_id'] ?? null,
-            'supplier_product_id' => $itemData['supplier_product_id'] ?? null,
-            'is_requested_from_supplier' => $itemData['is_requested_from_supplier'] ?? false,
-            'purchase_price' => $itemData['purchase_price'] ?? 0,
-        ]);
+        return DB::transaction(function () use ($quotation, $itemData) {
+            $detail = $quotation->details()->create([
+                'product_id' => $itemData['product_id'],
+                'product_name' => $itemData['product_name'],
+                'product_sku' => $itemData['product_sku'] ?? null,
+                'product_brand' => $itemData['product_brand'] ?? null,
+                'quantity' => $itemData['quantity'],
+                'unit_price' => $itemData['unit_price'],
+                'discount' => $itemData['discount'] ?? 0,
+                'source_type' => $itemData['source_type'] ?? 'warehouse',
+                'warehouse_id' => $itemData['warehouse_id'] ?? null,
+                'supplier_id' => $itemData['supplier_id'] ?? null,
+                'supplier_product_id' => $itemData['supplier_product_id'] ?? null,
+                'is_requested_from_supplier' => $itemData['is_requested_from_supplier'] ?? false,
+                'purchase_price' => $itemData['purchase_price'] ?? 0,
+            ]);
 
-        // Calcular márgenes
-        $margins = $this->marginCalculator->calculate($detail);
-        $detail->update($margins);
+            // Calcular márgenes
+            $margins = $this->marginCalculator->calculate($detail);
+            $detail->update($margins);
 
-        // Calcular subtotal, tax, total del item
-        $this->calculateItemTotals($detail);
+            // Calcular subtotal, tax, total del item
+            $this->calculateItemTotals($detail);
 
-        return $detail;
+            return $detail;
+        });
     }
 
     private function calculateItemTotals(QuotationDetail $detail): void
@@ -175,7 +177,12 @@ class QuotationService
             ->with([
                 'category.parent', // Familia
                 'inventory' => fn($q) => $q->where('warehouse_id', $warehouseId),
-            ]);
+            ])
+            // ✅ Usar withAggregate para evitar N+1 en ordenamiento
+            ->withAggregate(
+                ['inventory' => fn($q) => $q->where('warehouse_id', $warehouseId)],
+                'available_stock'
+            );
 
         // Filtrar por almacén (productos que existen en el inventario de ese almacén)
         $query->whereHas('inventory', function ($q) use ($warehouseId) {
@@ -192,11 +199,9 @@ class QuotationService
 
         // Filtrar por categoría (cualquier nivel: categoría, familia o subfamilia)
         if ($categoryId) {
-            // Obtener IDs de todas las subcategorías descendientes
             $category = Category::find($categoryId);
             if ($category) {
-                $categoryIds = $category->getAllDescendantIds();
-                $categoryIds[] = $categoryId;
+                $categoryIds = $category->getAllDescendantIdsWithCache();
                 $query->whereIn('category_id', $categoryIds);
             }
         }
@@ -210,14 +215,8 @@ class QuotationService
             });
         }
 
-        // Ordenar por stock disponible (primero los que tienen stock)
-        $query->orderByRaw("
-            (SELECT available_stock FROM inventory 
-             WHERE inventory.product_id = products.id 
-             AND inventory.warehouse_id = ?) DESC
-        ", [$warehouseId]);
-
-        return $query->paginate($perPage);
+        // ✅ Ordenar usando el aggregate (evita subquery)
+        return $query->orderByDesc('inventory_available_stock')->paginate($perPage);
     }
 
     /**
@@ -248,6 +247,7 @@ class QuotationService
                     return [
                         'id' => $supplier->id,
                         'name' => $supplier->display_name,
+                        'trade_name' => $supplier->trade_name,
                         'document' => $supplier->numero_documento,
                         'products_count' => $supplier->supplier_products_count,
                         'products_in_warehouse' => $supplier->products_in_warehouse_count ?? null,
@@ -395,6 +395,8 @@ class QuotationService
     /**
      * Busca productos de forma unificada en inventario y proveedores
      * 
+     * ✅ OPTIMIZADO: Usa paginación a nivel de BD, no carga todo en memoria
+     * 
      * Retorna productos de ambas fuentes con un formato consistente
      */
     public function searchUnifiedProducts(array $filters): array
@@ -404,40 +406,59 @@ class QuotationService
         $supplierId = $filters['supplier_id'] ?? null;
         $warehouseId = $filters['warehouse_id'] ?? null;
         $sourceType = $filters['source_type'] ?? null; // 'inventory', 'supplier', null (ambos)
-        $perPage = $filters['per_page'] ?? 20;
-        $page = $filters['page'] ?? 1;
+        $perPage = min($filters['per_page'] ?? 20, 100); // Limitar a máximo 100
+        $page = max($filters['page'] ?? 1, 1);
 
-        $results = collect();
+        // Obtener IDs de categorías descendientes si aplica
+        $categoryIds = null;
+        if ($categoryId) {
+            // Cargar con children para que getAllDescendantIds funcione
+            $category = Category::with('children.children.children')->find($categoryId);
+            if ($category) {
+                $categoryIds = $category->getAllDescendantIdsWithCache();
+            }
+        }
+
+        $inventoryItems = collect();
+        $supplierItems = collect();
+        $inventoryTotal = 0;
+        $supplierTotal = 0;
 
         // =========================================================
-        // 1. Productos de INVENTARIO (tienen stock en almacén)
+        // 1. Productos de INVENTARIO (con paginación en BD)
         // =========================================================
         if (!$sourceType || $sourceType === 'inventory') {
-            $inventoryQuery = Inventory::with(['product.category', 'product.media', 'warehouse'])
-                ->where('available_stock', '>', 0);
+            $inventoryQuery = Inventory::query()
+                ->with(['product.category', 'product.media', 'warehouse'])
+                ->where('available_stock', '>', 0)
+                ->when($warehouseId, fn($q) => $q->where('warehouse_id', $warehouseId))
+                ->when($categoryIds, function ($q) use ($categoryIds) {
+                    $q->whereHas('product', fn($pq) => $pq->whereIn('category_id', $categoryIds));
+                })
+                ->when($search, function ($q) use ($search) {
+                    $q->whereHas('product', function ($pq) use ($search) {
+                        $pq->where('sku', 'like', "%{$search}%")
+                            ->orWhere('primary_name', 'like', "%{$search}%")
+                            ->orWhere('brand', 'like', "%{$search}%");
+                    });
+                })
+                ->orderByDesc('available_stock');
 
-            if ($warehouseId) {
-                $inventoryQuery->where('warehouse_id', $warehouseId);
+            // Obtener total para paginación
+            $inventoryTotal = (clone $inventoryQuery)->count();
+
+            // Si solo queremos inventario, paginar directamente
+            if ($sourceType === 'inventory') {
+                $inventoryItems = $inventoryQuery
+                    ->skip(($page - 1) * $perPage)
+                    ->take($perPage)
+                    ->get();
+            } else {
+                // Si buscamos ambos, tomar el doble para tener suficientes resultados para ordenar
+                $inventoryItems = $inventoryQuery->take($perPage * 2)->get();
             }
 
-            if ($categoryId) {
-                $category = Category::find($categoryId);
-                if ($category) {
-                    $categoryIds = $category->getAllDescendantIds();
-                    $categoryIds[] = $categoryId;
-                    $inventoryQuery->whereHas('product', fn($q) => $q->whereIn('category_id', $categoryIds));
-                }
-            }
-
-            if ($search) {
-                $inventoryQuery->whereHas('product', function ($q) use ($search) {
-                    $q->where('sku', 'like', "%{$search}%")
-                        ->orWhere('primary_name', 'like', "%{$search}%")
-                        ->orWhere('brand', 'like', "%{$search}%");
-                });
-            }
-
-            $inventoryProducts = $inventoryQuery->get()->map(function ($inventory) {
+            $inventoryItems = $inventoryItems->map(function ($inventory) {
                 $product = $inventory->product;
                 return [
                     'id' => "inv_{$inventory->id}",
@@ -457,49 +478,67 @@ class QuotationService
                     'supplier_id' => null,
                     'supplier_name' => null,
                     'supplier_product_id' => null,
-                    'delivery_days' => 0, // Stock inmediato
+                    'delivery_days' => 0,
                     'image_url' => $product->getFirstMediaUrl('images') ?: null,
                 ];
             });
-
-            $results = $results->merge($inventoryProducts);
         }
 
         // =========================================================
-        // 2. Productos de PROVEEDORES (supplier_products)
+        // 2. Productos de PROVEEDORES (con paginación en BD)
         // =========================================================
         if (!$sourceType || $sourceType === 'supplier') {
-            $supplierQuery = SupplierProduct::with(['supplier', 'category', 'product'])
+            $supplierQuery = SupplierProduct::query()
+                ->with(['supplier', 'category', 'product'])
                 ->active()
-                ->available();
-
-            if ($supplierId) {
-                $supplierQuery->where('supplier_id', $supplierId);
-            }
-
-            if ($categoryId) {
-                $category = Category::find($categoryId);
-                if ($category) {
-                    $categoryIds = $category->getAllDescendantIds();
-                    $categoryIds[] = $categoryId;
-
-                    // Buscar por category_id directo o por resolved category
-                    $supplierQuery->where(function ($q) use ($categoryIds) {
-                        $q->whereIn('category_id', $categoryIds)
-                            ->orWhereHas('product', fn($pq) => $pq->whereIn('category_id', $categoryIds));
+                ->available()
+                ->when($supplierId, fn($q) => $q->where('supplier_id', $supplierId))
+                ->when($categoryIds, function ($q) use ($categoryIds, $supplierId) {
+                    $q->where(function ($subQ) use ($categoryIds, $supplierId) {
+                        // 1. category_id directo (override manual)
+                        $subQ->whereIn('category_id', $categoryIds)
+                            // 2. Producto vinculado con esa categoría
+                            ->orWhereHas('product', fn($pq) => $pq->whereIn('category_id', $categoryIds))
+                            // 3. Mapeo via supplier_category en supplier_category_maps
+                            ->orWhereIn('supplier_category', function ($mapQuery) use ($categoryIds, $supplierId) {
+                                $mapQuery->select('supplier_category')
+                                    ->from('supplier_category_maps')
+                                    ->whereIn('category_id', $categoryIds)
+                                    ->when($supplierId, fn($q) => $q->where('supplier_id', $supplierId));
+                            })
+                            // 4. Mapeo via category_suggested en supplier_category_maps
+                            ->orWhereIn('category_suggested', function ($mapQuery) use ($categoryIds, $supplierId) {
+                                $mapQuery->select('supplier_category')
+                                    ->from('supplier_category_maps')
+                                    ->whereIn('category_id', $categoryIds)
+                                    ->when($supplierId, fn($q) => $q->where('supplier_id', $supplierId));
+                            });
                     });
-                }
+                })
+                ->when($search, function ($q) use ($search) {
+                    $q->where(function ($subQ) use ($search) {
+                        $subQ->where('supplier_name', 'like', "%{$search}%")
+                            ->orWhere('supplier_sku', 'like', "%{$search}%")
+                            ->orWhere('brand', 'like', "%{$search}%");
+                    });
+                })
+                ->orderByDesc('available_stock');
+
+            // Obtener total para paginación
+            $supplierTotal = (clone $supplierQuery)->count();
+
+            // Si solo queremos proveedores, paginar directamente
+            if ($sourceType === 'supplier') {
+                $supplierItems = $supplierQuery
+                    ->skip(($page - 1) * $perPage)
+                    ->take($perPage)
+                    ->get();
+            } else {
+                // Si buscamos ambos, tomar el doble para tener suficientes resultados
+                $supplierItems = $supplierQuery->take($perPage * 2)->get();
             }
 
-            if ($search) {
-                $supplierQuery->where(function ($q) use ($search) {
-                    $q->where('supplier_name', 'like', "%{$search}%")
-                        ->orWhere('supplier_sku', 'like', "%{$search}%")
-                        ->orWhere('brand', 'like', "%{$search}%");
-                });
-            }
-
-            $supplierProducts = $supplierQuery->get()->map(function ($sp) {
+            $supplierItems = $supplierItems->map(function ($sp) {
                 return [
                     'id' => "sup_{$sp->id}",
                     'source_type' => 'supplier',
@@ -517,30 +556,43 @@ class QuotationService
                     'warehouse_name' => null,
                     'supplier_id' => $sp->supplier_id,
                     'supplier_name' => $sp->supplier?->display_name ?? $sp->supplier?->business_name,
+                    'supplier_trade_name' => $sp->supplier?->trade_name,
                     'supplier_product_id' => $sp->id,
                     'delivery_days' => $sp->delivery_days ?? 1,
                     'image_url' => $sp->image_url,
                 ];
             });
-
-            $results = $results->merge($supplierProducts);
         }
 
         // =========================================================
-        // 3. Ordenar y paginar
+        // 3. Combinar, ordenar y paginar (solo si ambas fuentes)
         // =========================================================
-        $sorted = $results->sortByDesc('available_stock')->values();
-        $total = $sorted->count();
-        $offset = ($page - 1) * $perPage;
-        $paginated = $sorted->slice($offset, $perPage)->values();
+        if ($sourceType) {
+            // Si hay solo una fuente, ya está paginada
+            $data = $sourceType === 'inventory' ? $inventoryItems : $supplierItems;
+            $total = $sourceType === 'inventory' ? $inventoryTotal : $supplierTotal;
+        } else {
+            // Combinar ambas fuentes, ordenar y paginar
+            $merged = $inventoryItems->concat($supplierItems)
+                ->sortByDesc('available_stock')
+                ->values();
+
+            $total = $inventoryTotal + $supplierTotal;
+            $offset = ($page - 1) * $perPage;
+            $data = $merged->slice($offset, $perPage)->values();
+        }
 
         return [
-            'data' => $paginated,
+            'data' => $data,
             'meta' => [
                 'current_page' => $page,
                 'per_page' => $perPage,
                 'total' => $total,
                 'last_page' => (int) ceil($total / $perPage),
+                'sources' => [
+                    'inventory_count' => $inventoryTotal,
+                    'supplier_count' => $supplierTotal,
+                ],
             ],
         ];
     }

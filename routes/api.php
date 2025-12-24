@@ -161,12 +161,15 @@ Route::prefix('users')->middleware(['auth:sanctum'])->group(function () {
 Route::prefix('categories')->middleware(['auth:sanctum'])->group(function () {
 
     Route::get('/', [CategoryController::class, 'index'])
+        ->name('categories.index')
         ->middleware('permission:categories.index');
 
     Route::get('/tree', [CategoryController::class, 'tree'])
+        ->name('categories.tree')
         ->middleware('permission:categories.tree');
 
     Route::get('/{id}', [CategoryController::class, 'show'])
+        ->name('categories.show')
         ->middleware('permission:categories.show');
 
     Route::post('/', [CategoryController::class, 'store'])
@@ -189,12 +192,14 @@ Route::prefix('warehouses')->middleware(['auth:sanctum'])->group(function () {
         ->middleware('permission:warehouses.statistics.global');
 
     Route::get('/', [WarehouseController::class, 'index'])
+        ->name('warehouses.index')
         ->middleware('permission:warehouses.index');
 
     Route::post('/', [WarehouseController::class, 'store'])
         ->middleware('permission:warehouses.store');
 
     Route::get('/{id}', [WarehouseController::class, 'show'])
+        ->name('warehouses.show')
         ->middleware('permission:warehouses.show');
 
     Route::match(['put', 'patch'], '/{id}', [WarehouseController::class, 'update'])
@@ -249,12 +254,14 @@ Route::middleware('auth:sanctum')->prefix('products')->group(function () {
 
     // CRUD básico
     Route::get('/', [ProductController::class, 'index'])
+        ->name('products.index')
         ->middleware('permission:products.index');
 
     Route::post('/', [ProductController::class, 'store'])
         ->middleware('permission:products.store');
 
     Route::get('{product}', [ProductController::class, 'show'])
+        ->name('products.show')
         ->middleware('permission:products.show');
 
     Route::match(['put', 'patch'], '{product}', [ProductController::class, 'update'])
@@ -787,6 +794,9 @@ Route::middleware('auth:sanctum')->prefix('supplier-products')->group(function (
         ->middleware('permission:supplier-products.compare-prices');
 
     Route::get('uncategorized', [SupplierProductController::class, 'uncategorized'])
+        ->middleware('permission:supplier-products.index'); // Reusa el mismo permiso de index
+
+    Route::get('uncategorized-grouped', [SupplierProductController::class, 'uncategorizedGrouped'])
         ->middleware('permission:supplier-products.index'); // Reusa el mismo permiso de index
 
 

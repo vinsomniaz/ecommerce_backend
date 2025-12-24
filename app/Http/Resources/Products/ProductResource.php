@@ -18,95 +18,131 @@ class ProductResource extends JsonResource
             'id' => $this->id,
             'sku' => $this->sku,
             'primary_name' => $this->primary_name,
-            'secondary_name' => $this->secondary_name,
-            'description' => $this->description,
 
-            'category' => $this->when($this->relationLoaded('category'), function () {
-                return $this->category ? [
-                    'id' => $this->category->id,
-                    'name' => $this->category->name,
-                    'slug' => $this->category->slug,
-                    'level' => $this->category->level,
-                    'parent_id' => $this->category->parent_id,
-                    'normal_margin_percentage' => $this->category->getEffectiveNormalMargin(),
-                    'min_margin_percentage' => $this->category->getEffectiveMinMargin(),
-                    'is_active' => $this->category->is_active,
-                ] : null;
-            }),
-
-            'brand' => $this->brand,
-            'unit_measure' => $this->unit_measure,
-            'tax_type' => $this->tax_type,
+            // ✅ SOLO LISTADO (y Show)
+            'sale_price' => $this->getSalePrice($priceListId, $warehouseId),
+            'has_promotion' => $this->has_promotion,
+            'total_stock' => $this->total_stock,
             'min_stock' => $this->min_stock,
-            'weight' => $this->weight,
-            'barcode' => $this->barcode,
             'is_active' => $this->is_active,
             'is_featured' => $this->is_featured,
-            'visible_online' => $this->visible_online,
-            'is_new' => $this->is_new,
 
-            // Atributos personalizados
-            'attributes' => $this->whenLoaded('attributes', function () {
-                return $this->attributes->map(function ($attr) {
+            // ✅ CATEGORÍA (Optimizado para lista)
+            'category' => $this->whenLoaded('category', function () use ($request) {
+                // Versión simple para lista
+                $data = [
+                    'id' => $this->category->id,
+                    'name' => $this->category->name,
+                ];
+
+                // Versión completa para Show
+                if ($request->routeIs('*.show')) {
+                    $data['slug'] = $this->category->slug;
+                    $data['level'] = $this->category->level;
+                    $data['parent_id'] = $this->category->parent_id;
+                    $data['parent'] = $this->category->parent ? [
+                        'id' => $this->category->parent->id,
+                        'name' => $this->category->parent->name
+                    ] : null;
+                    $data['normal_margin_percentage'] = $this->category->getEffectiveNormalMargin();
+                    $data['min_margin_percentage'] = $this->category->getEffectiveMinMargin();
+                    $data['is_active'] = $this->category->is_active;
+                }
+
+                return $data;
+            }),
+
+            // ✅ IMÁGENES (Optimizado: Solo thumbs para lista)
+            'images' => $this->when(true, function () use ($request) {
+                // En Show devolvemos todo completo
+                if ($request->routeIs('*.show')) {
+                    return $this->getImagesFormatted();
+                }
+
+                // En Lista devolvemos array ligero pero con TODAS las opciones para que el frontend elija
+                return $this->getMedia('images')
+                    ->sortBy(fn($media) => $media->getCustomProperty('order', 999))
+                    ->map(function ($media) {
+                        return [
+                            'id' => $media->id,
+                            'thumb_url' => $media->getUrl('thumb'),
+                            'medium_url' => $media->getUrl('medium'),
+                            'large_url' => $media->getUrl('large'),
+                            'original_url' => $media->getUrl(),
+                            'is_primary' => $media->getCustomProperty('is_primary', false),
+                        ];
+                    })
+                    ->values()
+                    ->toArray();
+            }),
+
+            // =================================================================================
+            // ❌ CAMPOS SOLO PARA SHOW (Ocultos en lista)
+            // =================================================================================
+
+            'secondary_name' => $this->when($request->routeIs('*.show'), $this->secondary_name),
+            'brand' => $this->when($request->routeIs('*.show'), $this->brand),
+            'description' => $this->when($request->routeIs('*.show'), $this->description),
+            'unit_measure' => $this->when($request->routeIs('*.show'), $this->unit_measure),
+            'tax_type' => $this->when($request->routeIs('*.show'), $this->tax_type),
+            'weight' => $this->when($request->routeIs('*.show'), $this->weight),
+            'barcode' => $this->when($request->routeIs('*.show'), $this->barcode),
+            'visible_online' => $this->when($request->routeIs('*.show'), $this->visible_online),
+            'is_new' => $this->when($request->routeIs('*.show'), $this->is_new),
+
+            // Costos
+            'average_cost' => $this->when($request->routeIs('*.show'), $this->average_cost),
+            'initial_cost' => $this->when($request->routeIs('*.show'), $this->initial_cost),
+
+            // Precios adicionales
+            'min_sale_price' => $this->when($request->routeIs('*.show'), fn() => $this->getMinSalePrice($priceListId, $warehouseId)),
+            'has_price' => $this->when($request->routeIs('*.show'), fn() => $this->hasPrice($priceListId, $warehouseId)),
+
+            'attributes' => $this->whenLoaded('attributes', function () use ($request) {
+                return $request->routeIs('*.show') ? $this->attributes->map(function ($attr) {
                     return [
                         'id' => $attr->id,
                         'name' => $attr->name,
                         'value' => $attr->value,
                     ];
-                });
+                }) : null;
             }),
 
-            // ==================== COSTOS Y STOCK ====================
-            'average_cost' => $this->average_cost,
-            'total_stock' => $this->total_stock,
-            'is_in_stock' => $this->isInStock(),
-
-            // ==================== PRECIOS ====================
-            // ✅ Precio principal (según lista y almacén solicitados)
-            'initial_cost' => $this->initial_cost,
-            'sale_price' => $this->getSalePrice($priceListId, $warehouseId),
-            'min_sale_price' => $this->getMinSalePrice($priceListId, $warehouseId),
-            // Se puede calcular por el frontend y es mejor para no causar respuestas lentas
-            // 'profit_margin' => $this->getProfitMargin($priceListId, $warehouseId),
-            'has_price' => $this->hasPrice($priceListId, $warehouseId),
-
-            // ✅ Precio más bajo disponible (útil para mostrar ofertas)
-            'best_price' => $this->when(
-                $request->input('include_best_price'),
-                fn() => $this->getBestPrice($warehouseId)
+            // Precios raw para edición
+            'prices' => $this->when(
+                $request->routeIs('*.show') || $request->input('include_raw_prices'),
+                fn() => $this->productPrices->map(function ($price) {
+                    return [
+                        'id' => $price->id,
+                        'price_list_id' => $price->price_list_id,
+                        'warehouse_id' => $price->warehouse_id,
+                        'price' => (float) $price->price,
+                        'min_price' => $price->min_price ? (float) $price->min_price : null,
+                        'currency' => $price->currency,
+                        'min_quantity' => $price->min_quantity,
+                        'is_active' => $price->is_active,
+                    ];
+                })
             ),
 
-            // ✅ Todos los precios del producto (todas las listas)
             'all_prices' => $this->when(
-                true,
+                $request->routeIs('*.show') || $request->input('include_all_prices'),
                 fn() => $this->getAllPrices($warehouseId)
             ),
 
-            // ✅ Precios por almacén (para gestión de inventario)
-            'warehouse_prices' => $this->when(
-                $request->input('include_warehouses'),
-                fn() => $this->getPricesByWarehouse($priceListId)
-            ),
-
-            // ==================== LOTES E INVENTARIO ====================
             'active_batches' => $this->when(
-                $request->input('include_batches'),
+                $request->routeIs('*.show') || $request->input('include_batches'),
                 fn() => $this->getActiveBatchesFormatted()
             ),
 
             'inventory' => $this->when(
-                $request->input('include_inventory'),
+                $request->routeIs('*.show') || $request->input('include_inventory'),
                 fn() => $this->getInventoryFormatted()
             ),
 
-            // ==================== IMÁGENES ====================
-            'images' => $this->getImagesFormatted(),
-            'primary_image' => $this->getPrimaryImage(),
-
-            // ==================== FECHAS ====================
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
-            'deleted_at' => $this->deleted_at,
+            'created_at' => $this->when($request->routeIs('*.show'), $this->created_at),
+            'updated_at' => $this->when($request->routeIs('*.show'), $this->updated_at),
+            'deleted_at' => $this->when($request->routeIs('*.show'), $this->deleted_at),
         ];
     }
 

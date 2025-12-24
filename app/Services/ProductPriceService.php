@@ -44,17 +44,6 @@ class ProductPriceService
             $query->where('is_active', filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN));
         }
 
-        // Filtro por vigencia
-        if (!empty($filters['is_current'])) {
-            $now = now();
-            $query->where('is_active', true)
-                ->where('valid_from', '<=', $now)
-                ->where(function ($q) use ($now) {
-                    $q->whereNull('valid_to')
-                      ->orWhere('valid_to', '>=', $now);
-                });
-        }
-
         // Ordenamiento
         $sortBy = $filters['sort_by'] ?? 'created_at';
         $sortOrder = $filters['sort_order'] ?? 'desc';
@@ -240,8 +229,6 @@ class ProductPriceService
                         'min_price' => $newMinPrice ? round($newMinPrice, 2) : null,
                         'currency' => $sourcePrice->currency,
                         'min_quantity' => $sourcePrice->min_quantity,
-                        'valid_from' => now(),
-                        'valid_to' => null,
                         'is_active' => true,
                     ]);
 
@@ -302,15 +289,6 @@ class ProductPriceService
         $totalPrices = ProductPrice::count();
         $activePrices = ProductPrice::where('is_active', true)->count();
 
-        $now = now();
-        $currentPrices = ProductPrice::where('is_active', true)
-            ->where('valid_from', '<=', $now)
-            ->where(function ($q) use ($now) {
-                $q->whereNull('valid_to')
-                  ->orWhere('valid_to', '>=', $now);
-            })
-            ->count();
-
         $pricesWithMinPrice = ProductPrice::whereNotNull('min_price')
             ->where('is_active', true)
             ->count();
@@ -326,8 +304,6 @@ class ProductPriceService
         return [
             'total_prices' => $totalPrices,
             'active_prices' => $activePrices,
-            'current_prices' => $currentPrices,
-            'expired_prices' => $activePrices - $currentPrices,
             'prices_with_min_price' => $pricesWithMinPrice,
             'warehouse_specific_prices' => $warehouseSpecificPrices,
             'general_prices' => $generalPrices,

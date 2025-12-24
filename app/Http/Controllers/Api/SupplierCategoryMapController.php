@@ -5,40 +5,30 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\SupplierCategoryMap;
 use App\Http\Resources\SupplierCategoryMapResource;
+use App\Http\Resources\SupplierCategoryMapCollection;
+use App\Services\SupplierCategoryMapService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
 class SupplierCategoryMapController extends Controller
 {
+    public function __construct(
+        private SupplierCategoryMapService $supplierCategoryMapService
+    ) {}
+
     /**
-     * Listar mapeos de categorías
+     * Listar mapeos de categorías (con caché y estadísticas)
      */
     public function index(Request $request): JsonResponse
     {
-        $query = SupplierCategoryMap::with(['supplier', 'category'])
-            ->when($request->supplier_id, fn($q) => $q->where('supplier_id', $request->supplier_id))
-            ->when($request->category_id, fn($q) => $q->where('category_id', $request->category_id))
-            ->when($request->has('is_active'), fn($q) => $q->where('is_active', $request->boolean('is_active')))
-            ->when($request->has('unmapped'), function ($q) use ($request) {
-                if ($request->boolean('unmapped')) {
-                    $q->whereNull('category_id');
-                } else {
-                    $q->whereNotNull('category_id'); // unmapped=false = solo mapeadas
-                }
-            })
-            ->latest();
-
-        $maps = $query->paginate($request->per_page ?? 15);
+        $maps = $this->supplierCategoryMapService->getMaps($request);
+        $collection = new SupplierCategoryMapCollection($maps);
 
         return response()->json([
             'success' => true,
-            'data' => $maps->items(),
-            'meta' => [
-                'current_page' => $maps->currentPage(),
-                'last_page' => $maps->lastPage(),
-                'per_page' => $maps->perPage(),
-                'total' => $maps->total(),
-            ],
+            'message' => 'Mapeos de categorías obtenidos correctamente',
+            'data' => $collection->toArray($request)['data'],
+            'meta' => $collection->with($request)['meta'],
         ]);
     }
 
@@ -68,19 +58,7 @@ class SupplierCategoryMapController extends Controller
             'is_active' => 'sometimes|boolean',
         ]);
 
-        // Usar updateOrCreate para evitar duplicados
-        $map = SupplierCategoryMap::updateOrCreate(
-            [
-                'supplier_id' => $validated['supplier_id'],
-                'supplier_category' => $validated['supplier_category'],
-            ],
-            [
-                'category_id' => $validated['category_id'] ?? null,
-                'confidence' => $validated['confidence'] ?? 0.5,
-                'is_active' => $validated['is_active'] ?? true,
-            ]
-        );
-
+        $map = $this->supplierCategoryMapService->createOrUpdate($validated);
         $wasRecentlyCreated = $map->wasRecentlyCreated;
 
         return response()->json([
@@ -103,12 +81,12 @@ class SupplierCategoryMapController extends Controller
             'is_active' => 'sometimes|boolean',
         ]);
 
-        $map->update($validated);
+        $map = $this->supplierCategoryMapService->update($map->id, $validated);
 
         return response()->json([
             'success' => true,
             'message' => 'Mapeo de categoría actualizado exitosamente',
-            'data' => new SupplierCategoryMapResource($map->fresh(['supplier', 'category'])),
+            'data' => new SupplierCategoryMapResource($map),
         ]);
     }
 
@@ -117,7 +95,7 @@ class SupplierCategoryMapController extends Controller
      */
     public function destroy(SupplierCategoryMap $map): JsonResponse
     {
-        $map->delete();
+        $this->supplierCategoryMapService->delete($map->id);
 
         return response()->json([
             'success' => true,
@@ -136,15 +114,7 @@ class SupplierCategoryMapController extends Controller
             'mappings.*.category_id' => 'required|exists:categories,id',
         ]);
 
-        $updated = 0;
-        foreach ($validated['mappings'] as $mapping) {
-            SupplierCategoryMap::where('id', $mapping['id'])
-                ->update([
-                    'category_id' => $mapping['category_id'],
-                    'confidence' => 1.0, // Mapeo manual = 100% confianza
-                ]);
-            $updated++;
-        }
+        $updated = $this->supplierCategoryMapService->bulkMap($validated['mappings']);
 
         return response()->json([
             'success' => true,
@@ -160,16 +130,11 @@ class SupplierCategoryMapController extends Controller
      */
     public function unmapped(Request $request): JsonResponse
     {
-        $query = SupplierCategoryMap::with('supplier')
-            ->whereNull('category_id')
-            ->where('is_active', true)
-            ->when($request->supplier_id, fn($q) => $q->where('supplier_id', $request->supplier_id))
-            ->latest();
-
-        $maps = $query->paginate($request->per_page ?? 15);
+        $maps = $this->supplierCategoryMapService->getUnmapped($request);
 
         return response()->json([
             'success' => true,
+            'message' => 'Categorías sin mapear obtenidas correctamente',
             'data' => $maps->items(),
             'meta' => [
                 'current_page' => $maps->currentPage(),
@@ -185,28 +150,11 @@ class SupplierCategoryMapController extends Controller
      */
     public function statistics(Request $request): JsonResponse
     {
-        $query = SupplierCategoryMap::query();
-
-        if ($request->supplier_id) {
-            $query->where('supplier_id', $request->supplier_id);
-        }
-
-        $total = $query->count();
-        $mapped = (clone $query)->whereNotNull('category_id')->count();
-        $unmapped = (clone $query)->whereNull('category_id')->count();
-        $active = (clone $query)->where('is_active', true)->count();
-        $inactive = (clone $query)->where('is_active', false)->count();
+        $stats = $this->supplierCategoryMapService->getStats($request->supplier_id);
 
         return response()->json([
             'success' => true,
-            'data' => [
-                'total' => $total,
-                'mapped' => $mapped,
-                'unmapped' => $unmapped,
-                'active' => $active,
-                'inactive' => $inactive,
-                'mapping_rate' => $total > 0 ? round(($mapped / $total) * 100, 2) : 0,
-            ],
+            'data' => $stats,
         ]);
     }
 }

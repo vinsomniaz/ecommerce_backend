@@ -23,11 +23,11 @@ class UpdateEntityRequest extends FormRequest
     {
         // Detectar si es estructura anidada o plana
         $isNested = $this->has('entity');
-        
+
         if ($isNested) {
             return $this->nestedRules();
         }
-        
+
         // Estructura plana (compatibilidad hacia atrás)
         return $this->flatRules();
     }
@@ -47,7 +47,7 @@ class UpdateEntityRequest extends FormRequest
             'entity.numero_documento' => [
                 'sometimes',
                 'string',
-                Rule::unique('entities')->where(function ($query) {
+                Rule::unique('entities', 'numero_documento')->where(function ($query) {
                     return $query->where('tipo_documento', $this->input('entity.tipo_documento'));
                 })->ignore($entityId),
             ],
@@ -78,12 +78,12 @@ class UpdateEntityRequest extends FormRequest
                 function ($attribute, $value, $fail) {
                     $index = explode('.', $attribute)[1];
                     $hasId = $this->input("addresses.{$index}.id");
-                    
+
                     // Required only if creating new (no ID)
                     if (!$hasId && empty($value)) {
                         $fail('La dirección es obligatoria.');
                     }
-                    
+
                     // Validate max length if provided
                     if (!empty($value) && strlen($value) > 250) {
                         $fail('La dirección no debe exceder 250 caracteres.');
@@ -95,7 +95,7 @@ class UpdateEntityRequest extends FormRequest
                 function ($attribute, $value, $fail) {
                     $index = explode('.', $attribute)[1];
                     $countryCode = $this->input("addresses.{$index}.country_code");
-                    
+
                     if ($countryCode === 'PE' && empty($value)) {
                         $fail('El ubigeo es obligatorio para direcciones en Perú.');
                     }
@@ -106,12 +106,12 @@ class UpdateEntityRequest extends FormRequest
                 function ($attribute, $value, $fail) {
                     $index = explode('.', $attribute)[1];
                     $hasId = $this->input("addresses.{$index}.id");
-                    
+
                     // Required only if creating new (no ID)
                     if (!$hasId && empty($value)) {
                         $fail('El código de país es obligatorio.');
                     }
-                    
+
                     // Validate format if provided
                     if (!empty($value) && (strlen($value) != 2 || !\App\Models\Country::where('code', $value)->exists())) {
                         $fail('El código de país no es válido.');
@@ -141,12 +141,12 @@ class UpdateEntityRequest extends FormRequest
                 function ($attribute, $value, $fail) {
                     $index = explode('.', $attribute)[1];
                     $hasId = $this->input("contacts.{$index}.id");
-                    
+
                     // Required only if creating new (no ID)
                     if (!$hasId && empty($value)) {
                         $fail('El nombre del contacto es obligatorio.');
                     }
-                    
+
                     // Validate max length if provided
                     if (!empty($value) && strlen($value) > 200) {
                         $fail('El nombre del contacto no debe exceder 200 caracteres.');
@@ -158,17 +158,17 @@ class UpdateEntityRequest extends FormRequest
                 function ($attribute, $value, $fail) {
                     $index = explode('.', $attribute)[1];
                     $hasId = $this->input("contacts.{$index}.id");
-                    
+
                     // Required only if creating new (no ID)
                     if (!$hasId && empty($value)) {
                         $fail('El email del contacto es obligatorio.');
                     }
-                    
+
                     // Validate email format if provided
                     if (!empty($value) && !filter_var($value, FILTER_VALIDATE_EMAIL)) {
                         $fail('El email del contacto no es válido.');
                     }
-                    
+
                     // Validate max length if provided
                     if (!empty($value) && strlen($value) > 100) {
                         $fail('El email del contacto no debe exceder 100 caracteres.');
@@ -204,7 +204,7 @@ class UpdateEntityRequest extends FormRequest
             'last_name' => 'sometimes|string|max:100',
             'business_name' => 'sometimes|string|max:200',
             'trade_name' => 'nullable|string|max:100',
-            
+
             // Address fields
             'address' => 'sometimes|string|max:250',
             'country_code' => 'sometimes|string|size:2|exists:countries,code',
@@ -218,7 +218,7 @@ class UpdateEntityRequest extends FormRequest
             'address_phone' => 'sometimes|string|max:20',
             'address_reference' => 'nullable|string|max:200',
             'address_label' => 'nullable|string|max:50',
-            
+
             // Contact fields
             'contact_name' => 'sometimes|string|max:200',
             'contact_position' => 'nullable|string|max:100',
@@ -226,7 +226,7 @@ class UpdateEntityRequest extends FormRequest
             'contact_phone' => 'sometimes|string|max:20',
             'contact_web_page' => 'nullable|string|max:100',
             'contact_observations' => 'nullable|string|max:1000',
-            
+
             // SUNAT fields
             'estado_sunat' => 'nullable|in:ACTIVO,BAJA,SUSPENDIDO',
             'condicion_sunat' => 'nullable|in:HABIDO,NO HABIDO',
@@ -243,10 +243,10 @@ class UpdateEntityRequest extends FormRequest
             'entity.type.in' => 'El tipo de entidad debe ser customer, supplier o both.',
             'entity.tipo_documento.exists' => 'El tipo de documento no es válido.',
             'entity.numero_documento.unique' => 'Este número de documento ya está registrado.',
-            
+
             'addresses.*.address.required' => 'La dirección es obligatoria.',
             'addresses.*.country_code.required' => 'El código de país es obligatorio.',
-            
+
             'contacts.*.full_name.required' => 'El nombre del contacto es obligatorio.',
             'contacts.*.email.required' => 'El email del contacto es obligatorio.',
         ];
@@ -278,20 +278,35 @@ class UpdateEntityRequest extends FormRequest
     private function convertFlatToNested(): void
     {
         $entityFields = [
-            'type', 'tipo_documento', 'numero_documento', 'tipo_persona',
-            'business_name', 'trade_name', 'first_name', 'last_name',
-            'estado_sunat', 'condicion_sunat', 'is_active'
+            'type',
+            'tipo_documento',
+            'numero_documento',
+            'tipo_persona',
+            'business_name',
+            'trade_name',
+            'first_name',
+            'last_name',
+            'estado_sunat',
+            'condicion_sunat',
+            'is_active'
         ];
 
         $addressFields = [
-            'address', 'ubigeo', 'country_code', 'phone' => 'address_phone',
-            'reference' => 'address_reference', 'label' => 'address_label'
+            'address',
+            'ubigeo',
+            'country_code',
+            'phone' => 'address_phone',
+            'reference' => 'address_reference',
+            'label' => 'address_label'
         ];
 
         $contactFields = [
-            'full_name' => 'contact_name', 'position' => 'contact_position',
-            'email' => 'contact_email', 'phone' => 'contact_phone',
-            'web_page' => 'contact_web_page', 'observations' => 'contact_observations'
+            'full_name' => 'contact_name',
+            'position' => 'contact_position',
+            'email' => 'contact_email',
+            'phone' => 'contact_phone',
+            'web_page' => 'contact_web_page',
+            'observations' => 'contact_observations'
         ];
 
         // Extraer datos de entity
@@ -305,41 +320,41 @@ class UpdateEntityRequest extends FormRequest
         // Extraer datos de address (solo si hay algún campo de dirección)
         $hasAddressData = $this->has('address') || $this->has('ubigeo') || $this->has('country_code');
         $addresses = null;
-        
+
         if ($hasAddressData) {
             $address = ['is_default' => true];
             foreach ($addressFields as $newField => $oldField) {
                 $field = is_numeric($newField) ? $oldField : $newField;
                 $inputField = is_numeric($newField) ? $oldField : $oldField;
-                
+
                 if ($this->has($inputField)) {
                     $address[$field] = $this->input($inputField);
                 }
             }
-            
+
             if (isset($address['address_phone'])) {
                 $address['phone'] = $address['address_phone'];
                 unset($address['address_phone']);
             }
-            
+
             $addresses = [array_filter($address)];
         }
 
         // Extraer datos de contact (solo si hay algún campo de contacto)
         $hasContactData = $this->has('contact_email') || $this->has('contact_name');
         $contacts = null;
-        
+
         if ($hasContactData) {
             $contact = ['is_primary' => true];
             foreach ($contactFields as $newField => $oldField) {
                 $field = is_numeric($newField) ? $oldField : $newField;
                 $inputField = is_numeric($newField) ? $oldField : $oldField;
-                
+
                 if ($this->has($inputField)) {
                     $contact[$field] = $this->input($inputField);
                 }
             }
-            
+
             $contacts = [array_filter($contact)];
         }
 
@@ -354,7 +369,7 @@ class UpdateEntityRequest extends FormRequest
         if ($contacts !== null) {
             $merged['contacts'] = $contacts;
         }
-        
+
         if (!empty($merged)) {
             $this->merge($merged);
         }

@@ -37,6 +37,7 @@ class ProductController extends Controller
             'is_featured',
             'visible_online',
             'is_new',
+            'has_promotion',
             'warehouse_id',
             'with_stock',
             'low_stock',
@@ -112,7 +113,7 @@ class ProductController extends Controller
      */
     public function show(Product $product): JsonResponse
     {
-        $product->load(['media', 'category', 'attributes', 'inventory.warehouse']);
+        $product->load(['media', 'category', 'attributes', 'inventory.warehouse', 'productPrices']);
 
         return response()->json([
             'success' => true,

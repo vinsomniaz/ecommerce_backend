@@ -147,8 +147,6 @@ class ProductService
                         'min_price' => $priceData['min_price'] ?? null,
                         'currency' => $priceData['currency'] ?? 'PEN',
                         'min_quantity' => $priceData['min_quantity'] ?? 1,
-                        'valid_from' => $priceData['valid_from'] ?? now(),
-                        'valid_to' => $priceData['valid_to'] ?? null,
                         'is_active' => $priceData['is_active'] ?? true,
                     ]);
                     $priceIds[] = $price->id;
@@ -166,8 +164,6 @@ class ProductService
                         'min_price' => $priceData['min_price'] ?? null,
                         'currency' => $priceData['currency'] ?? 'PEN',
                         'min_quantity' => $priceData['min_quantity'] ?? 1,
-                        'valid_from' => $priceData['valid_from'] ?? now(),
-                        'valid_to' => $priceData['valid_to'] ?? null,
                         'is_active' => $priceData['is_active'] ?? true,
                     ]);
                     $priceIds[] = $existingPrice->id;
@@ -180,8 +176,6 @@ class ProductService
                         'min_price' => $priceData['min_price'] ?? null,
                         'currency' => $priceData['currency'] ?? 'PEN',
                         'min_quantity' => $priceData['min_quantity'] ?? 1,
-                        'valid_from' => $priceData['valid_from'] ?? now(),
-                        'valid_to' => $priceData['valid_to'] ?? null,
                         'is_active' => $priceData['is_active'] ?? true,
                     ]);
                     $priceIds[] = $newPrice->id;
@@ -266,10 +260,7 @@ class ProductService
                 'min_price' => (float) $price->min_price,
                 'currency' => $price->currency,
                 'min_quantity' => $price->min_quantity,
-                'valid_from' => $price->valid_from?->toDateTimeString(),
-                'valid_to' => $price->valid_to?->toDateTimeString(),
                 'is_active' => $price->is_active,
-                'is_currently_valid' => $price->isCurrentlyValid(),
                 'scope' => $price->getScopeDescription(),
             ];
         })->toArray();
@@ -661,6 +652,7 @@ class ProductService
             'category',
             'media',
             'attributes',
+            'productPrices',
             'inventory' => function ($q) {
                 $q->with('warehouse:id,name,is_main')
                     ->orderBy('warehouse_id');
@@ -745,6 +737,14 @@ class ProductService
             });
         }
 
+        // ✅ NUEVO: Filtrar productos en promoción (tienen precio PROMO activo)
+        if (!empty($filters['has_promotion'])) {
+            $query->whereHas('productPrices', function ($q) {
+                $q->whereHas('priceList', fn($p) => $p->where('code', 'PROMO'))
+                    ->where('is_active', true);
+            });
+        }
+
         $sortBy = $filters['sort_by'] ?? 'created_at';
         $sortOrder = $filters['sort_order'] ?? 'desc';
 
@@ -810,6 +810,10 @@ class ProductService
             'brands_count' => Product::distinct('brand')->whereNotNull('brand')->count('brand'),
             'categories_count' => Product::distinct('category_id')->count('category_id'),
             'products_with_batches' => Product::has('purchaseBatches')->count(),
+            'products_on_promotion' => Product::whereHas('productPrices', function ($q) {
+                $q->whereHas('priceList', fn($p) => $p->where('code', 'PROMO'))
+                    ->where('is_active', true);
+            })->count(),
         ];
     }
     /**

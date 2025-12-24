@@ -42,7 +42,7 @@ class UpdateProductRequest extends FormRequest
             'tax_type' => ['sometimes', 'nullable', 'string', 'in:10,20,30'],
             'weight' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'barcode' => ['sometimes', 'nullable', 'string', 'max:50'],
-            'initial_cost' => ['sometimes', 'numeric', 'min:0.0001'],
+            'initial_cost' => ['sometimes', 'nullable', 'numeric', 'min:0.0001'],
 
             // Estados
             'is_active' => ['sometimes', 'nullable', 'boolean'],
@@ -64,8 +64,6 @@ class UpdateProductRequest extends FormRequest
             'prices.*.min_price' => 'nullable|numeric|min:0|lte:prices.*.price',
             'prices.*.currency' => 'nullable|string|in:PEN,USD',
             'prices.*.min_quantity' => 'nullable|integer|min:1',
-            'prices.*.valid_from' => 'nullable|date',
-            'prices.*.valid_to' => 'nullable|date|after:prices.*.valid_from',
             'prices.*.is_active' => 'nullable|boolean',
         ];
     }
@@ -101,7 +99,6 @@ class UpdateProductRequest extends FormRequest
             'prices.*.min_price.lte' => 'El precio mínimo no puede ser mayor al precio normal',
             'prices.*.currency.in' => 'La moneda debe ser PEN o USD',
             'prices.*.min_quantity.min' => 'La cantidad mínima debe ser al menos 1',
-            'prices.*.valid_to.after' => 'La fecha de fin debe ser posterior a la fecha de inicio',
         ];
     }
 
@@ -115,11 +112,6 @@ class UpdateProductRequest extends FormRequest
                     'min_quantity' => 1,
                     'is_active' => true,
                 ];
-
-                // Solo agregar valid_from si no existe el ID (precio nuevo)
-                if (!isset($price['id'])) {
-                    $defaults['valid_from'] = now()->toDateTimeString();
-                }
 
                 return array_merge($defaults, $price);
             })->toArray();
