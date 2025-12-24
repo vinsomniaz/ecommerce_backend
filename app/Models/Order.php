@@ -20,6 +20,7 @@ class Order extends Model
         'shipping_address_id',
         'coupon_id',
         'status',
+        'payment_status',
         'currency',
         'subtotal',
         'discount',
