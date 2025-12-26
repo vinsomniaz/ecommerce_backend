@@ -92,8 +92,11 @@ class InventoryService
         $sortBy = $filters['sort_by'] ?? 'last_movement_at';
         $sortOrder = $filters['sort_order'] ?? 'desc';
 
-        $allowedSorts = ['available_stock', 'reserved_stock', 'sale_price', 'last_movement_at'];
-        if (in_array($sortBy, $allowedSorts)) {
+        if ($sortBy === 'product_name') {
+            $query->join('products', 'inventory.product_id', '=', 'products.id')
+                ->orderBy('products.primary_name', $sortOrder)
+                ->select('inventory.*'); // Avoid column collision
+        } elseif (in_array($sortBy, ['available_stock', 'reserved_stock', 'sale_price', 'last_movement_at'])) {
             $query->orderBy($sortBy, $sortOrder);
         }
 
