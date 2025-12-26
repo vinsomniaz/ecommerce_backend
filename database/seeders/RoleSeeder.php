@@ -355,6 +355,17 @@ class RoleSeeder extends Seeder
                 ['name' => 'supplier-category-maps.statistics', 'display_name' => 'Estadísticas de mapeos', 'description' => 'Consulta estadísticas de mapeos de categorías.'],
             ],
 
+            'Coupons' => [
+                ['name' => 'coupons.index', 'display_name' => 'Listar cupones', 'description' => 'Obtiene el listado de todos los cupones.'],
+                ['name' => 'coupons.show', 'display_name' => 'Ver cupón', 'description' => 'Muestra el detalle de un cupón específico.'],
+                ['name' => 'coupons.store', 'display_name' => 'Crear cupón', 'description' => 'Registra un nuevo cupón de descuento.'],
+                ['name' => 'coupons.update', 'display_name' => 'Actualizar cupón', 'description' => 'Actualiza la información de un cupón existente.'],
+                ['name' => 'coupons.destroy', 'display_name' => 'Eliminar cupón', 'description' => 'Elimina un cupón del sistema.'],
+                ['name' => 'coupons.toggle-active', 'display_name' => 'Activar/Desactivar cupón', 'description' => 'Cambia el estado activo/inactivo de un cupón.'],
+                ['name' => 'coupons.statistics', 'display_name' => 'Estadísticas de cupones', 'description' => 'Consulta estadísticas de uso y descuentos.'],
+                ['name' => 'coupons.validate', 'display_name' => 'Validar cupón', 'description' => 'Verifica si un cupón es válido para el checkout.'],
+            ],
+
             'Settings' => [
                 ['name' => 'settings.index', 'display_name' => 'Listar configuraciones', 'description' => 'Lista todas las configuraciones del sistema.'],
                 ['name' => 'settings.show', 'display_name' => 'Ver configuración', 'description' => 'Muestra una configuración específica.'],
@@ -597,6 +608,16 @@ class RoleSeeder extends Seeder
             'supplier-category-maps.unmapped',
             'supplier-category-maps.statistics',
 
+            // COUPONS
+            'coupons.index',
+            'coupons.show',
+            'coupons.store',
+            'coupons.update',
+            'coupons.destroy',
+            'coupons.toggle-active',
+            'coupons.statistics',
+            'coupons.validate',
+
             // SETTINGS
             'settings.index',
             'settings.show',
@@ -746,6 +767,9 @@ class RoleSeeder extends Seeder
             'supplier-category-maps.show',
             'supplier-category-maps.unmapped',
             'supplier-category-maps.statistics',
+
+            // COUPONS (solo validación para checkout)
+            'coupons.validate',
         ];
     }
 

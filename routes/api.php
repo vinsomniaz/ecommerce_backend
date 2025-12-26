@@ -36,7 +36,7 @@ use App\Models\Order;
 use App\Services\OrderService;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\SaleController;
-
+use App\Http\Controllers\Api\CouponController;
 
 /*
 |--------------------------------------------------------------------------
@@ -987,10 +987,41 @@ Route::middleware('auth:sanctum')->prefix('supplier-category-maps')->group(funct
 });
 
 /* ============================================
-   SETTINGS (Configuraciones del Sistema)
+   CUPONES (COUPONS)
    ============================================ */
+Route::middleware('auth:sanctum')->prefix('coupons')->group(function () {
+
+    // Rutas especiales primero
+    Route::get('statistics', [CouponController::class, 'statistics'])
+        ->middleware('permission:coupons.statistics');
+
+    Route::post('validate', [CouponController::class, 'validateCoupon'])
+        ->middleware('permission:coupons.validate');
+
+    Route::patch('{id}/toggle-active', [CouponController::class, 'toggleActive'])
+        ->middleware('permission:coupons.toggle-active');
+
+    // CRUD básico
+    Route::get('/', [CouponController::class, 'index'])
+        ->name('coupons.index')
+        ->middleware('permission:coupons.index');
+
+    Route::post('/', [CouponController::class, 'store'])
+        ->middleware('permission:coupons.store');
+
+    Route::get('{id}', [CouponController::class, 'show'])
+        ->name('coupons.show')
+        ->middleware('permission:coupons.show');
+
+    Route::match(['put', 'patch'], '{id}', [CouponController::class, 'update'])
+        ->middleware('permission:coupons.update');
+
+    Route::delete('{id}', [CouponController::class, 'destroy'])
+        ->middleware('permission:coupons.destroy');
+});
+
 /* ============================================
-   SETTINGS (Configuraciones del Sistema)
+   SETTINGS (Configuraciones generales)
    ============================================ */
 Route::middleware('auth:sanctum')->prefix('settings')->group(function () {
 
