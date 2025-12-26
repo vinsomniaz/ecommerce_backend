@@ -38,6 +38,10 @@ class SaleController extends Controller
             $query->where('warehouse_id', $request->warehouse_id);
         }
 
+        if ($request->has('payment_status') && $request->payment_status !== 'all') {
+            $query->where('payment_status', $request->payment_status);
+        }
+
         if ($request->has('date_from')) {
             $query->whereDate('order_date', '>=', $request->date_from);
         }
