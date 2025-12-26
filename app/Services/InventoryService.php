@@ -26,11 +26,11 @@ class InventoryService
             ->with(['product.category', 'product.media', 'warehouse']);
 
         if (!empty($filters['product_id'])) {
-            $query->where('product_id', $filters['product_id']);
+            $query->where('inventory.product_id', $filters['product_id']);
         }
 
         if (!empty($filters['warehouse_id'])) {
-            $query->where('warehouse_id', $filters['warehouse_id']);
+            $query->where('inventory.warehouse_id', $filters['warehouse_id']);
         }
 
         // Filtro por categoría (incluyendo subcategorías)
@@ -68,7 +68,7 @@ class InventoryService
         }
 
         if (!empty($filters['with_stock'])) {
-            $query->where('available_stock', '>', 0);
+            $query->where('inventory.available_stock', '>', 0);
         }
 
         if (!empty($filters['low_stock'])) {
@@ -78,7 +78,7 @@ class InventoryService
         }
 
         if (!empty($filters['out_of_stock'])) {
-            $query->where('available_stock', 0);
+            $query->where('inventory.available_stock', 0);
         }
 
         if (!empty($filters['min_price'])) {
@@ -94,10 +94,11 @@ class InventoryService
 
         if ($sortBy === 'product_name') {
             $query->join('products', 'inventory.product_id', '=', 'products.id')
+                ->whereNull('products.deleted_at')
                 ->orderBy('products.primary_name', $sortOrder)
                 ->select('inventory.*'); // Avoid column collision
         } elseif (in_array($sortBy, ['available_stock', 'reserved_stock', 'sale_price', 'last_movement_at'])) {
-            $query->orderBy($sortBy, $sortOrder);
+            $query->orderBy("inventory.{$sortBy}", $sortOrder);
         }
 
         return $query->paginate($perPage);
