@@ -216,20 +216,14 @@ class Product extends Model implements HasMedia
 
         $query = $this->productPrices()
             ->where('price_list_id', $priceListId)
-            ->where('is_active', true)
-            ->where('valid_from', '<=', now())
-            ->where(function ($q) {
-                $q->whereNull('valid_to')
-                    ->orWhere('valid_to', '>=', now());
-            });
+            ->where('is_active', true);
 
         $productPrice = null;
         if ($warehouseId) {
             // Buscar primero precio específico del almacén
             $productPrice = (clone $query)
                 ->where('warehouse_id', $warehouseId)
-                ->orderBy('valid_from', 'desc')
-                ->first();
+                ->value('price');
 
             if ($productPrice) {
                 // MODIFICADO: Aplicar tipo de cambio al precio específico
@@ -238,12 +232,7 @@ class Product extends Model implements HasMedia
         }
 
         // Si no hay específico, buscar precio general
-        $productPrice = $query->whereNull('warehouse_id')
-            ->orderBy('valid_from', 'desc')
-            ->first();
-
-        // MODIFICADO: Aplicar tipo de cambio al precio general
-        return $this->applyExchangeRate($productPrice?->price, $productPrice?->currency, $exchangeRateFactor);
+        return $query->whereNull('warehouse_id')->value('price');
     }
 
 
@@ -261,17 +250,11 @@ class Product extends Model implements HasMedia
 
         $query = $this->productPrices()
             ->where('price_list_id', $priceListId)
-            ->where('is_active', true)
-            ->where('valid_from', '<=', now())
-            ->where(function ($q) {
-                $q->whereNull('valid_to')
-                    ->orWhere('valid_to', '>=', now());
-            });
+            ->where('is_active', true);
 
         if ($warehouseId) {
             $specificPrice = (clone $query)
                 ->where('warehouse_id', $warehouseId)
-                ->orderBy('valid_from', 'desc')
                 ->value('min_price');
 
             if ($specificPrice !== null) {
@@ -279,9 +262,7 @@ class Product extends Model implements HasMedia
             }
         }
 
-        return $query->whereNull('warehouse_id')
-            ->orderBy('valid_from', 'desc')
-            ->value('min_price');
+        return $query->whereNull('warehouse_id')->value('min_price');
     }
 
 
@@ -307,12 +288,7 @@ class Product extends Model implements HasMedia
     {
         $query = $this->productPrices()
             ->with('priceList:id,code,name')
-            ->where('is_active', true)
-            ->where('valid_from', '<=', now())
-            ->where(function ($q) {
-                $q->whereNull('valid_to')
-                    ->orWhere('valid_to', '>=', now());
-            });
+            ->where('is_active', true);
 
         if ($warehouseId) {
             $query->where(function ($q) use ($warehouseId) {
@@ -400,12 +376,7 @@ class Product extends Model implements HasMedia
     public function getBestPrice(?int $warehouseId = null): ?float
     {
         $query = $this->productPrices()
-            ->where('is_active', true)
-            ->where('valid_from', '<=', now())
-            ->where(function ($q) {
-                $q->whereNull('valid_to')
-                    ->orWhere('valid_to', '>=', now());
-            });
+            ->where('is_active', true);
 
         if ($warehouseId) {
             $query->where(function ($q) use ($warehouseId) {
@@ -417,6 +388,19 @@ class Product extends Model implements HasMedia
         }
 
         return $query->min('price');
+    }
+
+    // ==================== PROMOTIONAL PRICING ====================
+
+    /**
+     * Verifica si el producto tiene precio promocional activo
+     */
+    public function getHasPromotionAttribute(): bool
+    {
+        return $this->productPrices()
+            ->whereHas('priceList', fn($q) => $q->where('code', 'PROMO'))
+            ->where('is_active', true)
+            ->exists();
     }
 
     /**

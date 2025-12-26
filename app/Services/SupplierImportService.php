@@ -10,6 +10,7 @@ use App\Jobs\ProcessSupplierImportJob;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Http\Request;
 
 class SupplierImportService
 {
@@ -110,6 +111,7 @@ class SupplierImportService
         $import->update(['status' => 'processing']);
 
         try {
+            // El cast 'array' en el modelo convierte automáticamente el JSON
             $payload = is_string($import->raw_data)
                 ? json_decode($import->raw_data, true)
                 : $import->raw_data;
@@ -148,8 +150,7 @@ class SupplierImportService
                 'processed_at' => now(),
             ]);
 
-            // Limpiar cache relacionado
-            $this->clearSupplierCache($import->supplier_id);
+            // La limpieza de caché ahora es manejada por Observers
         } catch (\Exception $e) {
             DB::rollBack();
 
@@ -235,51 +236,66 @@ class SupplierImportService
     }
 
     /**
-     * Limpia el cache relacionado al proveedor
+     * Obtiene importaciones con filtros y paginación (cacheado)
      */
-    protected function clearSupplierCache(int $supplierId): void
+    public function getImports(Request $request): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
-        try {
-            // Solo usar tags si el driver lo soporta (Redis, Memcached, Array)
-            // Database y File NO soportan tags
-            $store = Cache::getStore();
+        $supplierId = $request->query('supplier_id');
+        $status = $request->query('status');
+        $fromDate = $request->query('from_date');
+        $toDate = $request->query('to_date');
+        $perPage = $request->query('per_page', 15);
+        $page = $request->query('page', 1);
 
-            if (method_exists($store, 'tags')) {
-                Cache::tags(['supplier_products', "supplier_{$supplierId}"])->flush();
-            } else {
-                // Fallback: limpiar keys específicas sin tags
-                Cache::forget("supplier_products_{$supplierId}");
-                Cache::forget("supplier_{$supplierId}_stats");
-            }
-        } catch (\Exception $e) {
-            // Si falla el cache, solo logear pero no detener el proceso
-            Log::warning("Error limpiando cache de proveedor {$supplierId}", [
-                'error' => $e->getMessage()
-            ]);
-        }
+        $version = Cache::remember('supplier_imports_version', now()->addDay(), fn() => 1);
+
+        $cacheKey = "supplier_imports_v{$version}_" . md5(serialize([
+            $supplierId,
+            $status,
+            $fromDate,
+            $toDate,
+            $perPage,
+            $page,
+        ]));
+
+        return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($supplierId, $status, $fromDate, $toDate, $perPage) {
+            $query = SupplierImport::with('supplier')
+                ->when($supplierId, fn($q) => $q->where('supplier_id', $supplierId))
+                ->when($status, fn($q) => $q->where('status', $status))
+                ->when($fromDate, fn($q) => $q->whereDate('created_at', '>=', $fromDate))
+                ->when($toDate, fn($q) => $q->whereDate('created_at', '<=', $toDate))
+                ->latest();
+
+            return $query->paginate($perPage);
+        });
     }
 
     /**
-     * Obtiene estadísticas de importaciones
+     * Obtiene estadísticas de importaciones (ahora cacheado en Collection, here for reference/fallback)
      */
     public function getStatistics(?int $supplierId = null): array
     {
-        $query = SupplierImport::query();
+        $version = Cache::get('supplier_imports_version', 1);
+        $statsKey = "supplier_imports_stats_v{$version}_" . ($supplierId ?? 'all');
 
-        if ($supplierId) {
-            $query->where('supplier_id', $supplierId);
-        }
+        return Cache::remember($statsKey, now()->addMinutes(30), function () use ($supplierId) {
+            $query = SupplierImport::query();
 
-        return [
-            'total_imports' => $query->count(),
-            'pending' => (clone $query)->where('status', 'pending')->count(),
-            'processing' => (clone $query)->where('status', 'processing')->count(),
-            'completed' => (clone $query)->where('status', 'completed')->count(),
-            'failed' => (clone $query)->where('status', 'failed')->count(),
-            'total_products_imported' => $query->sum('total_products'),
-            'total_products_processed' => $query->sum('processed_products'),
-            'last_import' => $query->latest()->first()?->created_at,
-        ];
+            if ($supplierId) {
+                $query->where('supplier_id', $supplierId);
+            }
+
+            return [
+                'total_imports' => $query->count(),
+                'pending' => (clone $query)->where('status', 'pending')->count(),
+                'processing' => (clone $query)->where('status', 'processing')->count(),
+                'completed' => (clone $query)->where('status', 'completed')->count(),
+                'failed' => (clone $query)->where('status', 'failed')->count(),
+                'total_products_imported' => $query->sum('total_products'),
+                'total_products_processed' => $query->sum('processed_products'),
+                'last_import' => $query->latest()->first()?->created_at,
+            ];
+        });
     }
 
     /**

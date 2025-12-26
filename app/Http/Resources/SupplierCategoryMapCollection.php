@@ -4,10 +4,10 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\ResourceCollection;
-use App\Models\SupplierImport;
+use App\Models\SupplierCategoryMap;
 use Illuminate\Support\Facades\Cache;
 
-class SupplierImportCollection extends ResourceCollection
+class SupplierCategoryMapCollection extends ResourceCollection
 {
     /**
      * Transform the resource collection into an array.
@@ -15,7 +15,7 @@ class SupplierImportCollection extends ResourceCollection
     public function toArray(Request $request): array
     {
         return [
-            'data' => SupplierImportResource::collection($this->collection),
+            'data' => SupplierCategoryMapResource::collection($this->collection),
         ];
     }
 
@@ -33,26 +33,30 @@ class SupplierImportCollection extends ResourceCollection
     public function with(Request $request): array
     {
         $supplierId = $request->supplier_id;
-        $version = Cache::get('supplier_imports_version', 1);
+        $version = Cache::get('supplier_category_maps_version', 1);
 
         // Estadísticas cacheadas
-        $statsKey = "supplier_imports_stats_v{$version}_" . ($supplierId ?? 'all');
+        $statsKey = "supplier_category_maps_stats_v{$version}_" . ($supplierId ?? 'all');
         $stats = Cache::remember($statsKey, now()->addMinutes(30), function () use ($supplierId) {
-            $query = SupplierImport::query();
+            $query = SupplierCategoryMap::query();
 
             if ($supplierId) {
                 $query->where('supplier_id', $supplierId);
             }
 
+            $total = $query->count();
+            $mapped = (clone $query)->whereNotNull('category_id')->count();
+            $unmapped = (clone $query)->whereNull('category_id')->count();
+            $active = (clone $query)->where('is_active', true)->count();
+            $inactive = (clone $query)->where('is_active', false)->count();
+
             return [
-                'total_imports' => $query->count(),
-                'pending' => (clone $query)->where('status', 'pending')->count(),
-                'processing' => (clone $query)->where('status', 'processing')->count(),
-                'completed' => (clone $query)->where('status', 'completed')->count(),
-                'failed' => (clone $query)->where('status', 'failed')->count(),
-                'total_products_imported' => $query->sum('total_products'),
-                'total_products_processed' => $query->sum('processed_products'),
-                'last_import' => $query->latest()->first()?->created_at,
+                'total' => $total,
+                'mapped' => $mapped,
+                'unmapped' => $unmapped,
+                'active' => $active,
+                'inactive' => $inactive,
+                'mapping_rate' => $total > 0 ? round(($mapped / $total) * 100, 2) : 0,
             ];
         });
 

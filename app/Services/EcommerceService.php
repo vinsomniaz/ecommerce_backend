@@ -5,6 +5,7 @@ namespace App\Services;
 
 use App\Models\Product;
 use App\Models\Category;
+use App\Models\PriceList;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -246,34 +247,31 @@ class EcommerceService
 
     /**
      * Obtener lista de distribución completa (SIN PAGINACIÓN)
-     * Solo productos con distribution_price > 0
+     * Solo productos con precio de distribuidor activo
      */
     public function getDistributionList(array $filters): Collection
     {
+        // Obtener ID de la lista DISTRIBUTOR
+        $distributorPriceListId = PriceList::where('code', 'DISTRIBUTOR')->value('id');
+
+        if (!$distributorPriceListId) {
+            return collect(); // Sin lista DISTRIBUTOR, retornar vacío
+        }
+
         $query = Product::query()
             ->with(['category', 'media', 'firstWarehouseInventory'])
-            // Filtrar productos que tengan precio en la lista de distribuidor (ID 3)
-            ->whereHas('productPrices', function ($q) {
-                $q->where('price_list_id', 3)
-                    ->where('is_active', true)
-                    ->where('valid_from', '<=', now())
-                    ->where(function ($subQ) {
-                        $subQ->whereNull('valid_to')
-                            ->orWhere('valid_to', '>=', now());
-                    });
+            // Filtrar productos que tengan precio en la lista DISTRIBUTOR
+            ->whereHas('productPrices', function ($q) use ($distributorPriceListId) {
+                $q->where('price_list_id', $distributorPriceListId)
+                    ->where('is_active', true);
             })
-            ->with(['productPrices' => function ($q) {
-                $q->where('price_list_id', 3)
-                    ->where('is_active', true)
-                    ->where('valid_from', '<=', now())
-                    ->where(function ($subQ) {
-                        $subQ->whereNull('valid_to')
-                            ->orWhere('valid_to', '>=', now());
-                    });
+            ->with(['productPrices' => function ($q) use ($distributorPriceListId) {
+                $q->where('price_list_id', $distributorPriceListId)
+                    ->where('is_active', true);
             }])
             ->where('products.is_active', true);
 
-        // --- Filtros (Se mantienen igual) ---
+        // --- Filtros ---
 
         // 1. Búsqueda
         if (!empty($filters['search'])) {
@@ -317,9 +315,9 @@ class EcommerceService
         $sortOrder = $filters['sort_order'] ?? 'asc';
 
         if ($sortBy === 'price') {
-            // Unir con product_prices para ordenar por precio
+            // Unir con product_prices para ordenar por precio DISTRIBUTOR
             $query->join('product_prices', 'products.id', '=', 'product_prices.product_id')
-                ->where('product_prices.price_list_id', 3)
+                ->where('product_prices.price_list_id', $distributorPriceListId)
                 ->where('product_prices.is_active', true)
                 ->orderBy('product_prices.price', $sortOrder)
                 ->select('products.*'); // Importante para no traer campos de product_prices

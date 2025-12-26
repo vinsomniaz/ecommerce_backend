@@ -5,30 +5,30 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\SupplierProduct;
 use App\Http\Resources\SupplierProductResource;
+use App\Http\Resources\SupplierProductCollection;
+use App\Services\SupplierProductService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
 class SupplierProductController extends Controller
 {
+    public function __construct(
+        private SupplierProductService $supplierProductService
+    ) {}
+
     public function index(Request $request): JsonResponse
     {
-        $query = SupplierProduct::with(['supplier', 'product'])
-            ->when($request->supplier_id, fn($q) => $q->where('supplier_id', $request->supplier_id))
-            ->when($request->product_id, fn($q) => $q->where('product_id', $request->product_id))
-            ->when($request->is_active, fn($q) => $q->where('is_active', $request->is_active))
-            ->when($request->is_available, fn($q) => $q->where('is_available', $request->is_available))
-            ->when($request->currency, fn($q) => $q->where('currency', $request->currency))
-            ->orderBy('priority', 'desc');
-
-        $supplierProducts = $query->paginate($request->per_page ?? 15);
+        $products = $this->supplierProductService->getProducts($request);
 
         return response()->json([
-            'data' => SupplierProductResource::collection($supplierProducts->items()),
+            'success' => true,
+            'message' => 'Productos de proveedores obtenidos correctamente',
+            'data' => SupplierProductResource::collection($products->items()),
             'meta' => [
-                'current_page' => $supplierProducts->currentPage(),
-                'last_page' => $supplierProducts->lastPage(),
-                'per_page' => $supplierProducts->perPage(),
-                'total' => $supplierProducts->total(),
+                'current_page' => $products->currentPage(),
+                'last_page' => $products->lastPage(),
+                'per_page' => $products->perPage(),
+                'total' => $products->total(),
             ],
         ]);
     }
@@ -73,8 +73,8 @@ class SupplierProductController extends Controller
         $validated = $request->validate([
             'supplier_sku' => 'nullable|string|max:160',
             'supplier_name' => 'nullable|string|max:255',
-            'product_id' => 'nullable|exists:products,id', // Vincular a producto interno
-            'category_id' => 'nullable|exists:categories,id', // Override manual de categoría
+            'product_id' => 'nullable|exists:products,id',
+            'category_id' => 'nullable|exists:categories,id',
             'purchase_price' => 'sometimes|numeric|min:0',
             'sale_price' => 'nullable|numeric|min:0',
             'currency' => 'sometimes|in:PEN,USD,EUR',
@@ -106,11 +106,7 @@ class SupplierProductController extends Controller
 
     public function byProduct(int $productId): JsonResponse
     {
-        $suppliers = SupplierProduct::where('product_id', $productId)
-            ->with('supplier')
-            ->active()
-            ->orderBy('priority', 'desc')
-            ->get();
+        $suppliers = $this->supplierProductService->getByProduct($productId);
 
         return response()->json([
             'data' => SupplierProductResource::collection($suppliers),
@@ -119,10 +115,7 @@ class SupplierProductController extends Controller
 
     public function bySupplier(int $supplierId): JsonResponse
     {
-        $products = SupplierProduct::where('supplier_id', $supplierId)
-            ->with('product')
-            ->active()
-            ->get();
+        $products = $this->supplierProductService->getBySupplier($supplierId);
 
         return response()->json([
             'data' => SupplierProductResource::collection($products),
@@ -131,12 +124,7 @@ class SupplierProductController extends Controller
 
     public function comparePrices(int $productId): JsonResponse
     {
-        $suppliers = SupplierProduct::where('product_id', $productId)
-            ->with('supplier')
-            ->active()
-            ->available()
-            ->orderBy('purchase_price', 'asc')
-            ->get();
+        $suppliers = $this->supplierProductService->comparePrices($productId);
 
         return response()->json([
             'data' => SupplierProductResource::collection($suppliers),
@@ -154,14 +142,7 @@ class SupplierProductController extends Controller
             'updates.*.purchase_price' => 'required|numeric|min:0',
         ]);
 
-        $updated = 0;
-        foreach ($validated['updates'] as $update) {
-            SupplierProduct::find($update['id'])->update([
-                'purchase_price' => $update['purchase_price'],
-                'price_updated_at' => now(),
-            ]);
-            $updated++;
-        }
+        $updated = $this->supplierProductService->bulkUpdatePrices($validated['updates']);
 
         return response()->json([
             'message' => "Se actualizaron {$updated} precios exitosamente",
@@ -180,8 +161,10 @@ class SupplierProductController extends Controller
             'category_id' => 'required|exists:categories,id',
         ]);
 
-        $updated = SupplierProduct::whereIn('id', $validated['product_ids'])
-            ->update(['category_id' => $validated['category_id']]);
+        $updated = $this->supplierProductService->bulkUpdateCategories(
+            $validated['product_ids'],
+            $validated['category_id']
+        );
 
         return response()->json([
             'success' => true,
@@ -194,37 +177,18 @@ class SupplierProductController extends Controller
     }
 
     /**
-     * Productos sin categorizar o vincular
+     * Productos sin categorizar o vincular (con caché y estadísticas)
      */
     public function uncategorized(Request $request): JsonResponse
     {
-        $query = SupplierProduct::with(['supplier', 'product'])
-            ->when($request->supplier_id, fn($q) => $q->where('supplier_id', $request->supplier_id))
-            ->where(function ($q) {
-                // Productos que necesitan atención
-                $q->whereNull('product_id'); // No vinculados a producto interno
-            });
-
-        // Filtrar por estado de asignación de categoría
-        if ($request->has('has_category_id') && $request->has_category_id === 'true') {
-            $query->whereNotNull('category_id'); // Solo productos YA asignados
-        } else {
-            $query->whereNull('category_id'); // Solo productos PENDIENTES
-        }
-
-        $query->active()->latest();
-
-        $products = $query->paginate($request->per_page ?? 15);
+        $products = $this->supplierProductService->getUncategorizedProducts($request);
+        $collection = new SupplierProductCollection($products);
 
         return response()->json([
             'success' => true,
-            'data' => SupplierProductResource::collection($products),
-            'meta' => [
-                'current_page' => $products->currentPage(),
-                'last_page' => $products->lastPage(),
-                'per_page' => $products->perPage(),
-                'total' => $products->total(),
-            ],
+            'message' => 'Productos sin categoría obtenidos correctamente',
+            'data' => $collection->toArray($request)['data'],
+            'meta' => $collection->with($request)['meta'],
         ]);
     }
 
@@ -233,33 +197,33 @@ class SupplierProductController extends Controller
      */
     public function statistics(Request $request): JsonResponse
     {
-        $query = SupplierProduct::query();
-
-        if ($request->supplier_id) {
-            $query->where('supplier_id', $request->supplier_id);
-        }
-
-        $total = $query->count();
-        $active = (clone $query)->where('is_active', true)->count();
-        $linked = (clone $query)->whereNotNull('product_id')->count();
-        $unlinked = (clone $query)->whereNull('product_id')->count();
-        $available = (clone $query)->where('is_available', true)->count();
-        $withCategory = (clone $query)->whereNotNull('supplier_category')->count();
-        $withoutCategory = (clone $query)->whereNull('supplier_category')->count();
+        $stats = $this->supplierProductService->getStatistics($request->supplier_id);
 
         return response()->json([
             'success' => true,
-            'data' => [
-                'total' => $total,
-                'active' => $active,
-                'inactive' => $total - $active,
-                'linked_to_products' => $linked,
-                'unlinked' => $unlinked,
-                'available' => $available,
-                'unavailable' => $total - $available,
-                'with_supplier_category' => $withCategory,
-                'without_supplier_category' => $withoutCategory,
-                'linking_rate' => $total > 0 ? round(($linked / $total) * 100, 2) : 0,
+            'data' => $stats,
+        ]);
+    }
+
+    /**
+     * Productos sin categorizar agrupados por category_suggested
+     */
+    public function uncategorizedGrouped(Request $request): JsonResponse
+    {
+        $supplierId = $request->query('supplier_id');
+        $onlyPending = $request->query('only_pending', 'true') === 'true';
+
+        $result = $this->supplierProductService->getGroupedUncategorizedProducts(
+            $supplierId ? (int) $supplierId : null,
+            $onlyPending
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Productos agrupados por categoría sugerida obtenidos correctamente',
+            'data' => $result['groups'],
+            'meta' => [
+                'stats' => $result['stats'],
             ],
         ]);
     }

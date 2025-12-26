@@ -34,7 +34,6 @@ class ProductPriceController extends Controller
             'price_list_id',
             'warehouse_id',
             'is_active',
-            'is_current',
             'sort_by',
             'sort_order'
         ]);
@@ -269,17 +268,6 @@ class ProductPriceController extends Controller
         // Filtrar solo precios activos si se solicita
         if ($request->boolean('only_active')) {
             $query->where('is_active', true);
-        }
-
-        // Filtrar solo precios vigentes si se solicita
-        if ($request->boolean('only_current')) {
-            $now = now();
-            $query->where('is_active', true)
-                ->where('valid_from', '<=', $now)
-                ->where(function ($q) use ($now) {
-                    $q->whereNull('valid_to')
-                      ->orWhere('valid_to', '>=', $now);
-                });
         }
 
         $prices = $query->orderBy('price_list_id')

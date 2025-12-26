@@ -29,7 +29,7 @@ class ProductPriceResource extends JsonResource
                     'id' => $this->priceList->id,
                     'code' => $this->priceList->code,
                     'name' => $this->priceList->name,
-                    'is_default' => $this->priceList->is_default,
+                    'is_default' => $this->priceList->is_default ?? false,
                 ];
             }),
 
@@ -67,37 +67,12 @@ class ProductPriceResource extends JsonResource
                 }
             ),
 
-            // Vigencia
-            'valid_from' => $this->valid_from?->format('Y-m-d H:i:s'),
-            'valid_to' => $this->valid_to?->format('Y-m-d H:i:s'),
+            // Estado
             'is_active' => $this->is_active,
-            'is_current' => $this->isCurrentlyValid(),
 
             // Fechas de auditoría
             'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
             'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
         ];
-    }
-
-    /**
-     * Verificar si el precio está vigente ahora
-     */
-    private function isCurrentlyValid(): bool
-    {
-        if (!$this->is_active) {
-            return false;
-        }
-
-        $now = now();
-
-        if ($this->valid_from && $this->valid_from > $now) {
-            return false;
-        }
-
-        if ($this->valid_to && $this->valid_to < $now) {
-            return false;
-        }
-
-        return true;
     }
 }
