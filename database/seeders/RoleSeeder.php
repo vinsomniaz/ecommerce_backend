@@ -385,6 +385,20 @@ class RoleSeeder extends Seeder
                 ['name' => 'settings.bulk-update', 'display_name' => 'Actualización masiva de configuraciones', 'description' => 'Actualiza múltiples configuraciones a la vez.'],
                 ['name' => 'settings.restore-defaults', 'display_name' => 'Restaurar configuraciones por defecto', 'description' => 'Restaura todas las configuraciones a valores predeterminados.'],
             ],
+
+            'Dashboard' => [
+                ['name' => 'dashboard.full', 'display_name' => 'Dashboard completo', 'description' => 'Acceso al dashboard administrativo con todas las métricas del sistema.'],
+                ['name' => 'dashboard.personal', 'display_name' => 'Dashboard personal', 'description' => 'Dashboard solo con datos del usuario (sus cotizaciones, ventas, comisiones, etc).'],
+            ],
+
+            'Reports' => [
+                ['name' => 'reports.index', 'display_name' => 'Listar reportes', 'description' => 'Acceso al módulo de reportes y análisis.'],
+                ['name' => 'reports.sales', 'display_name' => 'Reportes de ventas', 'description' => 'Acceso a reportes detallados de ventas.'],
+                ['name' => 'reports.purchases', 'display_name' => 'Reportes de compras', 'description' => 'Acceso a reportes detallados de compras.'],
+                ['name' => 'reports.inventory', 'display_name' => 'Reportes de inventario', 'description' => 'Acceso a reportes de stock y movimientos.'],
+                ['name' => 'reports.financial', 'display_name' => 'Reportes financieros', 'description' => 'Acceso a reportes de ganancias, costos y márgenes.'],
+                ['name' => 'reports.export', 'display_name' => 'Exportar reportes', 'description' => 'Permite exportar reportes a Excel/PDF.'],
+            ],
         ];
 
         $totalCreated = 0;
@@ -645,6 +659,15 @@ class RoleSeeder extends Seeder
             'purchases.destroy',
             'purchases.statistics',
             'purchases.payments.create',
+
+            // DASHBOARD & REPORTS
+            'dashboard.full',
+            'reports.index',
+            'reports.sales',
+            'reports.purchases',
+            'reports.inventory',
+            'reports.financial',
+            'reports.export',
         ];
     }
 
@@ -781,6 +804,9 @@ class RoleSeeder extends Seeder
 
             // COUPONS (solo validación para checkout)
             'coupons.validate',
+
+            // DASHBOARD (solo personal)
+            'dashboard.personal',
         ];
     }
 
