@@ -16,7 +16,7 @@ return new class extends Migration
             $table->string('title')->nullable();
             $table->text('description')->nullable();
             $table->string('link')->nullable();
-            $table->string('section')->comment('hero_slider, promotions, banner, top_bar');
+            $table->string('section')->comment('hero_slider, promotions, banner');
             $table->boolean('is_active')->default(true);
             $table->integer('sort_order')->default(0);
             $table->timestamps();
