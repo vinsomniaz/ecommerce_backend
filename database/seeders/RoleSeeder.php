@@ -238,6 +238,14 @@ class RoleSeeder extends Seeder
                 ['name' => 'ecommerce.categories.show', 'display_name' => 'Ver categoría e-commerce', 'description' => 'Muestra el detalle público de una categoría específica.'],
             ],
 
+            'Banners' => [
+                ['name' => 'banners.index', 'display_name' => 'Listar banners', 'description' => 'Ver listado de banners e imágenes del sitio.'],
+                ['name' => 'banners.show', 'display_name' => 'Ver banner', 'description' => 'Ver detalles de un banner.'],
+                ['name' => 'banners.store', 'display_name' => 'Crear banner', 'description' => 'Subir y crear nuevos banners.'],
+                ['name' => 'banners.update', 'display_name' => 'Actualizar banner', 'description' => 'Editar información o imagen de un banner.'],
+                ['name' => 'banners.destroy', 'display_name' => 'Eliminar banner', 'description' => 'Elimina un banner del sistema.'],
+            ],
+
             'Quotations' => [
                 // CRUD Básico
                 ['name' => 'quotations.index', 'display_name' => 'Listar cotizaciones', 'description' => 'Obtiene el listado de cotizaciones con filtros.'],
@@ -518,6 +526,13 @@ class RoleSeeder extends Seeder
             'ecommerce.categories.list',
             'ecommerce.categories.tree',
             'ecommerce.categories.show',
+
+            // BANNERS
+            'banners.index',
+            'banners.show',
+            'banners.store',
+            'banners.update',
+            'banners.destroy',
 
             // ORDERS
             'orders.index',

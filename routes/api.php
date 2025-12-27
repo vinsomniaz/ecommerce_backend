@@ -36,6 +36,7 @@ use App\Models\Order;
 use App\Services\OrderService;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\SaleController;
+use App\Http\Controllers\BannerController; // NUEVO
 
 
 /*
@@ -49,6 +50,9 @@ use App\Http\Controllers\Api\SaleController;
 
 Route::get('/rates/fetch-and-show', [ExchangeRateController::class, 'fetchAndShow']);
 Route::get('/rates/current', [ExchangeRateController::class, 'showCurrentRates']);
+
+// Public Banners Route
+Route::get('/banners', [BannerController::class, 'index']);
 
 
 Route::prefix('ecommerce')->name('ecommerce/')->group(function () {
@@ -1047,6 +1051,32 @@ Route::middleware('auth:sanctum')->prefix('gemini')->group(function () {
 
     Route::post('/clear-cache', [GeminiController::class, 'clearCache'])
         ->middleware('permission:gemini.clear-cache');
+});
+
+/* ============================================
+   BANNERS (Gestión de Imágenes)
+   ============================================ */
+Route::middleware('auth:sanctum')->prefix('banners')->group(function () {
+    // Route::get('/', [BannerController::class, 'index']) ->moved to public
+    //    ->middleware('permission:banners.index');
+
+    Route::post('/', [BannerController::class, 'store'])
+        ->middleware('permission:banners.store');
+
+    Route::get('/{banner}', [BannerController::class, 'show'])
+        ->middleware('permission:banners.show');
+
+    Route::post('/{banner}', [BannerController::class, 'update']) // Using POST for file upload with method override if needed, but Spatie handles PATCH well usually. However, PHP sometimes struggles with multipart/form-data on PUT/PATCH. Standard practice for files is POST or POST with _method=PUT. I'll use POST for consistency with typical Laravel file uploads if frontend needs it, but here I defined 'update' method. Laravel resource uses PUT/PATCH.
+        // Actually, for file uploads, it's safer to use Route::post for updates with `_method` field, or just explicitly definition.
+        // My controller update method expects UpdateBannerRequest.
+        // Let's use `Route::match(['put', 'patch'], ...)` but keep in mind frontend might need `_method: PUT` and form-data.
+        // Or just custom POST route for update if needed.
+        // For now standard resource style:
+        ->name('banners.update')
+        ->middleware('permission:banners.update');
+
+    Route::delete('/{banner}', [BannerController::class, 'destroy'])
+        ->middleware('permission:banners.destroy');
 });
 
 // --- TEST ROUTE FOR ORDER CONFIRMATION FLOW (TEMPORARY) ---
