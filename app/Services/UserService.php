@@ -34,9 +34,10 @@ class UserService
                 $q->where('name', $filters['role']);
             });
         } else {
-            // Por defecto: solo admin y vendor
+            // Por defecto: todos los usuarios EXCEPTO customer (e-commerce)
+            // Incluye super-admin, admin, vendor y cualquier rol personalizado
             $query->whereHas('roles', function ($q) {
-                $q->whereIn('name', ['admin', 'vendor']);
+                $q->where('name', '!=', 'customer');
             });
         }
 
@@ -73,7 +74,7 @@ class UserService
     }
 
     /**
-     * Crear nuevo usuario
+     * Crear nuevo usuario (o restaurar si existe eliminado)
      */
     public function createUser(array $data): User
     {
@@ -86,8 +87,18 @@ class UserService
             $warehouseId = $data['warehouse_id'] ?? null;
             unset($data['warehouse_id']);
 
-            // Validar email único si se proporciona
+            // Verificar si existe usuario eliminado con este email
             if (!empty($data['email'])) {
+                $deletedUser = User::onlyTrashed()
+                    ->where('email', $data['email'])
+                    ->first();
+
+                if ($deletedUser) {
+                    // Restaurar y actualizar el usuario existente
+                    return $this->restoreAndUpdate($deletedUser, $data, $roleName, $warehouseId);
+                }
+
+                // Validar email único para usuarios activos
                 $this->validateUniqueEmail($data['email']);
             }
 
@@ -115,6 +126,33 @@ class UserService
             // Retornar con relaciones
             return $user->fresh(['roles', 'entity']);
         });
+    }
+
+    /**
+     * Restaurar usuario eliminado y actualizar sus datos
+     */
+    private function restoreAndUpdate(User $user, array $data, string $roleName, ?int $warehouseId): User
+    {
+        // Restaurar usuario
+        $user->restore();
+
+        // Hashear contraseña si viene
+        if (isset($data['password'])) {
+            $data['password'] = Hash::make($data['password']);
+        }
+
+        // Agregar warehouse_id
+        if ($warehouseId) {
+            $data['warehouse_id'] = $warehouseId;
+        }
+
+        // Actualizar datos
+        $user->update($data);
+
+        // Sincronizar rol
+        $user->syncRoles([$roleName]);
+
+        return $user->fresh(['roles', 'entity']);
     }
 
     /**
@@ -263,5 +301,51 @@ class UserService
         if ($query->exists()) {
             throw UserException::duplicateEmail($email);
         }
+    }
+
+    /**
+     * Get user statistics (usuarios del ERP: super-admin, admin, vendor)
+     */
+    public function getStatistics(): array
+    {
+        // Usuarios del ERP (excluye solo customer)
+        $erpRoles = ['super-admin', 'admin', 'vendor'];
+
+        $baseQuery = User::whereHas('roles', function ($q) use ($erpRoles) {
+            $q->whereIn('name', $erpRoles);
+        });
+
+        return [
+            'total_users' => (clone $baseQuery)->count(),
+            'active_users' => (clone $baseQuery)->where('is_active', true)->count(),
+            'inactive_users' => (clone $baseQuery)->where('is_active', false)->count(),
+            'with_commission' => (clone $baseQuery)
+                ->whereNotNull('commission_percentage')
+                ->where('commission_percentage', '>', 0)
+                ->count(),
+            'by_role' => $this->getErpUsersByRole(),
+        ];
+    }
+
+    /**
+     * Get users count by ERP role
+     */
+    private function getErpUsersByRole(): array
+    {
+        return [
+            'super-admin' => User::role('super-admin')->count(),
+            'admin' => User::role('admin')->count(),
+            'vendor' => User::role('vendor')->count(),
+        ];
+    }
+
+    /**
+     * Update user's last login timestamp
+     */
+    public function updateLastLogin(int $userId): void
+    {
+        User::where('id', $userId)->update([
+            'last_login_at' => now(),
+        ]);
     }
 }

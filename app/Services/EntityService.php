@@ -67,14 +67,26 @@ class EntityService
     }
 
     /**
-     * Create a new entity
+     * Create a new entity (or restore if exists deleted)
      */
     public function create(array $data): Entity
     {
         return DB::transaction(function () use ($data) {
             // Extraer datos de entity
             $entityData = $data['entity'] ?? $data;
-            
+
+            // Verificar si existe entity eliminada con este numero_documento
+            if (!empty($entityData['numero_documento'])) {
+                $deletedEntity = Entity::onlyTrashed()
+                    ->where('numero_documento', $entityData['numero_documento'])
+                    ->first();
+
+                if ($deletedEntity) {
+                    // Restaurar y actualizar la entity existente
+                    return $this->restoreAndUpdateEntity($deletedEntity, $data);
+                }
+            }
+
             // Set user_id from authenticated user if not provided
             if (!isset($entityData['user_id']) && Auth::check()) {
                 $entityData['user_id'] = Auth::id();
@@ -113,6 +125,47 @@ class EntityService
     }
 
     /**
+     * Restore deleted entity and update its data
+     */
+    private function restoreAndUpdateEntity(Entity $entity, array $data): Entity
+    {
+        // Restaurar entity (esto también restaura addresses y contacts por el observer)
+        $entity->restore();
+
+        // Extraer datos de entity
+        $entityData = $data['entity'] ?? $data;
+
+        // Actualizar datos de la entity
+        $entity->update($entityData);
+
+        // Sincronizar addresses si se envían
+        if (isset($data['addresses']) && is_array($data['addresses'])) {
+            // Eliminar direcciones antiguas y crear nuevas
+            $entity->addresses()->forceDelete();
+            foreach ($data['addresses'] as $addressData) {
+                $entity->addresses()->create($addressData);
+            }
+        }
+
+        // Sincronizar contacts si se envían
+        if (isset($data['contacts']) && is_array($data['contacts'])) {
+            // Eliminar contactos antiguos y crear nuevos
+            $entity->contacts()->forceDelete();
+            foreach ($data['contacts'] as $contactData) {
+                $entity->contacts()->create($contactData);
+            }
+        }
+
+        return $entity->load([
+            'addresses',
+            'contacts',
+            'primaryAddress.ubigeoData',
+            'primaryContact',
+            'documentType'
+        ]);
+    }
+
+    /**
      * Update an entity
      */
     public function update(Entity $entity, array $data): Entity
@@ -134,7 +187,7 @@ class EntityService
                         $addressId = $addressData['id'];
                         unset($addressData['id']);
                         $incomingIds[] = $addressId;
-                        
+
                         // Only update if there's data to update
                         if (!empty($addressData)) {
                             $entity->addresses()->where('id', $addressId)->update($addressData);
@@ -165,7 +218,7 @@ class EntityService
                         $contactId = $contactData['id'];
                         unset($contactData['id']);
                         $incomingIds[] = $contactId;
-                        
+
                         // Only update if there's data to update
                         if (!empty($contactData)) {
                             $entity->contacts()->where('id', $contactId)->update($contactData);
@@ -194,7 +247,7 @@ class EntityService
                 'primaryContact',
                 'documentType'
             ]);
-            
+
             return $entity;
         });
     }
@@ -233,13 +286,13 @@ class EntityService
     public function restore(int $id): ?Entity
     {
         $entity = Entity::withTrashed()->find($id);
-        
+
         if (!$entity || !$entity->trashed()) {
             return null;
         }
-        
+
         $entity->restore();
-        
+
         return $entity->load([
             'addresses',
             'contacts',
@@ -265,7 +318,7 @@ class EntityService
                 ->orWhere('last_name', 'like', "%{$term}%")
                 ->orWhereRaw("first_name || ' ' || last_name LIKE ?", ["%{$term}%"])
                 // Buscar en email de contacto principal
-                ->orWhereHas('primaryContact', function($q) use ($term) {
+                ->orWhereHas('primaryContact', function ($q) use ($term) {
                     $q->where('email', 'like', "%{$term}%");
                 });
         });
@@ -299,7 +352,7 @@ class EntityService
                     ->orWhere('last_name', 'like', "%{$term}%")
                     ->orWhereRaw("first_name || ' ' || last_name LIKE ?", ["%{$term}%"])
                     // Buscar en email de contacto principal
-                    ->orWhereHas('primaryContact', function($q) use ($term) {
+                    ->orWhereHas('primaryContact', function ($q) use ($term) {
                         $q->where('email', 'like', "%{$term}%");
                     });
             });

@@ -29,8 +29,21 @@ class ProductService
     public function create(array $data): Product
     {
         return DB::transaction(function () use ($data) {
-            if (!empty($data['sku']) && Product::where('sku', $data['sku'])->exists()) {
-                throw new ProductAlreadyExistsException($data['sku']);
+            // Verificar si existe producto eliminado con este SKU
+            if (!empty($data['sku'])) {
+                $deletedProduct = Product::onlyTrashed()
+                    ->where('sku', $data['sku'])
+                    ->first();
+
+                if ($deletedProduct) {
+                    // Restaurar y actualizar el producto existente
+                    return $this->restoreAndUpdateProduct($deletedProduct, $data);
+                }
+
+                // Validar SKU único para productos activos
+                if (Product::where('sku', $data['sku'])->exists()) {
+                    throw new ProductAlreadyExistsException($data['sku']);
+                }
             }
 
             if (empty($data['sku'])) {
@@ -69,6 +82,42 @@ class ProductService
 
             return $product->fresh(['attributes', 'category', 'inventory.warehouse', 'productPrices.priceList']);
         });
+    }
+
+    /**
+     * Restaurar producto eliminado y actualizar sus datos
+     */
+    private function restoreAndUpdateProduct(Product $product, array $data): Product
+    {
+        // Restaurar producto
+        $product->restore();
+
+        // Extraer atributos y precios
+        $attributes = $data['attributes'] ?? [];
+        $prices = $data['prices'] ?? [];
+        unset($data['attributes'], $data['prices']);
+
+        // Actualizar datos
+        $data = $this->setDefaultValues($data);
+        $product->update($data);
+
+        // Sincronizar atributos
+        if (!empty($attributes)) {
+            $this->syncAttributes($product, $attributes);
+        }
+
+        // Crear precios si se enviaron
+        if (!empty($prices)) {
+            $this->syncPrices($product, $prices);
+        }
+
+        activity()
+            ->performedOn($product)
+            ->causedBy(Auth::user())
+            ->withProperties(['data' => $data, 'restored' => true])
+            ->log('Producto restaurado y actualizado');
+
+        return $product->fresh(['attributes', 'category', 'inventory.warehouse', 'productPrices.priceList']);
     }
     /**
      * Actualizar un producto existente

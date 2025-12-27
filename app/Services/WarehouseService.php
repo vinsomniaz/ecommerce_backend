@@ -68,11 +68,21 @@ class WarehouseService
     }
 
     /**
-     * Crear nuevo almacén
+     * Crear nuevo almacén (o restaurar si existe eliminado)
      */
     public function create(array $data): Warehouse
     {
         return DB::transaction(function () use ($data) {
+            // Verificar si existe almacén eliminado con este nombre
+            $deletedWarehouse = Warehouse::onlyTrashed()
+                ->where('name', $data['name'])
+                ->first();
+
+            if ($deletedWarehouse) {
+                // Restaurar y actualizar el almacén existente
+                return $this->restoreAndUpdateWarehouse($deletedWarehouse, $data);
+            }
+
             $this->validateUbigeo($data['ubigeo']);
             $this->validateUniqueName($data['name']);
 
@@ -89,6 +99,38 @@ class WarehouseService
 
             return $warehouse;
         });
+    }
+
+    /**
+     * Restaurar almacén eliminado y actualizar sus datos
+     */
+    private function restoreAndUpdateWarehouse(Warehouse $warehouse, array $data): Warehouse
+    {
+        // Restaurar almacén
+        $warehouse->restore();
+
+        // Validar ubigeo si se proporciona
+        if (isset($data['ubigeo'])) {
+            $this->validateUbigeo($data['ubigeo']);
+        }
+
+        // Si es principal, desmarcar otros
+        if ($data['is_main'] ?? false) {
+            $this->unsetCurrentMainWarehouse($warehouse->id);
+        }
+
+        // Actualizar datos
+        $warehouse->update($data);
+        $warehouse->load('ubigeoData');
+
+        // Asignar productos si está activo
+        if ($data['is_active'] ?? $warehouse->is_active) {
+            $this->assignAllProductsToWarehouse($warehouse);
+        }
+
+        $this->clearCache();
+
+        return $warehouse;
     }
 
     /**

@@ -37,7 +37,7 @@ use App\Services\OrderService;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\SaleController;
 use App\Http\Controllers\BannerController; // NUEVO
-
+use App\Http\Controllers\Api\CouponController;
 
 /*
 |--------------------------------------------------------------------------
@@ -165,9 +165,42 @@ Route::middleware(['auth:sanctum', 'role:super-admin'])->prefix('permissions')->
 });
 
 /* ============================================
+   ROLES
+   ============================================ */
+Route::prefix('roles')->middleware(['auth:sanctum'])->group(function () {
+    // Statistics endpoint first
+    Route::get('statistics', [\App\Http\Controllers\Api\RoleController::class, 'statistics'])
+        ->middleware('permission:roles.statistics');
+
+    // Available permissions (for role creation/editing)
+    Route::get('available-permissions', [\App\Http\Controllers\Api\RoleController::class, 'availablePermissions'])
+        ->middleware('permission:roles.available-permissions');
+
+    // CRUD
+    Route::get('/', [\App\Http\Controllers\Api\RoleController::class, 'index'])
+        ->middleware('permission:roles.index');
+
+    Route::post('/', [\App\Http\Controllers\Api\RoleController::class, 'store'])
+        ->middleware('permission:roles.store');
+
+    Route::get('/{id}', [\App\Http\Controllers\Api\RoleController::class, 'show'])
+        ->middleware('permission:roles.show');
+
+    Route::match(['put', 'patch'], '/{id}', [\App\Http\Controllers\Api\RoleController::class, 'update'])
+        ->middleware('permission:roles.update');
+
+    Route::delete('/{id}', [\App\Http\Controllers\Api\RoleController::class, 'destroy'])
+        ->middleware('permission:roles.destroy');
+});
+
+/* ============================================
    USUARIOS
    ============================================ */
 Route::prefix('users')->middleware(['auth:sanctum'])->group(function () {
+    // Statistics endpoint first
+    Route::get('statistics', [UserController::class, 'statistics'])
+        ->middleware('permission:users.statistics');
+
     // CRUD REST (index, store, show, update, destroy)
     Route::get('/', [UserController::class, 'index'])
         ->middleware('permission:users.index');
@@ -991,10 +1024,41 @@ Route::middleware('auth:sanctum')->prefix('supplier-category-maps')->group(funct
 });
 
 /* ============================================
-   SETTINGS (Configuraciones del Sistema)
+   CUPONES (COUPONS)
    ============================================ */
+Route::middleware('auth:sanctum')->prefix('coupons')->group(function () {
+
+    // Rutas especiales primero
+    Route::get('statistics', [CouponController::class, 'statistics'])
+        ->middleware('permission:coupons.statistics');
+
+    Route::post('validate', [CouponController::class, 'validateCoupon'])
+        ->middleware('permission:coupons.validate');
+
+    Route::patch('{id}/toggle-active', [CouponController::class, 'toggleActive'])
+        ->middleware('permission:coupons.toggle-active');
+
+    // CRUD básico
+    Route::get('/', [CouponController::class, 'index'])
+        ->name('coupons.index')
+        ->middleware('permission:coupons.index');
+
+    Route::post('/', [CouponController::class, 'store'])
+        ->middleware('permission:coupons.store');
+
+    Route::get('{id}', [CouponController::class, 'show'])
+        ->name('coupons.show')
+        ->middleware('permission:coupons.show');
+
+    Route::match(['put', 'patch'], '{id}', [CouponController::class, 'update'])
+        ->middleware('permission:coupons.update');
+
+    Route::delete('{id}', [CouponController::class, 'destroy'])
+        ->middleware('permission:coupons.destroy');
+});
+
 /* ============================================
-   SETTINGS (Configuraciones del Sistema)
+   SETTINGS (Configuraciones generales)
    ============================================ */
 Route::middleware('auth:sanctum')->prefix('settings')->group(function () {
 

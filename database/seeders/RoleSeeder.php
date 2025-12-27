@@ -219,6 +219,17 @@ class RoleSeeder extends Seeder
                 ['name' => 'users.restore', 'display_name' => 'Restaurar usuario', 'description' => 'Restaura un usuario previamente eliminado.'],
                 ['name' => 'users.toggle-active', 'display_name' => 'Activar/Desactivar usuario', 'description' => 'Cambia el estado activo/inactivo de un usuario.'],
                 ['name' => 'users.change-role', 'display_name' => 'Cambiar rol de usuario', 'description' => 'Actualiza el rol principal asignado a un usuario.'],
+                ['name' => 'users.statistics', 'display_name' => 'Estadísticas de usuarios', 'description' => 'Consulta estadísticas de usuarios del sistema.'],
+            ],
+
+            'Roles' => [
+                ['name' => 'roles.index', 'display_name' => 'Listar roles', 'description' => 'Obtiene el listado de roles del sistema.'],
+                ['name' => 'roles.show', 'display_name' => 'Ver rol', 'description' => 'Muestra el detalle de un rol específico.'],
+                ['name' => 'roles.store', 'display_name' => 'Crear rol', 'description' => 'Crea un nuevo rol personalizado.'],
+                ['name' => 'roles.update', 'display_name' => 'Actualizar rol', 'description' => 'Actualiza un rol existente y sus permisos.'],
+                ['name' => 'roles.destroy', 'display_name' => 'Eliminar rol', 'description' => 'Elimina un rol personalizado del sistema.'],
+                ['name' => 'roles.statistics', 'display_name' => 'Estadísticas de roles', 'description' => 'Consulta estadísticas de roles.'],
+                ['name' => 'roles.available-permissions', 'display_name' => 'Ver permisos disponibles', 'description' => 'Lista todos los permisos disponibles para asignar.'],
             ],
 
             'Permissions' => [
@@ -363,6 +374,17 @@ class RoleSeeder extends Seeder
                 ['name' => 'supplier-category-maps.statistics', 'display_name' => 'Estadísticas de mapeos', 'description' => 'Consulta estadísticas de mapeos de categorías.'],
             ],
 
+            'Coupons' => [
+                ['name' => 'coupons.index', 'display_name' => 'Listar cupones', 'description' => 'Obtiene el listado de todos los cupones.'],
+                ['name' => 'coupons.show', 'display_name' => 'Ver cupón', 'description' => 'Muestra el detalle de un cupón específico.'],
+                ['name' => 'coupons.store', 'display_name' => 'Crear cupón', 'description' => 'Registra un nuevo cupón de descuento.'],
+                ['name' => 'coupons.update', 'display_name' => 'Actualizar cupón', 'description' => 'Actualiza la información de un cupón existente.'],
+                ['name' => 'coupons.destroy', 'display_name' => 'Eliminar cupón', 'description' => 'Elimina un cupón del sistema.'],
+                ['name' => 'coupons.toggle-active', 'display_name' => 'Activar/Desactivar cupón', 'description' => 'Cambia el estado activo/inactivo de un cupón.'],
+                ['name' => 'coupons.statistics', 'display_name' => 'Estadísticas de cupones', 'description' => 'Consulta estadísticas de uso y descuentos.'],
+                ['name' => 'coupons.validate', 'display_name' => 'Validar cupón', 'description' => 'Verifica si un cupón es válido para el checkout.'],
+            ],
+
             'Settings' => [
                 ['name' => 'settings.index', 'display_name' => 'Listar configuraciones', 'description' => 'Lista todas las configuraciones del sistema.'],
                 ['name' => 'settings.show', 'display_name' => 'Ver configuración', 'description' => 'Muestra una configuración específica.'],
@@ -370,6 +392,20 @@ class RoleSeeder extends Seeder
                 ['name' => 'settings.destroy', 'display_name' => 'Eliminar configuración', 'description' => 'Elimina una configuración del sistema.'],
                 ['name' => 'settings.bulk-update', 'display_name' => 'Actualización masiva de configuraciones', 'description' => 'Actualiza múltiples configuraciones a la vez.'],
                 ['name' => 'settings.restore-defaults', 'display_name' => 'Restaurar configuraciones por defecto', 'description' => 'Restaura todas las configuraciones a valores predeterminados.'],
+            ],
+
+            'Dashboard' => [
+                ['name' => 'dashboard.full', 'display_name' => 'Dashboard completo', 'description' => 'Acceso al dashboard administrativo con todas las métricas del sistema.'],
+                ['name' => 'dashboard.personal', 'display_name' => 'Dashboard personal', 'description' => 'Dashboard solo con datos del usuario (sus cotizaciones, ventas, comisiones, etc).'],
+            ],
+
+            'Reports' => [
+                ['name' => 'reports.index', 'display_name' => 'Listar reportes', 'description' => 'Acceso al módulo de reportes y análisis.'],
+                ['name' => 'reports.sales', 'display_name' => 'Reportes de ventas', 'description' => 'Acceso a reportes detallados de ventas.'],
+                ['name' => 'reports.purchases', 'display_name' => 'Reportes de compras', 'description' => 'Acceso a reportes detallados de compras.'],
+                ['name' => 'reports.inventory', 'display_name' => 'Reportes de inventario', 'description' => 'Acceso a reportes de stock y movimientos.'],
+                ['name' => 'reports.financial', 'display_name' => 'Reportes financieros', 'description' => 'Acceso a reportes de ganancias, costos y márgenes.'],
+                ['name' => 'reports.export', 'display_name' => 'Exportar reportes', 'description' => 'Permite exportar reportes a Excel/PDF.'],
             ],
         ];
 
@@ -612,6 +648,16 @@ class RoleSeeder extends Seeder
             'supplier-category-maps.unmapped',
             'supplier-category-maps.statistics',
 
+            // COUPONS
+            'coupons.index',
+            'coupons.show',
+            'coupons.store',
+            'coupons.update',
+            'coupons.destroy',
+            'coupons.toggle-active',
+            'coupons.statistics',
+            'coupons.validate',
+
             // SETTINGS
             'settings.index',
             'settings.show',
@@ -628,6 +674,15 @@ class RoleSeeder extends Seeder
             'purchases.destroy',
             'purchases.statistics',
             'purchases.payments.create',
+
+            // DASHBOARD & REPORTS
+            'dashboard.full',
+            'reports.index',
+            'reports.sales',
+            'reports.purchases',
+            'reports.inventory',
+            'reports.financial',
+            'reports.export',
         ];
     }
 
@@ -761,6 +816,12 @@ class RoleSeeder extends Seeder
             'supplier-category-maps.show',
             'supplier-category-maps.unmapped',
             'supplier-category-maps.statistics',
+
+            // COUPONS (solo validación para checkout)
+            'coupons.validate',
+
+            // DASHBOARD (solo personal)
+            'dashboard.personal',
         ];
     }
 
