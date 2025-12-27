@@ -56,6 +56,21 @@ class UserController extends Controller
     }
 
     /**
+     * Get user statistics
+     *
+     * @group Usuarios
+     */
+    public function statistics(): JsonResponse
+    {
+        $stats = $this->userService->getStatistics();
+
+        return response()->json([
+            'success' => true,
+            'data' => $stats,
+        ]);
+    }
+
+    /**
      * Crear nuevo usuario
      *
      * @group Usuarios

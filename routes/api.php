@@ -161,9 +161,42 @@ Route::middleware(['auth:sanctum', 'role:super-admin'])->prefix('permissions')->
 });
 
 /* ============================================
+   ROLES
+   ============================================ */
+Route::prefix('roles')->middleware(['auth:sanctum'])->group(function () {
+    // Statistics endpoint first
+    Route::get('statistics', [\App\Http\Controllers\Api\RoleController::class, 'statistics'])
+        ->middleware('permission:roles.statistics');
+
+    // Available permissions (for role creation/editing)
+    Route::get('available-permissions', [\App\Http\Controllers\Api\RoleController::class, 'availablePermissions'])
+        ->middleware('permission:roles.available-permissions');
+
+    // CRUD
+    Route::get('/', [\App\Http\Controllers\Api\RoleController::class, 'index'])
+        ->middleware('permission:roles.index');
+
+    Route::post('/', [\App\Http\Controllers\Api\RoleController::class, 'store'])
+        ->middleware('permission:roles.store');
+
+    Route::get('/{id}', [\App\Http\Controllers\Api\RoleController::class, 'show'])
+        ->middleware('permission:roles.show');
+
+    Route::match(['put', 'patch'], '/{id}', [\App\Http\Controllers\Api\RoleController::class, 'update'])
+        ->middleware('permission:roles.update');
+
+    Route::delete('/{id}', [\App\Http\Controllers\Api\RoleController::class, 'destroy'])
+        ->middleware('permission:roles.destroy');
+});
+
+/* ============================================
    USUARIOS
    ============================================ */
 Route::prefix('users')->middleware(['auth:sanctum'])->group(function () {
+    // Statistics endpoint first
+    Route::get('statistics', [UserController::class, 'statistics'])
+        ->middleware('permission:users.statistics');
+
     // CRUD REST (index, store, show, update, destroy)
     Route::get('/', [UserController::class, 'index'])
         ->middleware('permission:users.index');

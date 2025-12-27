@@ -219,6 +219,17 @@ class RoleSeeder extends Seeder
                 ['name' => 'users.restore', 'display_name' => 'Restaurar usuario', 'description' => 'Restaura un usuario previamente eliminado.'],
                 ['name' => 'users.toggle-active', 'display_name' => 'Activar/Desactivar usuario', 'description' => 'Cambia el estado activo/inactivo de un usuario.'],
                 ['name' => 'users.change-role', 'display_name' => 'Cambiar rol de usuario', 'description' => 'Actualiza el rol principal asignado a un usuario.'],
+                ['name' => 'users.statistics', 'display_name' => 'Estadísticas de usuarios', 'description' => 'Consulta estadísticas de usuarios del sistema.'],
+            ],
+
+            'Roles' => [
+                ['name' => 'roles.index', 'display_name' => 'Listar roles', 'description' => 'Obtiene el listado de roles del sistema.'],
+                ['name' => 'roles.show', 'display_name' => 'Ver rol', 'description' => 'Muestra el detalle de un rol específico.'],
+                ['name' => 'roles.store', 'display_name' => 'Crear rol', 'description' => 'Crea un nuevo rol personalizado.'],
+                ['name' => 'roles.update', 'display_name' => 'Actualizar rol', 'description' => 'Actualiza un rol existente y sus permisos.'],
+                ['name' => 'roles.destroy', 'display_name' => 'Eliminar rol', 'description' => 'Elimina un rol personalizado del sistema.'],
+                ['name' => 'roles.statistics', 'display_name' => 'Estadísticas de roles', 'description' => 'Consulta estadísticas de roles.'],
+                ['name' => 'roles.available-permissions', 'display_name' => 'Ver permisos disponibles', 'description' => 'Lista todos los permisos disponibles para asignar.'],
             ],
 
             'Permissions' => [

@@ -12,21 +12,26 @@ use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
-class User extends Authenticatable implements MustVerifyEmail
+class User extends Authenticatable implements MustVerifyEmail, HasMedia
 {
-    use HasApiTokens, HasFactory, Notifiable, HasRoles, SoftDeletes; 
+    use HasApiTokens, HasFactory, Notifiable, HasRoles, SoftDeletes, InteractsWithMedia;
 
     protected $guard_name = 'sanctum';
 
     protected $fillable = [
         'first_name',
         'last_name',
-        'cellphone', 
+        'cellphone',
         'email',
         'password',
-        'is_active', 
+        'is_active',
         'warehouse_id',
+        'commission_percentage',
+        'last_login_at',
     ];
 
     protected $hidden = [
@@ -38,7 +43,9 @@ class User extends Authenticatable implements MustVerifyEmail
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
-            'is_active' => 'boolean', // ⭐ AGREGADO
+            'is_active' => 'boolean',
+            'commission_percentage' => 'decimal:2',
+            'last_login_at' => 'datetime',
         ];
     }
 
@@ -192,5 +199,59 @@ class User extends Authenticatable implements MustVerifyEmail
     public function isVendor(): bool
     {
         return $this->hasRole('vendor');
+    }
+
+    // ========================================
+    // MEDIA LIBRARY (Avatar)
+    // ========================================
+
+    /**
+     * Register media collections
+     * Avatar uses singleFile() to automatically replace old avatar
+     */
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('avatar')
+            ->singleFile()
+            ->useDisk('public');
+    }
+
+    /**
+     * Register media conversions for avatar
+     */
+    public function registerMediaConversions(?Media $media = null): void
+    {
+        $this->addMediaConversion('thumb')
+            ->width(150)
+            ->height(150)
+            ->sharpen(10)
+            ->quality(85)
+            ->nonQueued()
+            ->performOnCollections('avatar');
+
+        $this->addMediaConversion('medium')
+            ->width(400)
+            ->height(400)
+            ->quality(85)
+            ->nonQueued()
+            ->performOnCollections('avatar');
+    }
+
+    /**
+     * Get avatar URL (accessor)
+     */
+    public function getAvatarUrlAttribute(): ?string
+    {
+        $media = $this->getFirstMedia('avatar');
+        return $media ? $media->getUrl('medium') : null;
+    }
+
+    /**
+     * Get avatar thumbnail URL
+     */
+    public function getAvatarThumbUrlAttribute(): ?string
+    {
+        $media = $this->getFirstMedia('avatar');
+        return $media ? $media->getUrl('thumb') : null;
     }
 }

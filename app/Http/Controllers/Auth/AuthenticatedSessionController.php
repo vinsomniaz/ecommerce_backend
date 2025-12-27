@@ -34,6 +34,9 @@ class AuthenticatedSessionController extends Controller
             $entity = $user->getOrCreateEntity(); // esto ya respeta la regla de roles
         }
 
+        // Registrar último acceso
+        $user->update(['last_login_at' => now()]);
+
         // Eliminar tokens antiguos (opcional)
         $user->tokens()->delete();
 
@@ -53,6 +56,7 @@ class AuthenticatedSessionController extends Controller
                 'roles'      => $user->getRoleNames(),
                 'permissions' => $user->getAllPermissions()->pluck('name'),
                 'has_entity' => $user->hasEntity(),
+                'avatar'     => $this->getAvatarFormatted($user),
             ],
             'entity' => $entity ? [
                 'id'              => $entity->id,
@@ -91,6 +95,7 @@ class AuthenticatedSessionController extends Controller
                 'roles'            => $user->getRoleNames(),
                 'permissions'      => $user->getAllPermissions()->pluck('name'),
                 'has_entity'       => $user->hasEntity(),
+                'avatar'           => $this->getAvatarFormatted($user),
             ],
             'entity'      => $entity,
             'addresses'   => $user->hasRole('customer') ? $user->addresses : [],
@@ -109,5 +114,24 @@ class AuthenticatedSessionController extends Controller
         return response()->json([
             'message' => 'Logout exitoso'
         ], 200);
+    }
+
+    /**
+     * Format avatar data for response
+     */
+    private function getAvatarFormatted($user): ?array
+    {
+        $media = $user->getFirstMedia('avatar');
+
+        if (!$media) {
+            return null;
+        }
+
+        return [
+            'id' => $media->id,
+            'original_url' => $media->getUrl(),
+            'thumb_url' => $media->getUrl('thumb'),
+            'medium_url' => $media->getUrl('medium'),
+        ];
     }
 }

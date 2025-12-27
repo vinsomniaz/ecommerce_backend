@@ -6,6 +6,7 @@ use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\Auth\VerifyEmailController;
+use App\Http\Controllers\Api\ProfileController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -34,7 +35,7 @@ Route::post('/reset-password', [NewPasswordController::class, 'store'])
     ->name('password.store');
 
 // ========================================
-// RUTAS AUTENTICADAS USUARIO ECOMMERCE
+// RUTAS AUTENTICADAS
 // ========================================
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -55,28 +56,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
         ->middleware('throttle:6,1')
         ->name('verification.send');
-});
 
-// ========================================
-// RUTAS AUTENTICADAS USUARIO ECOMMERCE
-// ========================================
+    // ========================================
+    // PROFILE (Solo usuarios ERP: super-admin, admin, vendor)
+    // ========================================
 
-Route::middleware('auth:sanctum')->group(function () {
-
-    // Obtener usuario autenticado
-    Route::get('/user', [AuthenticatedSessionController::class, 'me'])
-        ->name('user.me');
-
-    // Logout
-    Route::delete('/logout', [AuthenticatedSessionController::class, 'destroy'])
-        ->name('logout');
-
-    // Verificación de email
-    Route::get('/verify-email/{id}/{hash}', VerifyEmailController::class)
-        ->middleware(['signed', 'throttle:6,1'])
-        ->name('verification.verify');
-
-    Route::post('/email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
-        ->middleware('throttle:6,1')
-        ->name('verification.send');
+    Route::prefix('profile')->group(function () {
+        Route::get('/', [ProfileController::class, 'show'])->name('profile.show');
+        Route::patch('/', [ProfileController::class, 'update'])->name('profile.update');
+        Route::patch('/password', [ProfileController::class, 'updatePassword'])->name('profile.password');
+        Route::post('/avatar', [ProfileController::class, 'updateAvatar'])->name('profile.avatar.update');
+        Route::delete('/avatar', [ProfileController::class, 'deleteAvatar'])->name('profile.avatar.delete');
+    });
 });

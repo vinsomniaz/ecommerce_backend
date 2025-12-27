@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Http\Resources\Users;
+namespace App\Http\Resources\Profile;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class UserResource extends JsonResource
+class ProfileResource extends JsonResource
 {
     /**
      * Transform the resource into an array.
@@ -16,21 +16,14 @@ class UserResource extends JsonResource
             'id' => $this->id,
             'first_name' => $this->first_name,
             'last_name' => $this->last_name,
-            'full_name' => $this->full_name, // Accessor del modelo
+            'full_name' => $this->full_name,
             'initials' => $this->getInitials(),
             'email' => $this->email,
             'cellphone' => $this->cellphone,
+            'email_verified_at' => $this->email_verified_at?->toISOString(),
             'is_active' => $this->is_active,
-            'commission_percentage' => $this->commission_percentage,
-            'last_login_at' => $this->last_login_at?->toISOString(),
 
-            // Avatar
-            'avatar' => $this->getAvatarFormatted(),
-
-            // Protección: super-admin no puede ser editado/eliminado
-            'is_protected' => $this->hasRole('super-admin'),
-
-            // Roles (Spatie)
+            // Role info
             'roles' => $this->whenLoaded('roles', function () {
                 return $this->roles->pluck('name');
             }),
@@ -38,28 +31,7 @@ class UserResource extends JsonResource
                 return $this->roles->first()?->name;
             }),
 
-            // Permisos (opcional, solo si se necesita)
-            'permissions' => $this->when(
-                $request->input('include_permissions'),
-                fn() => $this->getAllPermissions()->pluck('name')
-            ),
-
-            // Entity relacionada
-            'entity' => $this->when(
-                $this->relationLoaded('entity') && $this->entity,
-                function () {
-                    return [
-                        'id' => $this->entity->id,
-                        'type' => $this->entity->type,
-                        'tipo_documento' => $this->entity->tipo_documento,
-                        'numero_documento' => $this->entity->numero_documento,
-                        'razon_social' => $this->entity->razon_social,
-                    ];
-                }
-            ),
-
-            // Warehouse (si aplica)
-            'warehouse_id' => $this->warehouse_id,
+            // Warehouse (if vendor)
             'warehouse' => $this->when(
                 $this->relationLoaded('warehouse') && $this->warehouse,
                 function () {
@@ -70,15 +42,21 @@ class UserResource extends JsonResource
                 }
             ),
 
+            // Commission (if applicable)
+            'commission_percentage' => $this->commission_percentage,
+
+            // Avatar
+            'avatar' => $this->getAvatarFormatted(),
+
             // Timestamps
+            'last_login_at' => $this->last_login_at?->toISOString(),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
-            'deleted_at' => $this->when($this->deleted_at, fn() => $this->deleted_at->toISOString()),
         ];
     }
 
     /**
-     * Get user initials for avatar
+     * Get user initials for fallback avatar
      */
     private function getInitials(): string
     {

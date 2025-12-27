@@ -12,7 +12,8 @@ class UpdateUserRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return auth()->check() && auth()->user()->hasAnyRole(['admin', 'super-admin']);
+        // return auth()->check() && auth()->user()->hasAnyRole(['admin', 'super-admin']);
+        return true;
     }
 
     /**
@@ -90,8 +91,7 @@ class UpdateUserRequest extends FormRequest
             // Rol
             'role' => [
                 'sometimes',
-                'string',
-                Rule::in(['super-admin', 'admin', 'vendor', 'customer']),
+                'string'
             ],
 
             // Almacén
@@ -99,6 +99,14 @@ class UpdateUserRequest extends FormRequest
                 'nullable',
                 'integer',
                 'exists:warehouses,id',
+            ],
+
+            // Comisión (para vendedores)
+            'commission_percentage' => [
+                'nullable',
+                'numeric',
+                'min:0',
+                'max:100',
             ],
         ];
     }
